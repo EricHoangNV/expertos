@@ -1,0 +1,23 @@
+# Build context is the repo root for every app image (pnpm workspace).
+# Strip everything the build reinstalls/regenerates so the context stays small
+# and host artifacts never leak into the image.
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+packages/db/generated
+.git
+.pnpm-store
+**/.DS_Store
+**/*.log
+
+# secrets / local env — never bake into an image
+.env
+.env.*
+!.env.example
+
+# docs & local-only dirs not needed at build time
+requirements
+project-mds

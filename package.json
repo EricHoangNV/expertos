@@ -12,7 +12,11 @@
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
-    "deadcode": "knip"
+    "deadcode": "knip",
+    "deploy:api": "bash infra/deploy.sh api",
+    "deploy:web": "bash infra/deploy.sh web",
+    "deploy:admin": "bash infra/deploy.sh admin",
+    "deploy": "pnpm deploy:api && pnpm deploy:web && pnpm deploy:admin"
   },
   "devDependencies": {
     "@types/jest": "29.5.12",
