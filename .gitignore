@@ -1,1 +1,3 @@
 requirements/
+.env
+.DS_Store
