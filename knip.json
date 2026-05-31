@@ -1,0 +1,35 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    "packages/shared": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/db": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/ai": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/ui": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "apps/web": {
+      "entry": ["app/**/{page,layout,loading,error,not-found}.tsx", "next.config.mjs"],
+      "project": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"]
+    },
+    "apps/admin": {
+      "entry": ["app/**/{page,layout,loading,error,not-found}.tsx", "next.config.mjs"],
+      "project": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"]
+    },
+    "apps/api": {
+      "entry": ["src/main.ts"],
+      "project": ["src/**/*.ts"]
+    }
+  },
+  "ignoreDependencies": ["ts-jest", "@types/jest"],
+  "ignore": ["**/*.test.ts", "**/*.test.tsx", "**/jest.config.*"]
+}

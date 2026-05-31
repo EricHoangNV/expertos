@@ -1,0 +1,26 @@
+// ExpertOS database schema.
+// P0.1 ships a minimal, tenant-ready datasource/generator skeleton.
+// P0.2 fills in the full multi-tenant schema, pgvector columns, and RLS migrations.
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../generated/client"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+/// A tenant (organization) — root of the multi-tenant model. Expanded in P0.2.
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("tenants")
+}

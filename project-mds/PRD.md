@@ -9,7 +9,7 @@
 > Sequence: Phase 0 → Phase 1 milestones M1–M11 (roughly in order; M9 is gated by Open Decision #5). Resolve the relevant Open Decision before building the milestone it blocks.
 
 ### Phase 0 — Foundation (§"Phase 0 — Foundation")
-- [ ] P0.1 `git init` + pnpm + Turborepo monorepo scaffold (`apps/web`, `apps/admin`, `apps/api`, `packages/shared`, `packages/db`, `packages/ai`, `packages/ui`, `infra/`)
+- [x] P0.1 `git init` + pnpm + Turborepo monorepo scaffold (`apps/web`, `apps/admin`, `apps/api`, `packages/shared`, `packages/db`, `packages/ai`, `packages/ui`, `infra/`)
 - [ ] P0.2 Postgres + pgvector via Prisma; tenant-ready schema + RLS migration (§"Data Model")
 - [ ] P0.3 Firebase Auth wiring (web + API token-verify guard, Google sign-in) + RBAC roles (user / expert / admin)
 - [ ] P0.4 Manual build & deploy: `pnpm` scripts (`test` with coverage gate, `build`, documented `gcloud run deploy`) + minimal scale-to-zero Terraform
