@@ -3,9 +3,10 @@ import { AuthModule } from "./auth/auth.module";
 import { DatabaseModule } from "./database/database.module";
 import { HealthController } from "./health/health.controller";
 import { HealthService } from "./health/health.service";
+import { ObservabilityModule } from "./observability/observability.module";
 
 @Module({
-  imports: [DatabaseModule, AuthModule],
+  imports: [DatabaseModule, AuthModule, ObservabilityModule],
   controllers: [HealthController],
   providers: [HealthService],
 })

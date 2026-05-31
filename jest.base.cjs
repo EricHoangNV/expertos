@@ -20,4 +20,9 @@ module.exports = {
       statements: 90,
     },
   },
+  // Bound peak memory: some suites pull heavy deps (firebase-admin), and on
+  // memory-constrained machines the default worker pool (cores-1) OOM-kills a
+  // worker. Cap parallelism and recycle workers that grow past the limit.
+  maxWorkers: 2,
+  workerIdleMemoryLimit: "512MB",
 };

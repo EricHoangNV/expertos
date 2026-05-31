@@ -154,3 +154,40 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - web/admin have no `public/` dir; Dockerfiles deliberately skip copying it (uncomment the COPY once one exists).
 - NEXT_PUBLIC_* are build-time — pass via `--build-arg` when wiring P0.3 Firebase web config into deploy images.
 - Before first `terraform apply` on a fresh project, either push images first or expect the initial Cloud Run revisions to go healthy only after `pnpm deploy`.
+
+## P0.5 — Observability baseline
+**Date:** 2026-05-31
+**Ref:** PRD.md Task Manifest P0.5 / §"Phase 0 — Foundation" item 5 (structured logging, Sentry, request tracing, cost/usage logging)
+
+**What was done:**
+- New `apps/api/src/observability/` module (`@Global`, imported in `app.module.ts`):
+  - `request-context.ts` — `AsyncLocalStorage`-backed per-request context (`requestId`, `traceId`).
+  - `request-context.middleware.ts` — mints/reuses `x-request-id`, parses `X-Cloud-Trace-Context`, echoes the id in the response header, runs the request inside the async context. Applied via `configure()` `forRoutes("*")`.
+  - `logger.service.ts` — `StructuredLogger` implements Nest `LoggerService` AND exposes `info/warn/error/debug(msg, fields?)`. One JSON line/stdout with Cloud Logging `severity`, ISO `time`, `requestId`, and `logging.googleapis.com/trace` (full resource path when `GOOGLE_CLOUD_PROJECT` set). Error args expanded to `{name,message,stack}`. Every line passed through `redact`.
+  - `redact.ts` — recursive PII scrub of sensitive keys (email/token/secret/authorization/…), cycle-safe (directive §4.10).
+  - `sentry.ts` — lazy/opt-in Sentry (`@sentry/node` 8.55.2). `initSentry()` no-ops unless `SENTRY_DSN`; `reportException` tags events with `requestId`/`traceId`; `flushSentry` for shutdown.
+  - `all-exceptions.filter.ts` — `APP_FILTER` catch-all: 4xx → WARNING log, not reported; 5xx/unknown → generic 500 + ERROR log + Sentry report; `requestId` in the JSON body for support correlation.
+  - `usage-log.service.ts` — `UsageLogService.record(user, entry)` writes `usage_logs` rows via `RlsService.run` (satisfies the table's `tenant_user_isolation` RLS policy). Best-effort: catches+logs failures so usage logging never breaks the user's request.
+- `main.ts` — `initSentry()` first, `bufferLogs: true` + `app.useLogger(StructuredLogger)`, `enableShutdownHooks()`, bootstrap `.catch` reports to Sentry + flushes.
+- Tests: 41 new (logger 15, usage-log 4, redact 4, sentry 5, middleware 6, filter 7). API now 62 tests / 12 suites; repo 83 / 17. `logger.service.ts` + `usage-log.service.ts` at 100% coverage.
+- `jest.base.cjs` — added `maxWorkers: 2` + `workerIdleMemoryLimit: "512MB"` to stop OOM-SIGKILL of a worker once enough heavy suites run concurrently on this ~4 GB sandbox.
+
+**Key decisions:**
+- **No `usage_logs`/`transactions` migration needed** — those tables + cost columns already exist (P0.2 schema). P0.5 = the runtime services on top, not new DDL.
+- **`StructuredLogger` registered via `useFactory`**, not class introspection: its constructor takes an optional `LogSink` (defaulted to stdout) that Nest's DI can't/shouldn't resolve; the factory sidesteps that and keeps the sink swappable in tests.
+- **Sentry lazy + opt-in** (mirrors the lazy-Firebase learning #3): zero config in dev/test/CI, no events shipped, nothing to stub.
+- **`UsageLogService` best-effort** (degrade-don't-block): a logging-table write failure must not 500 the user's actual request.
+- **Structured logs over stdout JSON** (not a transport/file): Cloud Run ingests stdout natively into Cloud Logging, reading `severity` + trace — no extra infra, matches "no full infra Day 1".
+- Observability helper types left **un-exported** to satisfy knip (no consumer yet); re-export when M1+ imports them.
+
+**Files changed:**
+- `apps/api/src/observability/*.ts` (+ `*.test.ts`) — new module (7 source + 6 test files).
+- `apps/api/src/app.module.ts` — import `ObservabilityModule`.
+- `apps/api/src/main.ts` — Sentry init + structured logger + shutdown hooks.
+- `apps/api/package.json` — `@sentry/node` 8.55.2 (exact-pinned).
+- `jest.base.cjs` — worker memory caps.
+
+**Notes for next iteration:**
+- The DI graph (global module + middleware + APP_FILTER + Sentry) was validated by bootstrapping the built `dist/app.module` (`NestFactory.create` → `init` → `close`) with dummy creds — confirmed clean wiring + correct structured log output. Throwaway smoke, not committed.
+- `RlsService` now has its **first real consumer** (`UsageLogService`). M1's ingestion/retrieval route should record usage via `UsageLogService.record(...)` and is the natural place to add the first `@nestjs/testing` module-level test (re-add the dep + knip ignore then).
+- `costMicros` unit = millionths of a USD cent. Feeds Open Decision #4 (unit economics) + M10 analytics.

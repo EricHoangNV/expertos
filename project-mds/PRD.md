@@ -13,7 +13,7 @@
 - [x] P0.2 Postgres + pgvector via Prisma; tenant-ready schema + RLS migration (§"Data Model")
 - [x] P0.3 Firebase Auth wiring (web + API token-verify guard, Google sign-in) + RBAC roles (user / expert / admin)
 - [x] P0.4 Manual build & deploy: `pnpm` scripts (`test` with coverage gate, `build`, documented `gcloud run deploy`) + minimal scale-to-zero Terraform
-- [ ] P0.5 Observability baseline: structured logging, Sentry error tracking, request tracing, cost/usage logging tables
+- [x] P0.5 Observability baseline: structured logging, Sentry error tracking, request tracing, cost/usage logging tables
 - [ ] P0.6 Design system foundation: `ds.css` + Google Fonts in `packages/ui`, imported at both Next.js app roots; React primitives over the class components; Stylelint/ESLint guard failing on hardcoded colors / off-scale px (§"Design System")
 
 ### Phase 1 — MVP (§"Phased Delivery Roadmap")
