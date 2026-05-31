@@ -10,7 +10,7 @@
 
 ### Phase 0 — Foundation (§"Phase 0 — Foundation")
 - [x] P0.1 `git init` + pnpm + Turborepo monorepo scaffold (`apps/web`, `apps/admin`, `apps/api`, `packages/shared`, `packages/db`, `packages/ai`, `packages/ui`, `infra/`)
-- [ ] P0.2 Postgres + pgvector via Prisma; tenant-ready schema + RLS migration (§"Data Model")
+- [x] P0.2 Postgres + pgvector via Prisma; tenant-ready schema + RLS migration (§"Data Model")
 - [ ] P0.3 Firebase Auth wiring (web + API token-verify guard, Google sign-in) + RBAC roles (user / expert / admin)
 - [ ] P0.4 Manual build & deploy: `pnpm` scripts (`test` with coverage gate, `build`, documented `gcloud run deploy`) + minimal scale-to-zero Terraform
 - [ ] P0.5 Observability baseline: structured logging, Sentry error tracking, request tracing, cost/usage logging tables

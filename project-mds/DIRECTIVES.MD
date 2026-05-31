@@ -40,6 +40,7 @@
 32. **CI workflow_dispatch only** — no push/PR triggers (§8.1)
 33. **Debug logs before guessing** — add console.log to trace values, then fix (§9.1)
 34. **Multi-doc mutations use batches** — delete+count+quota+scan cleanup in one Firestore batch (§7.14)
+35. **Postgres RLS needs a non-superuser app role + FORCE RLS** — app connects as `app_user`, scope via `applyRlsContext` inside a transaction (§4.21)
 
 ---
 
@@ -528,6 +529,19 @@ When a Cloud Function creates a record derived from another document (e.g., a co
 - Return a generic `not-found` response on ownership mismatch — do not leak whether the source document exists
 - User-authored fields (notes, tags, purchase price) may come from the client; identification/attribution fields must not
 - When the user selects from a set of alternatives within the source document, accept an index into the alternatives array — not the alternative's content
+
+---
+
+### 4.21 Postgres RLS Requires a Non-Superuser App Role + FORCE ROW LEVEL SECURITY
+
+`ENABLE ROW LEVEL SECURITY` is a silent no-op for connections whose role is a superuser or the table owner — they bypass every policy with no error, returning cross-tenant rows. Migrations/seeds run as the owner (which is fine), but the **application must not**.
+
+**Rules:**
+- The application connects as a dedicated **non-superuser, non-owner** role (`app_user`, no `BYPASSRLS`) with only CRUD grants — never the migration/owner role in `DATABASE_URL`.
+- Every RLS-protected table uses **both** `ENABLE` and `FORCE ROW LEVEL SECURITY` (FORCE closes the owner-bypass path as defense in depth).
+- Per-request scoping is carried in GUCs (`app.current_tenant_id`, `app.current_user_id`, `app.is_admin`) set with `set_config(..., true)` **inside a `$transaction`** via `applyRlsContext` (`@expertos/db`). Outside a transaction the setting is discarded → policies see NULL → deny-by-default.
+- Verify isolation by querying **as `app_user`** (or `SET ROLE app_user`), never as the owner role — the owner always sees everything and gives false confidence.
+- `app_user` is created `NOLOGIN` by the migration; provision its LOGIN + password out of band (Secret Manager), do not hardcode credentials in migrations.
 
 ---
 

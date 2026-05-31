@@ -30,6 +30,6 @@
       "project": ["src/**/*.ts"]
     }
   },
-  "ignoreDependencies": ["ts-jest", "@types/jest"],
+  "ignoreDependencies": ["ts-jest", "@types/jest", "@prisma/client"],
   "ignore": ["**/*.test.ts", "**/*.test.tsx", "**/jest.config.*"]
 }

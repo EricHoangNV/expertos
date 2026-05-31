@@ -1,6 +1,16 @@
-// ExpertOS database schema.
-// P0.1 ships a minimal, tenant-ready datasource/generator skeleton.
-// P0.2 fills in the full multi-tenant schema, pgvector columns, and RLS migrations.
+// ExpertOS database schema — tenant-ready from day 1 (PRD §"Data Model").
+//
+// Every knowledge/content row carries `tenantId` + `scope`. `tenantId` defaults to
+// the well-known GLOBAL tenant (00000000-0000-0000-0000-000000000000); the consumer
+// MVP runs entirely under it with scope ∈ {global_expert, temporary_upload, user_private}.
+// B2B (Phase 3) flips on the remaining scopes with no migration.
+//
+// Embedding columns use pgvector and are typed `Unsupported("vector(1536)")` — Prisma
+// Client cannot read/write them directly; the VectorStore driver (M1) uses raw SQL.
+// 1536 = OpenAI text-embedding-3-small. Changing the model means a migration.
+//
+// Row-Level Security policies + the pgvector index live in the hand-written
+// `*_rls_and_vector` migration (Prisma cannot express RLS or index Unsupported columns).
 
 generator client {
   provider        = "prisma-client-js"
@@ -14,13 +24,976 @@ datasource db {
   extensions = [vector]
 }
 
-/// A tenant (organization) — root of the multi-tenant model. Expanded in P0.2.
+// ───────────────────────────── Enums ─────────────────────────────
+
+/// Origin/visibility class for every content row. Drives RLS + retrieval filters.
+enum ContentScope {
+  global_expert
+  shared_expert
+  tenant_customer
+  user_private
+  temporary_upload
+
+  @@map("content_scope")
+}
+
+enum Role {
+  user
+  expert
+  admin
+
+  @@map("role")
+}
+
+enum Language {
+  en
+  vi
+
+  @@map("language")
+}
+
+/// Versioned-knowledge lifecycle (admin publish workflow, M8).
+enum PublishStatus {
+  draft
+  ai_processing
+  expert_review
+  published
+  archived
+
+  @@map("publish_status")
+}
+
+/// Retrieval-visibility status of an individual chunk.
+enum ChunkStatus {
+  pending
+  published
+  archived
+
+  @@map("chunk_status")
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+
+  @@map("message_role")
+}
+
+enum BillingInterval {
+  month
+  year
+
+  @@map("billing_interval")
+}
+
+enum FeatureType {
+  boolean
+  metered
+
+  @@map("feature_type")
+}
+
+/// Rolling window for a metered entitlement.
+enum UsageWindow {
+  day
+  week
+  month
+
+  @@map("usage_window")
+}
+
+enum SubscriptionStatus {
+  active
+  trialing
+  past_due
+  canceled
+  incomplete
+  incomplete_expired
+  unpaid
+
+  @@map("subscription_status")
+}
+
+enum TransactionType {
+  subscription
+  one_off
+  refund
+  adjustment
+
+  @@map("transaction_type")
+}
+
+enum TransactionStatus {
+  pending
+  succeeded
+  failed
+  refunded
+
+  @@map("transaction_status")
+}
+
+enum UploadMode {
+  temporary
+  persistent
+
+  @@map("upload_mode")
+}
+
+enum ReviewTriggerMode {
+  user_prompted
+  auto_silent
+
+  @@map("review_trigger_mode")
+}
+
+enum ReviewVisibility {
+  visible
+  silent
+
+  @@map("review_visibility")
+}
+
+enum ReviewRequestStatus {
+  requested
+  in_review
+  answered
+  escalated
+  dismissed
+
+  @@map("review_request_status")
+}
+
+enum ReviewVerdict {
+  good
+  bad
+  great
+
+  @@map("review_verdict")
+}
+
+enum KnowledgeDraftStatus {
+  draft
+  expert_review
+  published
+  rejected
+
+  @@map("knowledge_draft_status")
+}
+
+enum ConsultationStatus {
+  recommended
+  booked
+  confirmed
+  completed
+  canceled
+  no_show
+
+  @@map("consultation_status")
+}
+
+/// Why the recommendation engine fired (admin-configurable rules, M7).
+enum RecommendationTrigger {
+  topic
+  depth
+  low_confidence
+  high_intent
+
+  @@map("recommendation_trigger")
+}
+
+/// The user's response to an in-chat consultation recommendation.
+enum RecommendationResponse {
+  pending
+  book
+  maybe_later
+  ask_another
+
+  @@map("recommendation_response")
+}
+
+enum DataDeletionStatus {
+  requested
+  processing
+  completed
+  failed
+
+  @@map("data_deletion_status")
+}
+
+enum FairUseFlagStatus {
+  open
+  reviewed
+  throttled
+  cleared
+
+  @@map("fair_use_flag_status")
+}
+
+// ──────────────────────── Identity / billing ────────────────────────
+
+/// A tenant (organization). The GLOBAL tenant is seeded at the all-zero UUID.
 model Tenant {
   id        String   @id @default(uuid()) @db.Uuid
   slug      String   @unique
   name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users                User[]
+  experts              Expert[]
+  voiceProfiles        VoiceProfile[]
+  voiceExamples        VoiceExample[]
+  subscriptions        Subscription[]
+  usageCounters        UsageCounter[]
+  usageLogs            UsageLog[]
+  transactions         Transaction[]
+  documents            Document[]
+  documentVersions     DocumentVersion[]
+  chunks               Chunk[]
+  citations            Citation[]
+  topics               Topic[]
+  conversations        Conversation[]
+  messages             Message[]
+  savedAnswers         SavedAnswer[]
+  answerFeedback       AnswerFeedback[]
+  knowledgeDrafts      KnowledgeDraft[]
+  humanReviewRequests  HumanReviewRequest[]
+  reviewResponses      ReviewResponse[]
+  uploadedFiles        UploadedFile[]
+  uploadChunks         UploadChunk[]
+  consultations        Consultation[]
+  consultationRecs     ConsultationRecommendation[]
+  consultationNotes    ConsultationNote[]
+  semanticCacheEntries SemanticCacheEntry[]
+  adminAuditLogs       AdminAuditLog[]
+  dataDeletionRequests DataDeletionRequest[]
+  fairUseFlags         FairUseFlag[]
 
   @@map("tenants")
+}
+
+/// An end user (or expert/admin — role is on the row). Identity from Firebase Auth.
+model User {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  firebaseUid String   @unique @map("firebase_uid")
+  email       String
+  displayName String?  @map("display_name")
+  role        Role     @default(user)
+  locale      Language @default(en)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant               Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  expert               Expert?
+  subscriptions        Subscription[]
+  usageCounters        UsageCounter[]
+  usageLogs            UsageLog[]
+  transactions         Transaction[]
+  conversations        Conversation[]
+  savedAnswers         SavedAnswer[]
+  answerFeedback       AnswerFeedback[]
+  uploadedFiles        UploadedFile[]
+  humanReviewRequests  HumanReviewRequest[]
+  reviewResponses      ReviewResponse[]             @relation("Reviewer")
+  consultations        Consultation[]
+  consultationRecs     ConsultationRecommendation[]
+  dataDeletionRequests DataDeletionRequest[]
+  fairUseFlags         FairUseFlag[]
+  adminAuditLogs       AdminAuditLog[]              @relation("AuditActor")
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+/// An expert whose knowledge + voice the product renders.
+model Expert {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId      String?  @unique @map("user_id") @db.Uuid
+  slug        String
+  displayName String   @map("display_name")
+  title       String?
+  bio         String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  voiceProfiles VoiceProfile[]
+  documents     Document[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("experts")
+}
+
+/// A versioned, expert-signed-off voice profile. Language-aware (EN + VI).
+model VoiceProfile {
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  expertId    String        @map("expert_id") @db.Uuid
+  language    Language      @default(en)
+  name        String
+  description String?
+  guidelines  String? // distilled voice rules injected into the prompt builder
+  status      PublishStatus @default(draft)
+  approvedBy  String?       @map("approved_by") @db.Uuid
+  approvedAt  DateTime?     @map("approved_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  expert   Expert         @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  examples VoiceExample[]
+
+  @@index([tenantId, expertId, language])
+  @@map("voice_profiles")
+}
+
+/// A retrieval-time voice example ("this is how the expert phrases things").
+model VoiceExample {
+  id             String                       @id @default(uuid()) @db.Uuid
+  tenantId       String                       @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  voiceProfileId String                       @map("voice_profile_id") @db.Uuid
+  prompt         String?
+  content        String
+  language       Language                     @default(en)
+  embedding      Unsupported("vector(1536)")?
+  createdAt      DateTime                     @default(now()) @map("created_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voiceProfile VoiceProfile @relation(fields: [voiceProfileId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, voiceProfileId])
+  @@map("voice_examples")
+}
+
+/// A subscription plan. Reference/config data (no tenant RLS).
+model Plan {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique // free | plus | premium
+  name      String
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  prices        PlanPrice[]
+  entitlements  PlanEntitlement[]
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+/// A plan + billing interval → provider price ID. Premium has monthly + annual.
+model PlanPrice {
+  id              String          @id @default(uuid()) @db.Uuid
+  planId          String          @map("plan_id") @db.Uuid
+  interval        BillingInterval
+  amountCents     Int             @map("amount_cents")
+  currency        String          @default("usd")
+  providerPriceId String?         @map("provider_price_id") // Stripe price ID
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, interval])
+  @@map("plan_prices")
+}
+
+/// The entitlement catalog — one key per capability. Reference/config data.
+model Feature {
+  id          String      @id @default(uuid()) @db.Uuid
+  key         String      @unique // ask_question | document_upload | ...
+  name        String
+  description String?
+  type        FeatureType
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  entitlements PlanEntitlement[]
+
+  @@map("features")
+}
+
+/// The plan × feature matrix — this table *is* the free-vs-paid definition.
+/// Seeded from a code default, then admin-editable.
+model PlanEntitlement {
+  id        String       @id @default(uuid()) @db.Uuid
+  planId    String       @map("plan_id") @db.Uuid
+  featureId String       @map("feature_id") @db.Uuid
+  enabled   Boolean      @default(true)
+  limit     Int? // null = unlimited (for metered features)
+  window    UsageWindow?
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  plan    Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  feature Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureId])
+  @@map("plan_entitlements")
+}
+
+/// A user's subscription. Payment source of truth = provider; mirrored here.
+model Subscription {
+  id                 String             @id @default(uuid()) @db.Uuid
+  tenantId           String             @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId             String             @map("user_id") @db.Uuid
+  planId             String             @map("plan_id") @db.Uuid
+  interval           BillingInterval    @default(month)
+  status             SubscriptionStatus @default(active)
+  providerCustomerId String?            @map("provider_customer_id")
+  providerSubId      String?            @unique @map("provider_subscription_id")
+  currentPeriodEnd   DateTime?          @map("current_period_end")
+  cancelAt           DateTime?          @map("cancel_at")
+  canceledAt         DateTime?          @map("canceled_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan   Plan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, userId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+/// Per-user, per-feature counter for the current metered window.
+model UsageCounter {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId      String      @map("user_id") @db.Uuid
+  featureKey  String      @map("feature_key")
+  window      UsageWindow
+  windowStart DateTime    @map("window_start")
+  count       Int         @default(0)
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, featureKey, window, windowStart])
+  @@index([tenantId, userId])
+  @@map("usage_counters")
+}
+
+/// Append-only per-action usage + cost log (cost/usage tracking, P0.5).
+model UsageLog {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId           String?  @map("user_id") @db.Uuid
+  featureKey       String   @map("feature_key")
+  model            String?
+  promptTokens     Int?     @map("prompt_tokens")
+  completionTokens Int?     @map("completion_tokens")
+  costMicros       Int?     @map("cost_micros") // cost in millionths of a USD cent, integer-safe
+  conversationId   String?  @map("conversation_id") @db.Uuid
+  occurredAt       DateTime @default(now()) @map("occurred_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, userId])
+  @@index([occurredAt])
+  @@map("usage_logs")
+}
+
+/// Local revenue ledger — mirrors every provider event for reporting/reconciliation.
+model Transaction {
+  id          String            @id @default(uuid()) @db.Uuid
+  tenantId    String            @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId      String?           @map("user_id") @db.Uuid
+  amountCents Int               @map("amount_cents")
+  currency    String            @default("usd")
+  type        TransactionType
+  status      TransactionStatus @default(pending)
+  provider    String            @default("stripe")
+  providerRef String?           @map("provider_ref") // idempotency: provider event/invoice id
+  occurredAt  DateTime          @default(now()) @map("occurred_at")
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerRef])
+  @@index([tenantId, userId])
+  @@index([occurredAt])
+  @@map("transactions")
+}
+
+// ──────────────────────── Knowledge (versioned) ────────────────────────
+
+/// A logical knowledge document. Points at its currently published version.
+model Document {
+  id                 String        @id @default(uuid()) @db.Uuid
+  tenantId           String        @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  scope              ContentScope  @default(global_expert)
+  expertId           String?       @map("expert_id") @db.Uuid
+  title              String
+  sourceUri          String?       @map("source_uri") // GCS object of the raw source
+  language           Language      @default(en)
+  status             PublishStatus @default(draft)
+  publishedVersionId String?       @unique @map("published_version_id") @db.Uuid
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  expert           Expert?           @relation(fields: [expertId], references: [id], onDelete: SetNull)
+  publishedVersion DocumentVersion?  @relation("PublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  versions         DocumentVersion[] @relation("DocumentVersions")
+  topics           DocumentTopic[]
+
+  @@index([tenantId, scope, status])
+  @@map("documents")
+}
+
+/// An immutable snapshot of a document at publish/approval time.
+model DocumentVersion {
+  id            String        @id @default(uuid()) @db.Uuid
+  tenantId      String        @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  documentId    String        @map("document_id") @db.Uuid
+  versionNumber Int           @map("version_number")
+  status        PublishStatus @default(draft)
+  changeSummary String?       @map("change_summary")
+  contentUri    String?       @map("content_uri") // GCS object of the processed content
+  approvedBy    String?       @map("approved_by") @db.Uuid
+  approvedAt    DateTime?     @map("approved_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document     Document   @relation("DocumentVersions", fields: [documentId], references: [id], onDelete: Cascade)
+  publishedFor Document?  @relation("PublishedVersion")
+  chunks       Chunk[]
+  citations    Citation[]
+
+  @@unique([documentId, versionNumber])
+  @@index([tenantId])
+  @@map("document_versions")
+}
+
+/// A retrievable chunk with its embedding. Filtered by status=published + scope + tenant + language.
+model Chunk {
+  id                String                       @id @default(uuid()) @db.Uuid
+  tenantId          String                       @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  scope             ContentScope                 @default(global_expert)
+  documentVersionId String                       @map("document_version_id") @db.Uuid
+  chunkIndex        Int                          @map("chunk_index")
+  content           String
+  summary           String?
+  language          Language                     @default(en)
+  status            ChunkStatus                  @default(pending)
+  tokenCount        Int?                         @map("token_count")
+  embedding         Unsupported("vector(1536)")?
+  createdAt         DateTime                     @default(now()) @map("created_at")
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  citations       Citation[]
+
+  @@unique([documentVersionId, chunkIndex])
+  @@index([tenantId, scope, status, language])
+  @@map("chunks")
+}
+
+/// Answer provenance — records the exact chunk + document_version cited.
+model Citation {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  messageId         String   @map("message_id") @db.Uuid
+  chunkId           String?  @map("chunk_id") @db.Uuid
+  documentVersionId String?  @map("document_version_id") @db.Uuid
+  uploadChunkId     String?  @map("upload_chunk_id") @db.Uuid
+  ordinal           Int
+  quote             String?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  message         Message          @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  chunk           Chunk?           @relation(fields: [chunkId], references: [id], onDelete: SetNull)
+  documentVersion DocumentVersion? @relation(fields: [documentVersionId], references: [id], onDelete: SetNull)
+  uploadChunk     UploadChunk?     @relation(fields: [uploadChunkId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, messageId])
+  @@map("citations")
+}
+
+/// Topic/tag taxonomy. Tenant-scoped so B2B tenants can curate their own.
+model Topic {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  slug      String
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  documents DocumentTopic[]
+
+  @@unique([tenantId, slug])
+  @@map("topics")
+}
+
+/// Document ↔ Topic join.
+model DocumentTopic {
+  documentId String @map("document_id") @db.Uuid
+  topicId    String @map("topic_id") @db.Uuid
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  topic    Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, topicId])
+  @@map("document_topics")
+}
+
+// ──────────────────────────── Conversations ────────────────────────────
+
+model Conversation {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  expertId  String?  @map("expert_id") @db.Uuid
+  title     String?
+  language  Language @default(en)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages        Message[]
+  savedAnswers    SavedAnswer[]
+  knowledgeDrafts KnowledgeDraft[]
+  recommendations ConsultationRecommendation[]
+
+  @@index([tenantId, userId])
+  @@map("conversations")
+}
+
+model Message {
+  id               String      @id @default(uuid()) @db.Uuid
+  tenantId         String      @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  conversationId   String      @map("conversation_id") @db.Uuid
+  role             MessageRole
+  content          String
+  // document_version ids whose chunks generated this answer (provenance)
+  sourceVersionIds String[]    @default([]) @map("source_version_ids") @db.Uuid
+  model            String?
+  confidence       Float?
+  createdAt        DateTime    @default(now()) @map("created_at")
+
+  tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation   Conversation         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  citations      Citation[]
+  savedAnswers   SavedAnswer[]
+  feedback       AnswerFeedback[]
+  reviewRequests HumanReviewRequest[]
+
+  @@index([tenantId, conversationId])
+  @@map("messages")
+}
+
+model SavedAnswer {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  messageId      String   @map("message_id") @db.Uuid
+  note           String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message      Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@index([tenantId, userId])
+  @@map("saved_answers")
+}
+
+model AnswerFeedback {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  messageId String   @map("message_id") @db.Uuid
+  helpful   Boolean // 👍 / 👎
+  reason    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@index([tenantId, messageId])
+  @@map("answer_feedback")
+}
+
+/// Conversation-to-knowledge pipeline: a draft promoted from a conversation.
+model KnowledgeDraft {
+  id             String               @id @default(uuid()) @db.Uuid
+  tenantId       String               @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  conversationId String?              @map("conversation_id") @db.Uuid
+  expertId       String?              @map("expert_id") @db.Uuid
+  title          String
+  content        String
+  status         KnowledgeDraftStatus @default(draft)
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@map("knowledge_drafts")
+}
+
+// ──────────────────────────── Concierge ────────────────────────────
+
+model HumanReviewRequest {
+  id              String              @id @default(uuid()) @db.Uuid
+  tenantId        String              @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId          String              @map("user_id") @db.Uuid
+  messageId       String              @map("message_id") @db.Uuid
+  assigneeId      String?             @map("assignee_id") @db.Uuid
+  triggerMode     ReviewTriggerMode   @map("trigger_mode")
+  visibility      ReviewVisibility    @default(visible)
+  confidenceScore Float?              @map("confidence_score")
+  status          ReviewRequestStatus @default(requested)
+  slaDueAt        DateTime?           @map("sla_due_at")
+  claimedAt       DateTime?           @map("claimed_at")
+  answeredAt      DateTime?           @map("answered_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   Message          @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  responses ReviewResponse[]
+
+  @@index([tenantId, status])
+  @@index([assigneeId])
+  @@map("human_review_requests")
+}
+
+model ReviewResponse {
+  id              String        @id @default(uuid()) @db.Uuid
+  tenantId        String        @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  reviewRequestId String        @map("review_request_id") @db.Uuid
+  reviewerId      String        @map("reviewer_id") @db.Uuid
+  verdict         ReviewVerdict
+  originalAnswer  String        @map("original_answer")
+  revisedAnswer   String?       @map("revised_answer")
+  edited          Boolean       @default(false)
+  deliveredToUser Boolean       @default(false) @map("delivered_to_user")
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reviewRequest HumanReviewRequest @relation(fields: [reviewRequestId], references: [id], onDelete: Cascade)
+  reviewer      User               @relation("Reviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, reviewRequestId])
+  @@map("review_responses")
+}
+
+// ──────────────────────────── Uploads ────────────────────────────
+
+model UploadedFile {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  scope          ContentScope @default(temporary_upload)
+  userId         String       @map("user_id") @db.Uuid
+  conversationId String?      @map("conversation_id") @db.Uuid
+  filename       String
+  contentType    String       @map("content_type")
+  sizeBytes      Int          @map("size_bytes")
+  gcsUri         String?      @map("gcs_uri")
+  mode           UploadMode   @default(temporary)
+  retentionDays  Int?         @map("retention_days")
+  scanned        Boolean      @default(false)
+  scanClean      Boolean?     @map("scan_clean")
+  expiresAt      DateTime?    @map("expires_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks UploadChunk[]
+
+  @@index([tenantId, userId])
+  @@map("uploaded_files")
+}
+
+model UploadChunk {
+  id             String                       @id @default(uuid()) @db.Uuid
+  tenantId       String                       @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  scope          ContentScope                 @default(temporary_upload)
+  uploadedFileId String                       @map("uploaded_file_id") @db.Uuid
+  chunkIndex     Int                          @map("chunk_index")
+  content        String
+  // spreadsheet provenance: sheet / table / row-col refs (M5.3)
+  sheetName      String?                      @map("sheet_name")
+  cellRef        String?                      @map("cell_ref")
+  embedding      Unsupported("vector(1536)")?
+  createdAt      DateTime                     @default(now()) @map("created_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadedFile UploadedFile @relation(fields: [uploadedFileId], references: [id], onDelete: Cascade)
+  citations    Citation[]
+
+  @@unique([uploadedFileId, chunkIndex])
+  @@index([tenantId, uploadedFileId])
+  @@map("upload_chunks")
+}
+
+// ──────────────────────────── Consultation ────────────────────────────
+
+/// Bookable consultation types. Reference/config data (no tenant RLS).
+model ConsultationType {
+  id              String   @id @default(uuid()) @db.Uuid
+  key             String   @unique
+  name            String
+  durationMinutes Int      @map("duration_minutes")
+  priceCents      Int?     @map("price_cents")
+  tidycalLink     String?  @map("tidycal_link")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  consultations Consultation[]
+
+  @@map("consultation_types")
+}
+
+model Consultation {
+  id          String             @id @default(uuid()) @db.Uuid
+  tenantId    String             @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId      String             @map("user_id") @db.Uuid
+  typeId      String?            @map("type_id") @db.Uuid
+  status      ConsultationStatus @default(recommended)
+  bookingRef  String?            @map("booking_ref") // TidyCal booking id
+  scheduledAt DateTime?          @map("scheduled_at")
+  amountCents Int?               @map("amount_cents")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type            ConsultationType?            @relation(fields: [typeId], references: [id], onDelete: SetNull)
+  recommendations ConsultationRecommendation[]
+  notes           ConsultationNote[]
+
+  @@index([tenantId, userId])
+  @@index([status])
+  @@map("consultations")
+}
+
+model ConsultationRecommendation {
+  id             String                 @id @default(uuid()) @db.Uuid
+  tenantId       String                 @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId         String                 @map("user_id") @db.Uuid
+  conversationId String?                @map("conversation_id") @db.Uuid
+  consultationId String?                @map("consultation_id") @db.Uuid
+  trigger        RecommendationTrigger
+  response       RecommendationResponse @default(pending)
+  createdAt      DateTime               @default(now()) @map("created_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  consultation Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, userId])
+  @@map("consultation_recommendations")
+}
+
+model ConsultationNote {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  consultationId String   @map("consultation_id") @db.Uuid
+  authorId       String?  @map("author_id") @db.Uuid
+  body           String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  consultation Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, consultationId])
+  @@map("consultation_notes")
+}
+
+// ──────────────────────────── Cache ────────────────────────────
+
+/// Semantic question cache (normalized question → cached answer + citations).
+model SemanticCacheEntry {
+  id                 String                       @id @default(uuid()) @db.Uuid
+  tenantId           String                       @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  normalizedQuestion String                       @map("normalized_question")
+  embedding          Unsupported("vector(1536)")?
+  chunkIds           String[]                     @default([]) @map("chunk_ids") @db.Uuid
+  answer             String
+  citationIds        String[]                     @default([]) @map("citation_ids") @db.Uuid
+  model              String?
+  hits               Int                          @default(0)
+  createdAt          DateTime                     @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("semantic_cache")
+}
+
+// ──────────────────────────── Security / audit ────────────────────────────
+
+/// Immutable admin action log.
+model AdminAuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String
+  targetType String?  @map("target_type")
+  targetId   String?  @map("target_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor  User?  @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@map("admin_audit_logs")
+}
+
+/// User-data deletion request + workflow state (directive: delete ALL user data).
+model DataDeletionRequest {
+  id          String             @id @default(uuid()) @db.Uuid
+  tenantId    String             @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId      String             @map("user_id") @db.Uuid
+  status      DataDeletionStatus @default(requested)
+  requestedAt DateTime           @default(now()) @map("requested_at")
+  completedAt DateTime?          @map("completed_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@map("data_deletion_requests")
+}
+
+/// Fair-use / abuse flag for manual review + automated throttling.
+model FairUseFlag {
+  id        String            @id @default(uuid()) @db.Uuid
+  tenantId  String            @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  userId    String            @map("user_id") @db.Uuid
+  reason    String
+  status    FairUseFlagStatus @default(open)
+  metadata  Json?
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@map("fair_use_flags")
 }
