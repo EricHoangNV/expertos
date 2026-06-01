@@ -16,3 +16,13 @@ export type {
   RetrievedChunk,
   VectorStore,
 } from "./providers";
+export { fuseHybrid } from "./retrieval/fusion";
+export type { FusionOptions } from "./retrieval/fusion";
+export type {
+  RetrievalScope,
+  RetrievalLanguage,
+  RetrievalStatus,
+  RetrievalFilters,
+  RetrievalRequest,
+  RankedChunk,
+} from "./retrieval/types";

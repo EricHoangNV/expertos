@@ -5,9 +5,16 @@ import { HealthController } from "./health/health.controller";
 import { HealthService } from "./health/health.service";
 import { IngestionModule } from "./ingestion/ingestion.module";
 import { ObservabilityModule } from "./observability/observability.module";
+import { RetrievalModule } from "./retrieval/retrieval.module";
 
 @Module({
-  imports: [DatabaseModule, AuthModule, ObservabilityModule, IngestionModule],
+  imports: [
+    DatabaseModule,
+    AuthModule,
+    ObservabilityModule,
+    IngestionModule,
+    RetrievalModule,
+  ],
   controllers: [HealthController],
   providers: [HealthService],
 })

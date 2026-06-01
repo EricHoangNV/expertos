@@ -250,3 +250,34 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - The CLI/repository can't be run end-to-end in this sandbox (Prisma library engine SIGILLs at query time — LEARNINGS #2; no DB). All pure logic is unit-tested; DB wiring verified via the bootstrap smoke.
 - When the real embedding model is wired, override it in `ingestion.defaults.ts` **and** the `EMBEDDING_PROVIDER` token so the API and the CLI seed loader write into the same vector space; consider migrating the CLI to `NestFactory.createApplicationContext` for a single DI composition root.
 - `approvedBy` is left null for system/CLI ingestion (no FK), set it to the expert's user id when the M8 review gate approves a version.
+
+## M1.2 — Hybrid retrieval behind the VectorStore interface
+**Date:** 2026-06-01
+**Ref:** PRD.md Task Manifest M1.2 (§"Phased Delivery Roadmap" M1, §"Tenant/user isolation", §Architecture)
+
+**What was done:**
+- Evolved the `@expertos/ai` `VectorStore` contract from `query(embedding, topK)` to `retrieve(RetrievalRequest)` (no consumers existed yet, safe break). Added optional `vectorScore`/`keywordScore` to `RetrievedChunk` for transparency.
+- Added a pure, DB-free **Reciprocal Rank Fusion** (`fuseHybrid`) in `packages/ai/src/retrieval/fusion.ts` that blends the vector + keyword ranked lists by position (RRF, default k=60, optional per-modality weights). Position-based fusion sidesteps the incomparable cosine-vs-`ts_rank` score scales — no normalization/blend-weight tuning. Deterministic (chunkId tiebreak). 7 unit tests.
+- Added the retrieval value/filter/request types in `packages/ai/src/retrieval/types.ts`, kept dependency-free (string-literal unions mirroring the Prisma/shared enums).
+- Added canonical zod validation in `packages/shared/src/retrieval.ts`: `chunkStatusSchema`, `retrievalFiltersSchema` (`status` defaults to `published`), `retrievalQuerySchema` (`text` trimmed/bounded, `topK` 1–50 default 8). 7 unit tests.
+- `apps/api/src/retrieval/`: `PgVectorStore implements VectorStore` — thin `$queryRawUnsafe` driver: vector search via cosine `<=>` over the HNSW `chunks.embedding` index + keyword search via `websearch_to_tsquery`/`ts_rank` full-text over `content || summary` (`'simple'` config so Vietnamese isn't English-stemmed), both gated by bound-param metadata filters (`status`, optional `language`, optional `scope` via `= ANY($n::content_scope[])`); over-fetches `topK*4` (cap 200) per modality, then RRF-fuses. `RetrievalService` embeds the query (same provider as ingestion) and runs the store inside `RlsService.run` so tenant isolation is enforced by RLS (no `tenant_id` predicate in SQL). `RetrievalModule` wired into `AppModule`.
+- Extracted the pgvector text-literal helper to `apps/api/src/database/vector.ts` (`toVectorLiteral`) and refactored `DocumentVersionRepository` to reuse it (was a private `formatVector`).
+
+**Key decisions:**
+- **RRF over weighted score fusion.** Cosine similarity (~[-1,1]) and `ts_rank` (small unbounded) live on different scales; RRF combines by rank so it needs no per-corpus normalization. Kept it as a pure function in `@expertos/ai` so it's fully unit-testable without a DB and reusable by M2 voice-example retrieval.
+- **Driver receives an already-RLS-scoped `tx`, not the user.** Keeps the `VectorStore` interface app-auth-agnostic; `RetrievalService` owns `rls.run` and `new PgVectorStore(tx)` inside it. Tenant isolation stays structural (directive §4.21) — SQL never expresses `tenant_id`.
+- **Filter vocabulary duplicated (ai local unions vs shared zod) on purpose.** `@expertos/ai` stays dependency-free (matches the ingestion code's purity); `RetrievalService` assigning shared's validated `filters` into ai's `RetrievalRequest` is the compile-time drift guard.
+- **No HTTP controller.** Mirrors M1.1 (CLI/seam only). The chat layer (M3) and citation builder (M4) are the real consumers and don't exist yet; exposing an endpoint now would be untested surface.
+- **`'simple'` text-search config** as the VI baseline for M1.3/OD#9 (no English stemming to distort Vietnamese; diacritics preserved on both sides).
+
+**Files changed:**
+- `packages/ai/src/providers.ts` — `VectorStore.retrieve(RetrievalRequest)`; `RetrievedChunk` component scores.
+- `packages/ai/src/retrieval/{types,fusion}.ts` (+ `fusion.test.ts`), `packages/ai/src/index.ts` — new exports.
+- `packages/shared/src/retrieval.ts` (+ `retrieval.test.ts`), `packages/shared/src/index.ts` — zod schemas.
+- `apps/api/src/retrieval/{pgvector.store,retrieval.service,retrieval.module,retrieval.tokens}.ts` (+ store/service tests).
+- `apps/api/src/database/vector.ts` (new) + `apps/api/src/ingestion/document-version.repository.ts` (reuse) + `apps/api/src/app.module.ts` (wire module).
+
+**Notes for next iteration:**
+- **Integration (M11):** the two raw queries aren't run against real pgvector here. Verify with Testcontainers: (1) `scope = ANY($n::content_scope[])` binds a JS `string[]` through `$queryRawUnsafe`; (2) `<=>` ordering + `ts_rank` return JS numbers. Add a GIN index on the `to_tsvector('simple', content||' '||summary)` expression for keyword perf when the corpus grows (currently per-row).
+- **M1.3 / OD#9 (next):** decide language-filter vs cross-lingual retrieval and build the eval golden-set (needs OD#6). The `'simple'` keyword config + Unicode embedder are the baseline to measure against.
+- **Same-model invariant:** retrieval and ingestion both build their embedder from `createDefaultEmbeddingProvider`. When the OpenAI driver lands, change that one factory; if they diverge, query/chunk vectors stop being comparable.

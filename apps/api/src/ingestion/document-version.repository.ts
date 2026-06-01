@@ -3,6 +3,7 @@ import type { IngestionInput } from "@expertos/shared";
 import type { Prisma } from "@expertos/db";
 import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
+import { toVectorLiteral } from "../database/vector";
 
 /** A fully-processed chunk ready to persist (text + summary + embedding). */
 interface ChunkToStore {
@@ -87,7 +88,7 @@ export class DocumentVersionRepository {
         });
         await tx.$executeRawUnsafe(
           "UPDATE chunks SET embedding = $1::vector WHERE id = $2::uuid",
-          formatVector(chunk.embedding),
+          toVectorLiteral(chunk.embedding),
           row.id,
         );
       }
@@ -151,16 +152,4 @@ export class DocumentVersionRepository {
     });
     return (latest?.versionNumber ?? 0) + 1;
   }
-}
-
-/** pgvector text literal `[v1,v2,...]`. Fixed-precision to avoid exponent notation that
- *  the vector input parser rejects; guards against NaN/Infinity (directive §9). */
-function formatVector(vector: number[]): string {
-  const parts = vector.map((value) => {
-    if (!Number.isFinite(value)) {
-      throw new Error("embedding contains a non-finite value");
-    }
-    return value.toFixed(8);
-  });
-  return `[${parts.join(",")}]`;
 }

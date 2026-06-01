@@ -20,7 +20,7 @@
 
 #### M1 — Expert knowledge ingestion + retrieval
 - [x] M1.1 Versioned ingestion pipeline: upload→GCS→parse (`Parser` contract)→chunk→summarize→embed→store as `document_versions` (seed/CLI loaded initially)
-- [ ] M1.2 Hybrid retrieval (vector + keyword + metadata filters: `status=published`, `tenant_id`, `scope`, language) behind `VectorStore` interface
+- [x] M1.2 Hybrid retrieval (vector + keyword + metadata filters: `status=published`, `tenant_id`, `scope`, language) behind `VectorStore` interface
 - [ ] M1.3 Resolve Open Decision #9 (Vietnamese retrieval quality) and add VI cases to eval set
 
 #### M2 — Expert voice layer

@@ -4,6 +4,8 @@
  * contracts so the rest of the system can depend on stable interfaces.
  */
 
+import type { RetrievalRequest } from "./retrieval/types";
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -38,9 +40,20 @@ export interface RetrievedChunk {
   chunkId: string;
   documentVersionId: string;
   content: string;
+  /** Fused relevance score (see the hybrid retriever's RRF). Higher = more relevant. */
   score: number;
+  /** Raw cosine similarity, when the chunk matched the vector search. */
+  vectorScore?: number;
+  /** Raw keyword rank (`ts_rank`), when the chunk matched the keyword search. */
+  keywordScore?: number;
 }
 
+/**
+ * Retrieval boundary (M1.2). A driver runs hybrid retrieval — vector (pgvector cosine) +
+ * keyword (Postgres full-text) + the {@link RetrievalRequest} metadata filters — and
+ * returns chunks fused into a single ranked list. Swapping pgvector for Vertex/Qdrant
+ * later is a driver change behind this interface, not a rewrite (PRD §Architecture).
+ */
 export interface VectorStore {
-  query(embedding: number[], topK: number): Promise<RetrievedChunk[]>;
+  retrieve(request: RetrievalRequest): Promise<RetrievedChunk[]>;
 }

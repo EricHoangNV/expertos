@@ -12,3 +12,14 @@ export type {
   LanguageValue,
   IngestionInput,
 } from "./ingestion";
+export {
+  CHUNK_STATUSES,
+  chunkStatusSchema,
+  retrievalFiltersSchema,
+  retrievalQuerySchema,
+} from "./retrieval";
+export type {
+  ChunkStatusValue,
+  RetrievalFilters,
+  RetrievalQueryInput,
+} from "./retrieval";
