@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
+import { CacheModule } from "../cache/cache.module";
 import { createDefaultEmbeddingProvider } from "../ingestion/ingestion.defaults";
 import { RetrievalService } from "./retrieval.service";
 import { RETRIEVAL_EMBEDDING_PROVIDER } from "./retrieval.tokens";
@@ -13,7 +14,7 @@ import { RETRIEVAL_EMBEDDING_PROVIDER } from "./retrieval.tokens";
  * from the global `ObservabilityModule`.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, CacheModule],
   providers: [
     RetrievalService,
     {

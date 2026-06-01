@@ -1014,3 +1014,35 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Web:** the `/me/entitlements` usage page (consuming `UsageMeter`) and the chat `done.degraded` fair-use note are not built — the API + UI primitive are ready.
 - **Real metering** of an unlimited+softLimit feature (the `usage_counters` upsert/rollback under real pgvector/RLS) joins the M11 Testcontainers list — seam-tested with a mocked tx, same caveat as M6.1.
 - **Sandbox quirk reminder:** `pnpm build`/`turbo run typecheck` regenerate the Prisma client with the default **library** engine, which SIGILLs api tests at runtime on this box. Re-run `PRISMA_CLIENT_ENGINE_TYPE=binary prisma generate` in `packages/db` before running api tests. Also `turbo run typecheck` races two concurrent `prisma generate` (db build + db typecheck) after a schema change → ENOENT copyfile; run with `--concurrency=1`.
+
+## M6.4 — Caching layers (semantic → retrieval → answer)
+**Date:** 2026-06-01
+**Ref:** PRD Task Manifest M6.4 (§"Paywall, Entitlements & Feature Gating" / architecture "Aggressive caching")
+
+**What was done:**
+- New `apps/api/src/cache/` module — the three caching layers behind one choke point `ResponseCacheService`:
+  - `lru-cache.ts` — generic in-process LRU with per-entry TTL, clock-injectable (deterministic tests). The documented Redis/Memorystore swap point.
+  - `response-cache.service.ts` — `ResponseCacheService`: builds the retrieval + answer cache keys, owns two in-process LRUs, and orchestrates the persistent semantic tier. Keys are pure string composites (NFC+lowercase+collapse-whitespace on the query). The answer key includes the **model tier** (entitlement correctness).
+  - `semantic-cache.store.ts` — `PgSemanticCacheStore`: persistent answer tier over the `semantic_cache` table (exact normalized-key + model match; replace-then-create write; hit-counter bump; age cutoff). Constructed per-call with the active RLS tx (mirrors `PgVectorStore`).
+  - `cache.types.ts` (`CachedAnswer`/`CachedCitation`), `cache.config.ts` (TTL/size constants), `cache.module.ts`.
+- Wired the retrieval cache into `RetrievalService.retrieve` (hit skips embed + DB + `retrieve.embed` usage log; miss populates).
+- Wired the answer/semantic cache into `ChatService.answerStream`: cacheable = standalone + knowledge-only turn; `serveCachedAnswer` streams the cached prose, persists the turn into the asker's conversation, records zero model cost; grounded answers write-through after a miss.
+- Schema: added `semantic_cache.citations` (jsonb) + `(tenant_id, normalized_question, model)` index; migration `20260601020000_semantic_cache_answer_payload`.
+- Tests: +27 in apps/api (lru-cache 6, response-cache 9, semantic-cache.store 5, retrieval +2, chat +6). Total 521→548.
+
+**Key decisions:**
+- In-process LRU first (per PRD "Redis when volume justifies it"); the persistent `semantic_cache` table is the durable cross-instance tier (Cloud Run scale-to-zero ⇒ in-process cache is cold often).
+- **Cacheable only when standalone + knowledge-only** — a turn with conversation history (context-dependent) or the user's private uploads (user-specific) is never shared. Determined after upload retrieval so we never silently drop a user's private grounding.
+- **Model tier in the answer key** so a degraded-model answer is never served to a standard-tier user (the M6.3 entitlement requirement). Cache never touches `usage_counters` — the guard already reserved quota, so a hit neither double-counts nor refunds.
+- **Only grounded (≥1 citation) answers are cached** — an uncited "I don't know" must not be pinned (knowledge may be published later).
+- **Exact-match semantic lookup now; embedding-cosine approximate match deferred** to the real embedder / M11 (the `embedding` column + HNSW index are reserved — same caveat as every other pgvector path). Added a `citations` jsonb column rather than reconstruct citations lossily from the uuid[] columns.
+
+**Files changed:**
+- `apps/api/src/cache/{lru-cache,response-cache.service,semantic-cache.store,cache.types,cache.config,cache.module}.ts` (+ `*.test.ts` for lru/response-cache/store) — new module.
+- `apps/api/src/retrieval/retrieval.service.ts` + `.module.ts` + `.test.ts` — retrieval cache wiring.
+- `apps/api/src/chat/chat.service.ts` + `chat.module.ts` + `.test.ts` — answer/semantic cache wiring, `serveCachedAnswer`.
+- `packages/db/prisma/schema.prisma` + `migrations/20260601020000_semantic_cache_answer_payload/migration.sql` — `citations` column + index.
+
+**Notes for next iteration:**
+- See the "M6.4 cache seam" note in progress-state.md. Biggest open follow-up: **publish-time invalidation** (M8) — clearing the in-process caches + the tenant's `semantic_cache` rows when a `document_version` is published/unpublished (TTL is the only invalidation today). And the embedding-cosine approximate match (real embedder / M11).
+- M6.5 (OD#4 unit economics → seed quota matrix) is the last open M6 item; the degraded model's cost envelope feeds the cache margin story.

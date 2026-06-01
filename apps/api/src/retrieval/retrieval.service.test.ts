@@ -3,8 +3,9 @@ import type { RlsService } from "../auth/rls.service";
 import type { UsageLogService } from "../observability/usage-log.service";
 import type { StructuredLogger } from "../observability/logger.service";
 import type { AuthUser } from "../auth/auth.types";
-import type { EmbeddingProvider } from "@expertos/ai";
+import type { EmbeddingProvider, RetrievedChunk } from "@expertos/ai";
 import type { RetrievalQueryInput } from "@expertos/shared";
+import type { ResponseCacheService } from "../cache/response-cache.service";
 
 const USER: AuthUser = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -38,10 +39,16 @@ interface Harness {
   record: jest.Mock;
   info: jest.Mock;
   tx: ReturnType<typeof fakeTx>;
+  getRetrieval: jest.Mock;
+  setRetrieval: jest.Mock;
 }
 
 function makeHarness(
-  opts: { dimensions?: number; rows?: { vector: unknown[]; keyword: unknown[] } } = {},
+  opts: {
+    dimensions?: number;
+    rows?: { vector: unknown[]; keyword: unknown[] };
+    cacheHit?: RetrievedChunk[];
+  } = {},
 ): Harness {
   const dimensions = opts.dimensions ?? 4;
   const embed = jest.fn((texts: string[]) =>
@@ -63,8 +70,16 @@ function makeHarness(
   const info = jest.fn();
   const logger = { info } as unknown as StructuredLogger;
 
-  const service = new RetrievalService(embeddings, rls, usage, logger);
-  return { service, embed, run, record, info, tx };
+  const getRetrieval = jest.fn().mockReturnValue(opts.cacheHit);
+  const setRetrieval = jest.fn();
+  const cache = {
+    retrievalKey: jest.fn().mockReturnValue("retrieval-key"),
+    getRetrieval,
+    setRetrieval,
+  } as unknown as ResponseCacheService;
+
+  const service = new RetrievalService(embeddings, rls, usage, logger, cache);
+  return { service, embed, run, record, info, tx, getRetrieval, setRetrieval };
 }
 
 describe("RetrievalService", () => {
@@ -99,6 +114,35 @@ describe("RetrievalService", () => {
     );
   });
 
+  it("returns cached chunks without embedding, DB, or usage on a retrieval cache hit (M6.4)", async () => {
+    const cached: RetrievedChunk[] = [
+      { chunkId: "cached", documentVersionId: "dv9", content: "from cache", score: 0.7 },
+    ];
+    const h = makeHarness({ cacheHit: cached });
+
+    const results = await h.service.retrieve(USER, QUERY);
+
+    expect(results).toBe(cached);
+    // Skipped the expensive work entirely: no embed, no DB transaction, no embed-usage logging.
+    expect(h.embed).not.toHaveBeenCalled();
+    expect(h.run).not.toHaveBeenCalled();
+    expect(h.record).not.toHaveBeenCalled();
+    expect(h.setRetrieval).not.toHaveBeenCalled();
+    expect(h.info).toHaveBeenCalledWith(
+      "hybrid retrieval cache hit",
+      expect.objectContaining({ results: 1 }),
+    );
+  });
+
+  it("caches the fused results after a retrieval cache miss (M6.4)", async () => {
+    const h = makeHarness();
+
+    const results = await h.service.retrieve(USER, QUERY);
+
+    expect(h.embed).toHaveBeenCalledTimes(1);
+    expect(h.setRetrieval).toHaveBeenCalledWith("retrieval-key", results);
+  });
+
   it("passes the request topK and filters through to the store query", async () => {
     const h = makeHarness();
     await h.service.retrieve(USER, {
@@ -123,6 +167,11 @@ describe("RetrievalService", () => {
       { run } as unknown as RlsService,
       { record: jest.fn() } as unknown as UsageLogService,
       { info: jest.fn() } as unknown as StructuredLogger,
+      {
+        retrievalKey: jest.fn().mockReturnValue("k"),
+        getRetrieval: jest.fn().mockReturnValue(undefined),
+        setRetrieval: jest.fn(),
+      } as unknown as ResponseCacheService,
     );
 
     await expect(service.retrieve(USER, QUERY)).rejects.toThrow(/expected 4/);
@@ -153,6 +202,11 @@ describe("RetrievalService", () => {
       { run } as unknown as RlsService,
       { record } as unknown as UsageLogService,
       { info } as unknown as StructuredLogger,
+      {
+        retrievalKey: jest.fn().mockReturnValue("k"),
+        getRetrieval: jest.fn().mockReturnValue(undefined),
+        setRetrieval: jest.fn(),
+      } as unknown as ResponseCacheService,
     );
 
     const results = await service.retrieveUploads(USER, {
@@ -198,6 +252,11 @@ describe("RetrievalService", () => {
       { run } as unknown as RlsService,
       { record: jest.fn() } as unknown as UsageLogService,
       { info: jest.fn() } as unknown as StructuredLogger,
+      {
+        retrievalKey: jest.fn().mockReturnValue("k"),
+        getRetrieval: jest.fn().mockReturnValue(undefined),
+        setRetrieval: jest.fn(),
+      } as unknown as ResponseCacheService,
     );
 
     const results = await service.retrieveUploads(USER, { text: "q", topK: 5 });
@@ -218,6 +277,11 @@ describe("RetrievalService", () => {
       { run: jest.fn() } as unknown as RlsService,
       { record: jest.fn() } as unknown as UsageLogService,
       { info: jest.fn() } as unknown as StructuredLogger,
+      {
+        retrievalKey: jest.fn().mockReturnValue("k"),
+        getRetrieval: jest.fn().mockReturnValue(undefined),
+        setRetrieval: jest.fn(),
+      } as unknown as ResponseCacheService,
     );
 
     await expect(service.retrieve(USER, QUERY)).rejects.toThrow(/0 dims, expected 4/);

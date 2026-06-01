@@ -19,6 +19,8 @@ import type { RetrievedUploadChunk } from "../retrieval/upload-chunk.store";
 import { VoiceService } from "../voice/voice.service";
 import { UsageLogService } from "../observability/usage-log.service";
 import { StructuredLogger } from "../observability/logger.service";
+import { ResponseCacheService } from "../cache/response-cache.service";
+import type { CachedAnswer } from "../cache/cache.types";
 import { CHAT_DEGRADED_LLM_PROVIDER, CHAT_LLM_PROVIDER } from "./chat.tokens";
 import { ConversationService } from "./conversation.service";
 
@@ -51,6 +53,7 @@ export class ChatService {
     @Inject(CHAT_DEGRADED_LLM_PROVIDER) private readonly degradedLlm: LlmProvider,
     private readonly usage: UsageLogService,
     private readonly logger: StructuredLogger,
+    private readonly cache: ResponseCacheService,
   ) {}
 
   /**
@@ -74,15 +77,41 @@ export class ChatService {
         ? await this.conversations.loadHistory(user, input.conversationId)
         : [];
 
-      const chunks = await this.retrieval.retrieve(user, this.toRetrievalQuery(input));
       // Fold the asker's own query-time uploads (M5.4) in after knowledge, so knowledge keeps the
       // low marker numbers [1..N] and uploads follow [N+1..]. An upload fact carries no
       // knowledge provenance (empty chunkId/documentVersionId) — its provenance is `uploadChunkId`.
+      // Retrieved up front because they also decide cacheability (below).
       const uploads = await this.retrieval.retrieveUploads(user, {
         text: input.text,
         topK: UPLOAD_FACT_TOPK,
         conversationId: input.conversationId,
       });
+
+      // Answer cache (M6.4): only a *standalone, knowledge-only* turn is cacheable — its answer is
+      // a pure function of (question, scope, voice, language, model tier), shared across the tenant.
+      // A turn with prior context (history) or the user's private uploads is user-specific, so it is
+      // never served from / written to the shared cache. The model tier is in the key (M6.3), so a
+      // degraded answer never serves a standard-tier user. Quota was already reserved by the
+      // entitlement guard before this handler ran, so a cache hit neither double-counts nor refunds.
+      const cacheable = history.length === 0 && uploads.length === 0;
+      const answerKey = cacheable
+        ? this.cache.answerKey(user.tenantId, {
+            text: input.text,
+            topK: input.topK,
+            expertId: input.expertId,
+            language: input.language,
+            model: llm.name,
+          })
+        : null;
+      if (answerKey) {
+        const hit = await this.cache.lookupAnswer(user, answerKey, llm.name);
+        if (hit) {
+          yield* this.serveCachedAnswer(user, input, hit, degraded);
+          return;
+        }
+      }
+
+      const chunks = await this.retrieval.retrieve(user, this.toRetrievalQuery(input));
       const facts: PromptFact[] = [
         ...chunks.map((c) => ({
           chunkId: c.chunkId,
@@ -178,6 +207,23 @@ export class ChatService {
         conversationId: persisted.conversationId,
       });
 
+      // Populate the answer + persistent semantic cache, but only for a grounded answer (≥1
+      // citation): an uncited or insufficient-knowledge answer must not be pinned (knowledge could
+      // be published later, and a cached "I don't know" would then be wrong until it ages out).
+      if (answerKey && built.citations.length > 0) {
+        await this.cache.storeAnswer(user, answerKey, {
+          text: built.text,
+          model: llm.name,
+          sourceVersionIds,
+          citations: built.citations.map((c) => ({
+            ordinal: c.ordinal,
+            chunkId: c.chunkId,
+            documentVersionId: c.documentVersionId,
+            content: c.content,
+          })),
+        });
+      }
+
       this.logger.info("chat answer completed", {
         conversationId: persisted.conversationId,
         expertId: input.expertId ?? "none",
@@ -203,6 +249,70 @@ export class ChatService {
       });
       yield { type: "error", message: "Failed to generate an answer." };
     }
+  }
+
+  /**
+   * Serves a cached answer (M6.4): streams the prose as a single delta, persists the turn into the
+   * caller's conversation (a cache hit is still a real turn in *this* user's history), records the
+   * turn at zero model cost (the LLM call was skipped — the margin win), and emits the same terminal
+   * `done` event a freshly generated grounded answer would. Cacheable answers are knowledge-only, so
+   * every citation is a knowledge citation and `insufficientKnowledge` is always false.
+   */
+  private async *serveCachedAnswer(
+    user: AuthUser,
+    input: ChatRequestInput,
+    hit: CachedAnswer,
+    degraded: boolean,
+  ): AsyncGenerator<ChatStreamEvent> {
+    yield { type: "delta", text: hit.text };
+
+    const persisted = await this.conversations.persistTurn(user, {
+      conversationId: input.conversationId,
+      expertId: input.expertId,
+      language: input.language,
+      userText: input.text,
+      assistant: {
+        content: hit.text,
+        sourceVersionIds: hit.sourceVersionIds,
+        model: hit.model,
+        confidence: null,
+        citations: hit.citations.map((c) => ({
+          ordinal: c.ordinal,
+          chunkId: c.chunkId,
+          documentVersionId: c.documentVersionId,
+          content: c.content,
+        })),
+      },
+    });
+
+    await this.usage.record(user, {
+      featureKey: "chat.answer",
+      model: hit.model,
+      promptTokens: 0,
+      completionTokens: 0,
+      conversationId: persisted.conversationId,
+    });
+
+    this.logger.info("chat answer served from cache", {
+      conversationId: persisted.conversationId,
+      sources: hit.citations.length,
+      degraded,
+    });
+
+    yield {
+      type: "done",
+      conversationId: persisted.conversationId,
+      messageId: persisted.messageId,
+      citations: hit.citations.map((c) => ({
+        ordinal: c.ordinal,
+        chunkId: c.chunkId,
+        documentVersionId: c.documentVersionId,
+        quote: c.content.slice(0, CITATION_PREVIEW_CHARS),
+        kind: "knowledge" as const,
+      })),
+      insufficientKnowledge: false,
+      degraded,
+    };
   }
 
   private toRetrievalQuery(input: ChatRequestInput): RetrievalQueryInput {

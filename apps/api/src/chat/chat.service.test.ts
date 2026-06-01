@@ -5,6 +5,8 @@ import type { VoiceService } from "../voice/voice.service";
 import type { UsageLogService } from "../observability/usage-log.service";
 import type { StructuredLogger } from "../observability/logger.service";
 import type { AuthUser } from "../auth/auth.types";
+import type { ResponseCacheService } from "../cache/response-cache.service";
+import type { CachedAnswer } from "../cache/cache.types";
 import type { ChatMessage, LlmProvider, RetrievedChunk } from "@expertos/ai";
 import type { ChatRequestInput, ChatStreamEvent } from "@expertos/shared";
 
@@ -29,11 +31,20 @@ const VOICE = {
   language: "en" as const,
 };
 
+const CACHED_ANSWER: CachedAnswer = {
+  text: "Cached answer [1].",
+  model: "stub-llm",
+  sourceVersionIds: ["dv1"],
+  citations: [{ ordinal: 1, chunkId: "c1", documentVersionId: "dv1", content: "cached fact" }],
+};
+
 function baseInput(over: Partial<ChatRequestInput> = {}): ChatRequestInput {
   return { text: "how do I file taxes", language: "en", topK: 8, ...over };
 }
 
-function makeService(opts: { streaming?: boolean; deltas?: string[] } = {}) {
+function makeService(
+  opts: { streaming?: boolean; deltas?: string[]; cacheHit?: CachedAnswer } = {},
+) {
   const streaming = opts.streaming ?? true;
   const deltas = opts.deltas ?? ["Answer [1]", "[2]."];
   const seenMessages: ChatMessage[][] = [];
@@ -76,6 +87,13 @@ function makeService(opts: { streaming?: boolean; deltas?: string[] } = {}) {
   const llm = makeLlm("stub-llm");
   const degradedLlm = makeLlm("stub-llm-mini");
 
+  const answerKey = jest.fn(
+    (_tenantId: string, params: { model: string }) => `answer-key:${params.model}`,
+  );
+  const lookupAnswer = jest.fn().mockResolvedValue(opts.cacheHit);
+  const storeAnswer = jest.fn().mockResolvedValue(undefined);
+  const cache = { answerKey, lookupAnswer, storeAnswer } as unknown as ResponseCacheService;
+
   const service = new ChatService(
     { retrieve, retrieveUploads } as unknown as RetrievalService,
     { retrieveVoice } as unknown as VoiceService,
@@ -84,6 +102,7 @@ function makeService(opts: { streaming?: boolean; deltas?: string[] } = {}) {
     degradedLlm,
     { record } as unknown as UsageLogService,
     { info, error } as unknown as StructuredLogger,
+    cache,
   );
 
   return {
@@ -98,6 +117,9 @@ function makeService(opts: { streaming?: boolean; deltas?: string[] } = {}) {
       info,
       error,
       seenMessages,
+      answerKey,
+      lookupAnswer,
+      storeAnswer,
     },
   };
 }
@@ -370,5 +392,128 @@ describe("ChatService.answerStream", () => {
       "chat answer failed",
       expect.objectContaining({ message: "plain string failure" }),
     );
+  });
+
+  it("serves a cache hit without retrieving or calling the model, recording zero cost (M6.4)", async () => {
+    const { service, stubs } = makeService({ cacheHit: CACHED_ANSWER });
+
+    const events = await drain(service.answerStream(USER, baseInput()));
+
+    // The cached prose is streamed and the model + knowledge retrieval are skipped entirely.
+    expect(events[0]).toEqual({ type: "delta", text: "Cached answer [1]." });
+    expect(stubs.retrieve).not.toHaveBeenCalled();
+    expect(stubs.seenMessages).toHaveLength(0);
+    expect(stubs.lookupAnswer).toHaveBeenCalledWith(USER, "answer-key:stub-llm", "stub-llm");
+
+    // The turn is still persisted into this user's conversation, from the cached payload.
+    expect(stubs.persistTurn.mock.calls[0][1].assistant).toMatchObject({
+      content: "Cached answer [1].",
+      model: "stub-llm",
+      sourceVersionIds: ["dv1"],
+      citations: [
+        expect.objectContaining({ ordinal: 1, chunkId: "c1", documentVersionId: "dv1" }),
+      ],
+    });
+
+    // Recorded at zero model cost — the cache hit is the margin win — and never re-cached.
+    expect(stubs.record).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({
+        featureKey: "chat.answer",
+        model: "stub-llm",
+        promptTokens: 0,
+        completionTokens: 0,
+      }),
+    );
+    expect(stubs.storeAnswer).not.toHaveBeenCalled();
+
+    expect(events.at(-1)).toMatchObject({
+      type: "done",
+      insufficientKnowledge: false,
+      degraded: false,
+      citations: [
+        { ordinal: 1, chunkId: "c1", documentVersionId: "dv1", quote: "cached fact", kind: "knowledge" },
+      ],
+    });
+  });
+
+  it("keys the cache by model tier so degraded answers stay separate (M6.4 / M6.3)", async () => {
+    const { service, stubs } = makeService();
+
+    await drain(service.answerStream(USER, baseInput(), { degraded: true }));
+
+    // Lookup + write-through both use the degraded model's key — never the standard tier's.
+    expect(stubs.lookupAnswer).toHaveBeenCalledWith(
+      USER,
+      "answer-key:stub-llm-mini",
+      "stub-llm-mini",
+    );
+    expect(stubs.storeAnswer).toHaveBeenCalledWith(
+      USER,
+      "answer-key:stub-llm-mini",
+      expect.objectContaining({ model: "stub-llm-mini" }),
+    );
+  });
+
+  it("write-throughs a grounded answer after a cache miss (M6.4)", async () => {
+    const { service, stubs } = makeService();
+
+    await drain(service.answerStream(USER, baseInput()));
+
+    expect(stubs.storeAnswer).toHaveBeenCalledWith(
+      USER,
+      "answer-key:stub-llm",
+      expect.objectContaining({
+        text: "Answer [1][2].",
+        model: "stub-llm",
+        sourceVersionIds: ["dv1"],
+        citations: [
+          expect.objectContaining({ ordinal: 1, chunkId: "c1", content: "fact one" }),
+          expect.objectContaining({ ordinal: 2, chunkId: "c2", content: "fact two" }),
+        ],
+      }),
+    );
+  });
+
+  it("does not cache a turn with conversation history (not standalone — M6.4)", async () => {
+    const { service, stubs } = makeService();
+
+    await drain(service.answerStream(USER, baseInput({ conversationId: "conv-1" })));
+
+    expect(stubs.answerKey).not.toHaveBeenCalled();
+    expect(stubs.lookupAnswer).not.toHaveBeenCalled();
+    expect(stubs.storeAnswer).not.toHaveBeenCalled();
+  });
+
+  it("does not cache a turn grounded on the user's private uploads (M6.4)", async () => {
+    const { service, stubs } = makeService();
+    stubs.retrieveUploads.mockResolvedValue([
+      {
+        uploadChunkId: "uc1",
+        uploadedFileId: "uf1",
+        filename: "notes.txt",
+        content: "private note",
+        score: 0.9,
+        sheetName: null,
+        cellRef: null,
+      },
+    ]);
+
+    await drain(service.answerStream(USER, baseInput()));
+
+    expect(stubs.answerKey).not.toHaveBeenCalled();
+    expect(stubs.lookupAnswer).not.toHaveBeenCalled();
+    expect(stubs.storeAnswer).not.toHaveBeenCalled();
+  });
+
+  it("does not cache an uncited answer (knowledge may be published later — M6.4)", async () => {
+    const { service, stubs } = makeService({ deltas: ["No citation markers here."] });
+
+    await drain(service.answerStream(USER, baseInput()));
+
+    // It was cacheable (standalone, no uploads) so the cache was consulted, but an uncited answer
+    // is never pinned.
+    expect(stubs.lookupAnswer).toHaveBeenCalledTimes(1);
+    expect(stubs.storeAnswer).not.toHaveBeenCalled();
   });
 });

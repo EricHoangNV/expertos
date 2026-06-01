@@ -937,6 +937,9 @@ model SemanticCacheEntry {
   embedding          Unsupported("vector(1536)")?
   chunkIds           String[]                     @default([]) @map("chunk_ids") @db.Uuid
   answer             String
+  /// Resolved citations of the cached answer (M6.4), stored verbatim so a cache hit rebuilds the
+  /// `done` event + persisted citation rows faithfully (the array columns can't carry ordinal/content).
+  citations         Json?
   citationIds        String[]                     @default([]) @map("citation_ids") @db.Uuid
   model              String?
   hits               Int                          @default(0)
@@ -945,6 +948,8 @@ model SemanticCacheEntry {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+  // Exact-match lookup key for the M6.4 persistent answer cache (within tenant, per model tier).
+  @@index([tenantId, normalizedQuestion, model])
   @@map("semantic_cache")
 }
 

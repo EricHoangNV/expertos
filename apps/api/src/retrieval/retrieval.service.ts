@@ -10,6 +10,7 @@ import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { UsageLogService } from "../observability/usage-log.service";
 import { StructuredLogger } from "../observability/logger.service";
+import { ResponseCacheService } from "../cache/response-cache.service";
 import { PgVectorStore } from "./pgvector.store";
 import {
   PgUploadChunkStore,
@@ -47,12 +48,27 @@ export class RetrievalService {
     private readonly rls: RlsService,
     private readonly usage: UsageLogService,
     private readonly logger: StructuredLogger,
+    private readonly cache: ResponseCacheService,
   ) {}
 
   async retrieve(
     user: AuthUser,
     query: RetrievalQueryInput,
   ): Promise<RetrievedChunk[]> {
+    // Retrieval cache (M6.4): query + scope determine the chunks (history-independent), so a hit
+    // skips the query embed + vector/keyword search entirely — and therefore its cost (no
+    // `retrieve.embed` usage is logged on a hit, because no embed happened). Tenant id is in the
+    // key, so a shared process never crosses tenants.
+    const cacheKey = this.cache.retrievalKey(user.tenantId, query);
+    const cached = this.cache.getRetrieval(cacheKey);
+    if (cached) {
+      this.logger.info("hybrid retrieval cache hit", {
+        topK: query.topK,
+        results: cached.length,
+      });
+      return cached;
+    }
+
     const embedding = await this.embedQuery(query.text);
 
     const request: RetrievalRequest = {
@@ -71,6 +87,8 @@ export class RetrievalService {
       model: this.embeddings.name,
       promptTokens: estimateTokens(query.text),
     });
+
+    this.cache.setRetrieval(cacheKey, results);
 
     this.logger.info("hybrid retrieval completed", {
       topK: query.topK,
