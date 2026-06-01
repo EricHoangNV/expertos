@@ -63,6 +63,12 @@ export type ChatStreamEvent =
       messageId: string;
       citations: ChatCitationDto[];
       confidence?: number;
+      /**
+       * True when no grounding sources were retrieved (M3.4): the answer is the
+       * insufficient-knowledge response, so the client should surface a graceful next step
+       * (e.g. rephrase, or book a consultation) instead of presenting it as a confident answer.
+       */
+      insufficientKnowledge: boolean;
     }
   | { type: "error"; message: string };
 
@@ -140,6 +146,35 @@ export const savedAnswerListQuerySchema = z.object({
 });
 
 export type SavedAnswerListQueryInput = z.infer<typeof savedAnswerListQuerySchema>;
+
+// ──────────────────────────── Answer feedback (M3.4) ────────────────────────────
+
+/** A user's 👍/👎 verdict on an assistant answer (M3.4), with an optional free-text reason. */
+export interface AnswerFeedbackDto {
+  id: string;
+  messageId: string;
+  /** `true` = 👍 helpful, `false` = 👎 not helpful. */
+  helpful: boolean;
+  reason: string | null;
+  /** ISO-8601 timestamp. */
+  createdAt: string;
+}
+
+/**
+ * Submit (or revise) feedback on an assistant answer (M3.4). Like bookmarking, only the
+ * `messageId` is supplied — the owning conversation is derived server-side from the message and
+ * ownership re-checked there (directive §26), so the client can't rate an answer in a conversation
+ * it doesn't own. Re-submitting for the same answer replaces the prior verdict (a user can flip
+ * 👍↔👎 or revise the reason), so the endpoint is an idempotent upsert keyed on `(user, message)`.
+ */
+export const answerFeedbackSubmitSchema = z.object({
+  messageId: z.string().uuid(),
+  helpful: z.boolean(),
+  /** Optional reason; medium-text bounded + trimmed (directive §1.1). */
+  reason: z.string().trim().max(500).optional(),
+});
+
+export type AnswerFeedbackSubmitInput = z.infer<typeof answerFeedbackSubmitSchema>;
 
 // ──────────────────────────── Conversation search (M3.3) ────────────────────────────
 

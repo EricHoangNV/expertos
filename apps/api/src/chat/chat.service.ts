@@ -137,6 +137,10 @@ export class ChatService {
         conversationId: persisted.conversationId,
         messageId: persisted.messageId,
         citations: toCitationDtos(prompt.citations),
+        // No grounding sources → the prompt builder's INSUFFICIENT-KNOWLEDGE rule governed the
+        // answer (M3.4). Surface that to the client so it can offer a graceful next step rather
+        // than present an ungrounded reply as a confident answer.
+        insufficientKnowledge: facts.length === 0,
       };
     } catch (error) {
       this.logger.error("chat answer failed", {

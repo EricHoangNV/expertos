@@ -47,6 +47,7 @@ export {
   conversationSearchQuerySchema,
   savedAnswerCreateSchema,
   savedAnswerListQuerySchema,
+  answerFeedbackSubmitSchema,
 } from "./chat";
 export type {
   ChatRequestInput,
@@ -62,4 +63,6 @@ export type {
   SavedAnswerDto,
   SavedAnswerCreateInput,
   SavedAnswerListQueryInput,
+  AnswerFeedbackDto,
+  AnswerFeedbackSubmitInput,
 } from "./chat";

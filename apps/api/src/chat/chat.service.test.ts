@@ -149,11 +149,29 @@ describe("ChatService.answerStream", () => {
       type: "done",
       conversationId: "conv-1",
       messageId: "m-1",
+      insufficientKnowledge: false,
       citations: [
         { ordinal: 1, chunkId: "c1", documentVersionId: "dv1", quote: "fact one" },
         { ordinal: 2, chunkId: "c2", documentVersionId: "dv1", quote: "fact two" },
       ],
     });
+  });
+
+  it("flags insufficient knowledge and emits no citations when retrieval finds nothing (M3.4)", async () => {
+    const { service, stubs } = makeService();
+    stubs.retrieve.mockResolvedValue([]);
+
+    const events = await drain(service.answerStream(USER, baseInput()));
+
+    const done = events.at(-1);
+    expect(done).toMatchObject({
+      type: "done",
+      insufficientKnowledge: true,
+      citations: [],
+    });
+    // The turn is still persisted (the insufficient-knowledge answer is a real answer).
+    expect(stubs.persistTurn).toHaveBeenCalledTimes(1);
+    expect(stubs.persistTurn.mock.calls[0][1].assistant.sourceVersionIds).toEqual([]);
   });
 
   it("uses a neutral voice and skips history for a new conversation without an expert", async () => {

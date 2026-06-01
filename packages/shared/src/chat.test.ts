@@ -5,6 +5,7 @@ import {
   conversationSearchQuerySchema,
   savedAnswerCreateSchema,
   savedAnswerListQuerySchema,
+  answerFeedbackSubmitSchema,
 } from "./chat";
 
 describe("chatRequestSchema", () => {
@@ -148,5 +149,36 @@ describe("savedAnswerListQuerySchema", () => {
   it("applies pagination defaults and coerces params", () => {
     expect(savedAnswerListQuerySchema.parse({})).toEqual({ limit: 20, offset: 0 });
     expect(savedAnswerListQuerySchema.parse({ limit: "3" })).toEqual({ limit: 3, offset: 0 });
+  });
+});
+
+describe("answerFeedbackSubmitSchema", () => {
+  const MID = "11111111-1111-1111-1111-111111111111";
+
+  it("accepts a 👍/👎 verdict with an optional trimmed reason", () => {
+    expect(answerFeedbackSubmitSchema.parse({ messageId: MID, helpful: true })).toEqual({
+      messageId: MID,
+      helpful: true,
+    });
+    const parsed = answerFeedbackSubmitSchema.parse({
+      messageId: MID,
+      helpful: false,
+      reason: "  too vague  ",
+    });
+    expect(parsed.reason).toBe("too vague");
+  });
+
+  it("rejects a non-uuid messageId, a missing/non-boolean verdict, or an over-long reason", () => {
+    expect(answerFeedbackSubmitSchema.safeParse({ messageId: "nope", helpful: true }).success).toBe(
+      false,
+    );
+    expect(answerFeedbackSubmitSchema.safeParse({ messageId: MID }).success).toBe(false);
+    expect(
+      answerFeedbackSubmitSchema.safeParse({ messageId: MID, helpful: "yes" }).success,
+    ).toBe(false);
+    expect(
+      answerFeedbackSubmitSchema.safeParse({ messageId: MID, helpful: true, reason: "x".repeat(501) })
+        .success,
+    ).toBe(false);
   });
 });

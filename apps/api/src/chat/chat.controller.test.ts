@@ -10,7 +10,13 @@ describe("ChatController", () => {
   it("sets SSE headers, writes each event as a data frame, and ends the response", async () => {
     const events: ChatStreamEvent[] = [
       { type: "delta", text: "Hi" },
-      { type: "done", conversationId: "c1", messageId: "m1", citations: [] },
+      {
+        type: "done",
+        conversationId: "c1",
+        messageId: "m1",
+        citations: [],
+        insufficientKnowledge: false,
+      },
     ];
     const answerStream = jest.fn(async function* () {
       yield* events;

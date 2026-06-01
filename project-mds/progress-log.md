@@ -586,3 +586,41 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Web search UI is unbuilt** (API only, mirroring M3.2). When it lands, HTML-escape the snippet as text (then optionally restyle the `«»` markers) — do NOT `dangerouslySetInnerHTML` it.
 - **M3.4 (feedback)** is still the next obvious task — copy `SavedAnswerService` for `AnswerFeedback` (same `user_scoped` + `(userId,messageId)` unique + derive-conversation-from-message ownership).
 - DB note unchanged: run api tests with `PRISMA_CLIENT_ENGINE_TYPE=binary` on this sandbox (LEARNINGS §2), or regenerate the client with the binary engine after a `pnpm install` (`cd packages/db && PRISMA_CLIENT_ENGINE_TYPE=binary npx prisma generate`).
+
+---
+
+## M3.4 — Insufficient-knowledge path + answer feedback (👍/👎 + reason)
+**Date:** 2026-06-01
+**Ref:** PRD §"Chat experience" / Task Manifest M3.4
+
+**What was done:**
+- **Insufficient-knowledge signal:** added `insufficientKnowledge: boolean` to the terminal `done` frame of `ChatStreamEvent` (`packages/shared/src/chat.ts`). `ChatService.answerStream` sets it to `facts.length === 0` — the deterministic, server-side proxy for "the prompt builder's INSUFFICIENT-KNOWLEDGE rule governed this answer" (the `EchoLlmProvider` already emits the no-sources answer). The turn is still persisted (it is a real answer) with empty `sourceVersionIds`.
+- **Answer-feedback CRUD** on the pre-existing `answer_feedback` model (`user_scoped`, unique `(userId,messageId)`):
+  - `AnswerFeedbackService` (`apps/api/src/chat/answer-feedback.service.ts`): `submit` (idempotent upsert — flip 👍↔👎 / revise reason) + `remove(user, messageId)` (retract). Ownership copied from `SavedAnswerService`: `messageId`-only → require `role:"assistant"` (404) → `user_scoped` `conversation.findUnique` is the real boundary (404). No `tenant_id`/`user_id` predicates (RLS does it).
+  - `AnswerFeedbackController` (`POST /answer-feedback`, `DELETE /answer-feedback/:messageId` → 204), `@Roles("user")`, `ZodValidationPipe(answerFeedbackSubmitSchema)`; wired into `ChatModule`.
+  - Shared `answerFeedbackSubmitSchema` + `AnswerFeedbackDto`/`AnswerFeedbackSubmitInput` (exported from `packages/shared` index).
+- Tests: `answer-feedback.service.test.ts` (7 cases, 100% coverage), a new insufficient-knowledge case in `chat.service.test.ts`, `answerFeedbackSubmitSchema` accept/reject in `chat.test.ts`, and the `done`-fixture/assertion updates in `chat.controller.test.ts` + `chat.service.test.ts` for the new required field.
+
+**Key decisions:**
+- **Upsert, not create-or-409** (the deliberate divergence from the bookmark template): feedback is a mutable verdict, so re-submitting updates the row and clears `reason` to null when omitted, rather than conflicting. Better UX than forcing delete+recreate to change a thumb.
+- **Insufficient-knowledge = retrieval-side `facts.length === 0`, not a model/confidence signal.** Deterministic and available today with the echo provider. Flagged in notes that a future real LLM could be insufficient *with* sources — revisit then.
+- **API + persistence only; no web UI** — same precedent as M3.2/M3.3 (no unused web exports → knip stays clean).
+- `insufficientKnowledge` made a **required** field on the `done` variant (only one producer, `ChatService`), so the web mirror can't silently forget it; updated the two test fixtures that build a `done` literal.
+
+**Files changed:**
+- `packages/shared/src/chat.ts` — `insufficientKnowledge` on `done` event; `answerFeedbackSubmitSchema` + `AnswerFeedbackDto`/`AnswerFeedbackSubmitInput`.
+- `packages/shared/src/index.ts` — export the new schema + types.
+- `packages/shared/src/chat.test.ts` — `answerFeedbackSubmitSchema` tests.
+- `apps/api/src/chat/chat.service.ts` — emit `insufficientKnowledge` on `done`.
+- `apps/api/src/chat/answer-feedback.service.ts` — new service (upsert + retract, ownership re-check).
+- `apps/api/src/chat/answer-feedback.controller.ts` — new thin controller.
+- `apps/api/src/chat/chat.module.ts` — register controller + service.
+- `apps/api/src/chat/answer-feedback.service.test.ts` — new (7 cases).
+- `apps/api/src/chat/chat.service.test.ts` — insufficient-knowledge case + assertion.
+- `apps/api/src/chat/chat.controller.test.ts` — `done` fixture gains the field.
+
+**Notes for next iteration:**
+- **M3.5 closes M3** — replace the interim `HISTORY_LIMIT = 10` in `conversation.service.ts` with a token-budget/summarization policy (OD#8). Nothing else in M3 is open code-wise.
+- **No web UI** for feedback or the insufficient-knowledge next-step — deferred with M3.2/M3.3's history/search/saved-answer UI. Consume via `apps/web/src/lib/chat-client.ts`.
+- **M8.3 admin inspector** will add the admin-side read over `answer_feedback`; the service intentionally exposes only user-scoped submit/remove for now.
+- DB note unchanged: run api tests with `PRISMA_CLIENT_ENGINE_TYPE=binary` on this sandbox (LEARNINGS §2).
