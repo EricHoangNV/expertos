@@ -20,12 +20,16 @@ interface ErrorBody {
   message: unknown;
   /** Echoed so users can quote it in support and we can grep logs/Sentry for it. */
   requestId?: string;
+  /** Extra fields from a structured HttpException response (e.g. the 402 entitlement payload). */
+  [key: string]: unknown;
 }
 
 /**
  * Catch-all exception filter — the single place every unhandled error funnels through.
  *
- * - `HttpException` (4xx/5xx the app threw deliberately) → its own status + message.
+ * - `HttpException` (4xx/5xx the app threw deliberately) → its own status + message; a structured
+ *   object response (e.g. the 402 entitlement payload) is echoed verbatim alongside the normalized
+ *   `statusCode`/`message`/`requestId`, since the app deliberately authored that body.
  * - Anything else → 500 with a generic message (never leak internals / stack to clients).
  * - 5xx and unexpected errors are logged at ERROR severity and reported to Sentry; expected
  *   4xx are logged at WARNING and not reported (they're not bugs).
@@ -44,6 +48,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     const isHttp = exception instanceof HttpException;
     const status = isHttp ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
+    const response = isHttp ? exception.getResponse() : undefined;
     const message = isHttp
       ? extractHttpMessage(exception)
       : "Internal server error";
@@ -55,7 +60,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       this.logger.warn("Request rejected", { status, message });
     }
 
-    const body: ErrorBody = { statusCode: status, message };
+    // Echo a deliberately-authored object response (e.g. the 402 entitlement payload) verbatim, then
+    // overwrite the normalized fields so status/message/requestId always win. A string response or a
+    // non-HttpException (generic 500) contributes nothing — internals are never leaked.
+    const extra =
+      typeof response === "object" && response !== null
+        ? (response as Record<string, unknown>)
+        : {};
+    const body: ErrorBody = { ...extra, statusCode: status, message };
     if (requestId) {
       body.requestId = requestId;
     }

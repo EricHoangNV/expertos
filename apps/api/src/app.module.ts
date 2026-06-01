@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "./auth/auth.module";
 import { DatabaseModule } from "./database/database.module";
+import { EntitlementsModule } from "./entitlements/entitlements.module";
 import { HealthController } from "./health/health.controller";
 import { HealthService } from "./health/health.service";
 import { IngestionModule } from "./ingestion/ingestion.module";
@@ -14,6 +15,7 @@ import { UploadModule } from "./uploads/upload.module";
   imports: [
     DatabaseModule,
     AuthModule,
+    EntitlementsModule,
     ObservabilityModule,
     IngestionModule,
     RetrievalModule,

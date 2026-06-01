@@ -2,6 +2,7 @@ import { Body, Controller, Post, Res } from "@nestjs/common";
 import { chatRequestSchema, type ChatRequestInput } from "@expertos/shared";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { Roles } from "../auth/roles.decorator";
+import { RequiresEntitlement } from "../entitlements/requires-entitlement.decorator";
 import type { AuthUser } from "../auth/auth.types";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { ChatService } from "./chat.service";
@@ -24,6 +25,10 @@ interface SseResponse {
  * persisted ids + resolved citations (rendered only after generation completes — Open Decision
  * #7). `@Res()` opts this route out of Nest's automatic serialization, which is required to
  * stream; all branchy logic lives in {@link ChatService} so it stays under the coverage gate.
+ *
+ * `@RequiresEntitlement('ask_question')` meters the route (M6.1): the {@link EntitlementGuard}
+ * consumes one unit of the actor's per-window question quota before streaming, or returns `402`
+ * with an upgrade payload at the wall.
  */
 @Controller("chat")
 @Roles("user")
@@ -31,6 +36,7 @@ export class ChatController {
   constructor(private readonly chat: ChatService) {}
 
   @Post()
+  @RequiresEntitlement("ask_question")
   async stream(
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(chatRequestSchema)) body: ChatRequestInput,

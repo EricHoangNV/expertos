@@ -52,6 +52,12 @@ export {
   answerFeedbackSubmitSchema,
 } from "./chat";
 export type {
+  FeatureKey,
+  EntitlementView,
+  EntitlementsDto,
+  EntitlementDeniedPayload,
+} from "./entitlements";
+export type {
   ChatRequestInput,
   ChatMessageDto,
   ChatCitationDto,

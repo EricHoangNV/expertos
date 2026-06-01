@@ -893,3 +893,50 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Two query embeds per chat turn now** (knowledge + upload). If a real embedding provider makes this matter, share one vector across both stores in `RetrievalService`.
 - **History view + `sourceLabel`:** the live event carries it, the persisted read path doesn't. JOIN `upload_chunks`→`uploaded_files` in `loadCitations` if a history drawer ever needs the upload label (handle a `SetNull`'d chunk).
 - **Still seam-tested only** (mocked tx) — the real `upload_chunks ⋈ uploaded_files` cosine + mode/expiry WHERE join the M11 Testcontainers list.
+
+---
+
+## M6.1 — Entitlement catalog + plan_entitlements matrix + @RequiresEntitlement guard + /me/entitlements
+**Date:** 2026-06-01
+**Ref:** PRD.md Task Manifest Phase 1 M6.1; PRD §"Paywall, Entitlements & Feature Gating"
+
+**What was done:**
+- **Starts M6 (subscriptions) — the first feature-gating surface.** The catalog default + plan×feature matrix already existed in the DB seed (`packages/db/prisma/seed.ts`: free/plus/premium × 7 features); M6.1 builds the **runtime** that reads and enforces it.
+- New `apps/api/src/entitlements/` module:
+  - **`EntitlementService`** — the single choke point. `resolvePlan` → actor's live subscription (`active`/`trialing`) else Free. `getEntitlements(user)` → `/me/entitlements` data (each feature's boolean access or metered `limit`/`used`/`remaining` for the current window). `enforce(user, feature)` → the guard's reserve-before-work check: fail-closed on unknown/disabled (402), allow on boolean-enabled and metered-unlimited/no-window, and for a capped metered feature atomically increment the per-window `usage_counters` row then verify (over-cap throws 402 → the increment rolls back in the same transaction).
+  - **`@RequiresEntitlement(feature)` decorator + `EntitlementGuard`** — mirrors the `@Roles`/`RolesGuard` pattern; registered as a global `APP_GUARD` in `EntitlementsModule` (no-op without the decorator).
+  - **`EntitlementsController`** — `GET /me/entitlements` (shares the `/me` base path with `MeController`).
+- **Wired the gate live:** `ChatController` `POST /chat` carries `@RequiresEntitlement("ask_question")` — a real chat turn now consumes one question-quota unit or 402s at the wall.
+- New shared contract `packages/shared/src/entitlements.ts`: `FeatureKey` (typing the decorator) + `EntitlementView`/`EntitlementsDto`/`EntitlementDeniedPayload`.
+- **`AllExceptionsFilter`** enhanced to echo a structured HttpException object response verbatim (alongside normalized `statusCode`/`message`/`requestId`) so the flat 402 entitlement body (`reason`/`feature`/`currentPlan`/`upgradeOptions`/`remainingQuota`) reaches the client — previously every error was flattened to `{statusCode,message}`.
+- Tests: +19 in apps/api (14 service, 4 guard, 1 filter). Full suite 458 pass / 0 fail.
+
+**Key decisions:**
+- **Runtime reads the DB matrix, not a code default.** The seed is the default; `plan_entitlements` is the admin-editable source of truth (M8.3) so the business model changes with no deploy. Chose this over a hardcoded code matrix to honor the PRD's "config not code" principle.
+- **Reserve-before-work via in-transaction increment-then-check-then-rollback** rather than `SELECT … FOR UPDATE` — atomic and race-safe (exactly `limit` uses succeed per window) using Prisma's upsert + the wrapping `RlsService.run` transaction.
+- **Pinned `userId` in plan/counter lookups** even though the tables are RLS-`user_scoped`: an `admin` actor bypasses RLS, so a bare `findFirst` would resolve a peer's subscription. This is self-lookup by natural key, not the isolation predicate directive §4.21 bans (same shape as `AnswerFeedback`'s `userId_messageId`).
+- **Wired onto `/chat` now, not deferred.** Free's 5/month is an OD#4 placeholder but admin-tunable; the guard is controller-level so service-level chat tests are unaffected, and there's no committed HTTP e2e. Demonstrates the guard end-to-end like `/me/admin` demonstrates `RolesGuard`.
+- **Enhanced the global exception filter** (small, well-tested superset) instead of nesting the 402 payload under `message` — a genuine improvement (aligns with NestJS's default filter) that any structured-error endpoint benefits from; only deliberately-authored HttpException object bodies pass through, so a generic 500 still leaks nothing.
+- **`enforce` allows metered-unlimited outright** — the fair-use "degrade to a cheaper model instead of blocking" is M6.3, deliberately not built here.
+
+**Files changed:**
+- `packages/shared/src/entitlements.ts` — new: `FeatureKey`, `EntitlementView`, `EntitlementsDto`, `EntitlementDeniedPayload`.
+- `packages/shared/src/index.ts` — export the new entitlement types.
+- `apps/api/src/entitlements/entitlement.service.ts` — new: the choke point (`getEntitlements` + `enforce` + plan/usage resolution + UTC window-start keying).
+- `apps/api/src/entitlements/requires-entitlement.decorator.ts` — new: `@RequiresEntitlement` + `REQUIRES_ENTITLEMENT_KEY`.
+- `apps/api/src/entitlements/entitlement.guard.ts` — new: global guard reading the metadata → `enforce`.
+- `apps/api/src/entitlements/entitlements.controller.ts` — new: `GET /me/entitlements`.
+- `apps/api/src/entitlements/entitlements.module.ts` — new: wires the service + controller + global guard; imports `AuthModule`.
+- `apps/api/src/entitlements/entitlement.service.test.ts` — new: 14 tests.
+- `apps/api/src/entitlements/entitlement.guard.test.ts` — new: 4 tests.
+- `apps/api/src/app.module.ts` — register `EntitlementsModule`.
+- `apps/api/src/chat/chat.controller.ts` — add `@RequiresEntitlement("ask_question")` to `POST /chat`.
+- `apps/api/src/observability/all-exceptions.filter.ts` — echo structured HttpException object bodies.
+- `apps/api/src/observability/all-exceptions.filter.test.ts` — +1 test for the structured-payload pass-through.
+
+**Notes for next iteration:**
+- **M6.2 is next** — `PaymentProvider` abstraction (Stripe driver) + idempotent webhooks → upsert `subscriptions` + append `transactions`. This is what finally populates the `subscriptions` rows `resolvePlan` already reads (today everyone is Free). Mirror the `STORAGE_PROVIDER`/`EMBEDDING_PROVIDER` composition-root + offline-default pattern; no app code imports the Stripe SDK directly.
+- **M6.3** (usage indicator) consumes the `/me/entitlements` read path built here; it's also where metered-unlimited "degrade-don't-block" lands (the gate currently allows unlimited outright).
+- **Seam-tested with a mocked tx** — the upsert-increment-rollback race-safety + the real `usage_counters` unique join the M11 Testcontainers list with the raw-SQL stores.
+- **Keep `FeatureKey` (shared) in lockstep with the seed's `FEATURES` list** — drift fail-closes an unknown key. M8.3's matrix editor must not introduce a key the code doesn't know.
+- **The `EntitlementGuard` is a global `APP_GUARD`** — its ordering after the auth guards relies on `EntitlementsModule` importing `AuthModule`; keep that import.

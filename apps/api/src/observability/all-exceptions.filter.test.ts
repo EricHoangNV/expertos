@@ -108,4 +108,31 @@ describe("AllExceptionsFilter", () => {
     );
     expect((captured.body as { message: unknown }).message).toBeDefined();
   });
+
+  it("echoes a structured HttpException object response (e.g. the 402 entitlement payload)", () => {
+    const { filter } = makeFilter();
+    const captured: CapturedResponse = {};
+    filter.catch(
+      new HttpException(
+        {
+          reason: "quota_exceeded",
+          feature: "ask_question",
+          currentPlan: "free",
+          upgradeOptions: [{ key: "plus", name: "Plus" }],
+          remainingQuota: 0,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      ),
+      fakeHost(captured),
+    );
+    expect(captured.statusCode).toBe(402);
+    expect(captured.body).toMatchObject({
+      statusCode: 402,
+      reason: "quota_exceeded",
+      feature: "ask_question",
+      currentPlan: "free",
+      upgradeOptions: [{ key: "plus", name: "Plus" }],
+      remainingQuota: 0,
+    });
+  });
 });
