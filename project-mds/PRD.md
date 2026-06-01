@@ -24,7 +24,7 @@
 - [x] M1.3 Resolve Open Decision #9 (Vietnamese retrieval quality) and add VI cases to eval set
 
 #### M2 — Expert voice layer
-- [ ] M2.1 Voice profiles + runtime voice-example retrieval; voice-on-top-of-facts enforced in prompt builder
+- [x] M2.1 Voice profiles + runtime voice-example retrieval; voice-on-top-of-facts enforced in prompt builder
 - [ ] M2.2 Multiple selectable expert voices + attribution / "AI rendition of [Expert]" disclosure
 - [ ] M2.3 Expert sign-off workflow on own voice profile; language-aware voice (EN + VI)
 - [ ] M2.4 Voice-vs-facts separation tests; voice-fidelity assertion in eval harness (Open Decisions #2, #3, #6)

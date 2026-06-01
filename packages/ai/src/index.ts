@@ -26,6 +26,15 @@ export type {
   RetrievalRequest,
   RankedChunk,
 } from "./retrieval/types";
+export { buildAnswerPrompt } from "./prompt/answer-prompt";
+export type {
+  PromptLanguage,
+  PromptFact,
+  VoiceProfileInput,
+  VoiceExampleInput,
+  AnswerPromptInput,
+  AnswerPrompt,
+} from "./prompt/types";
 export { evaluateRetrieval } from "./eval/harness";
 export { RETRIEVAL_GOLDEN_SET } from "./eval/golden-set";
 export type {

@@ -316,3 +316,36 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M2.4 + M4 should extend this harness, not fork it:** add voice-fidelity (voice-on≈voice-off, per expert) and citation-resolvability assertions as new eval modes / golden-set fields.
 - The offline harness can't measure semantic VI quality (lexical embedder). Wire the out-of-band run when the real OpenAI embedder driver lands (pass it via `evaluateRetrieval({ embedder })`); keep NFC normalization in that driver's tokenization too.
 - Consider a GIN index on `to_tsvector('simple', content||' '||summary)` (M11) — still relevant; unaffected by this change.
+
+## M2.1 — Expert voice layer: voice profiles + runtime voice-example retrieval + voice-on-top-of-facts prompt builder
+**Date:** 2026-06-01
+**Ref:** PRD Task Manifest M2.1; §"Expert voice layer" (the differentiator — pulled into Phase 1); principle #5 "Voice is the product, separated from facts"
+
+**What was done:**
+- **`@expertos/ai` prompt builder (`prompt/`):** new pure, deterministic `buildAnswerPrompt(input)` returning `{ messages: ChatMessage[], citations: PromptFact[] }`. The system prompt encodes voice-on-top-of-facts as priority-ordered rules: (1) facts authoritative — answer ONLY from numbered SOURCES, never invent/alter/round/contradict; (2) cite everything with `[n]` markers limited to provided source numbers; (3) voice guidelines + style examples are presentation-only (tone/structure/framing), never a source of claims; (4) insufficient-knowledge → say so plainly, don't fill from memory; (5) answer language (EN default, VI supported). Renders "AI rendition of [Expert]" framing when a voice profile is present, omits it for neutral voice. Caps style examples at 5. NFC-normalizes query/facts/guidelines/examples (directive §36). `citations[i]` resolves marker `[i+1]` — the M4 resolvability contract. Exported from `packages/ai/src/index.ts`.
+- **`apps/api/src/voice` runtime voice-example retrieval:** `PgVoiceExampleStore` — single-modality cosine over the HNSW `voice_examples.embedding` index (no keyword path → no fusion), with `loadProfile(expertId, language)` (published-profile + `e.active = true` gate) and `retrieveExamples({ voiceProfileId, embedding, topK })`; bound params, runs inside the caller's RLS-scoped tx (tenant isolation structural). `VoiceService.retrieveVoice(user, voiceQuery)` embeds the topic with the same provider as ingestion (`VOICE_EMBEDDING_PROVIDER` ← `createDefaultEmbeddingProvider`), resolves the profile + examples inside `RlsService.run`, usage-logs `voice.embed`, and returns `{ profile, examples, language }` (empty layer when no published profile). `VoiceModule` wired into `AppModule`.
+- **`@expertos/shared` `voiceQuerySchema`:** `expertId` (uuid), `text` (trim/min/max + NFC transform), `language` (default `en`), `topK` (1–10, default 3). Exported + tested.
+- Tests: ai 11 (prompt builder), shared 5 (voice schema), api 8 (store 3 + service 5). 100% coverage on all new code.
+
+**Key decisions:**
+- **Prompt builder lives in `@expertos/ai` (pure), not apps/api.** It's the single enforcement point for voice-vs-facts and must be unit/eval-testable without DI or a DB — same purity rule the retrieval/ingestion primitives follow. M2.4's separation tests assert against its output rather than re-implementing the rule.
+- **Voice retrieval is a separate seam from knowledge retrieval (`VoiceService` vs `RetrievalService`).** Facts and voice are retrieved independently so voice can never substitute for a fact — mirrors the architectural separation. Single-modality (cosine only): voice matching is purely semantic, there's no keyword analogue, so no `fuseHybrid`.
+- **Builder returns `citations` aligned to `[n]` markers** instead of leaving M4 to re-derive the mapping — guarantees every emitted marker resolves to a real chunk by construction.
+- **No-profile → neutral-voice fallback** (empty voice layer) rather than erroring: a published profile may not exist in the requested language yet; facts must still be answerable.
+- **Reused `createDefaultEmbeddingProvider`** (same factory as ingestion + knowledge retrieval) so voice-example vectors and the query topic share one model/space; production swaps one factory and all three move together.
+
+**Files changed:**
+- `packages/ai/src/prompt/types.ts` — new: prompt-builder value types (`PromptFact`, `VoiceProfileInput`, `VoiceExampleInput`, `AnswerPromptInput`, `AnswerPrompt`, `PromptLanguage`).
+- `packages/ai/src/prompt/answer-prompt.ts` — new: `buildAnswerPrompt` (voice-on-top-of-facts system prompt + numbered sources + citation alignment).
+- `packages/ai/src/prompt/answer-prompt.test.ts` — new: 11 tests (rule presence, citation alignment, voice/no-voice, VI, example cap, NFC, empty facts).
+- `packages/ai/src/index.ts` — export the prompt builder + types.
+- `packages/shared/src/voice.ts` + `voice.test.ts` — new: `voiceQuerySchema` + tests.
+- `packages/shared/src/index.ts` — export `voiceQuerySchema` / `VoiceQueryInput`.
+- `apps/api/src/voice/{voice.types,voice-example.store,voice.service,voice.tokens,voice.module}.ts` + `voice-example.store.test.ts` + `voice.service.test.ts` — new voice module.
+- `apps/api/src/app.module.ts` — register `VoiceModule`.
+
+**Notes for next iteration:**
+- **M2.2 (multi-voice + disclosure)** is mostly UX: `VoiceService.retrieveVoice` already keys on `expertId` and the builder already emits "AI rendition of [Expert]". M2.2 needs the expert-selection UI, persisting which expert/voice answered, and surfacing the disclosure label in chat (UI renders the label; the builder deliberately does NOT append a disclaimer line).
+- **Voice examples are not seeded/authored yet.** When adding a seed/admin authoring path (M8), embed `voice_examples.embedding` via `createDefaultEmbeddingProvider` or cosine match is meaningless. The store's cosine SQL is not exercised against real pgvector — add to the M11 Testcontainers pass (same as `PgVectorStore`).
+- **M2.4** should extend the `@expertos/ai` `eval/` harness with voice-fidelity (voice-on≈voice-off per expert) + voice-vs-facts assertions that drive `buildAnswerPrompt` against a live LLM out-of-band; the offline harness can't judge tone.
+- No new bug/learning surfaced — monorepo build-order (rebuild `@expertos/shared`/`@expertos/ai` before api typecheck sees new exports) is already known behavior.

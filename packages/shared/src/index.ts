@@ -24,3 +24,5 @@ export type {
   RetrievalFilters,
   RetrievalQueryInput,
 } from "./retrieval";
+export { voiceQuerySchema } from "./voice";
+export type { VoiceQueryInput } from "./voice";
