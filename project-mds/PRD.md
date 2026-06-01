@@ -75,7 +75,7 @@
 
 #### M10 — Analytics
 - [x] M10.1 Usage & cost analytics — **DONE** (`apps/api/src/analytics/` `AnalyticsService` admin cross-tenant RLS read over `usage_logs` → `GET /admin/analytics/usage`: window totals [events/tokens/`cost_micros`/distinct active users] + per-feature + per-model rollups [Prisma `groupBy`] + trailing **daily** series [raw `date_trunc('day')` + `count(DISTINCT user_id)`, BigInt-coerced]; `apps/admin/app/analytics` dashboard. OD#1-independent instrumentation — the kill-line M10.4 is the OD#1-gated piece.)
-- [ ] M10.2 Consultation funnel + attribution (question→conversation→recommendation→booking→revenue)
+- [x] M10.2 Consultation funnel + attribution (question→conversation→recommendation→booking→revenue) — **DONE** (`apps/api/src/analytics/` `AnalyticsService.funnel` → `GET /admin/analytics/funnel`: admin cross-tenant RLS read tracing conversations → recommendations (`groupBy` trigger/response) → funnel-attributed consultations (`groupBy` status, scoped to `recommendations:{some:{}}`) → booked revenue (`_sum.amountCents`); the `ExpertPortalService.conversions` shape but platform-wide; `apps/admin/app/funnel` dashboard. OD#1-independent instrumentation.)
 - [ ] M10.3 Concierge volume/SLA/verdict metrics + knowledge-quality signals
 - [ ] M10.4 Instrument validation success criteria / kill line (Open Decision #1)
 

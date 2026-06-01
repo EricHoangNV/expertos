@@ -1,6 +1,9 @@
 import { Controller, Get, Query } from "@nestjs/common";
 import {
   usageAnalyticsQuerySchema,
+  funnelAnalyticsQuerySchema,
+  type FunnelAnalyticsDto,
+  type FunnelAnalyticsQueryInput,
   type UsageAnalyticsDto,
   type UsageAnalyticsQueryInput,
 } from "@expertos/shared";
@@ -29,5 +32,15 @@ export class AnalyticsController {
     query: UsageAnalyticsQueryInput,
   ): Promise<UsageAnalyticsDto> {
     return this.service.usage(user, query);
+  }
+
+  /** Consultation funnel + attribution: conversations → recommendations → bookings → revenue (M10.2). */
+  @Get("funnel")
+  funnel(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(funnelAnalyticsQuerySchema))
+    query: FunnelAnalyticsQueryInput,
+  ): Promise<FunnelAnalyticsDto> {
+    return this.service.funnel(user, query);
   }
 }

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { RecommendationTriggerValue } from "./consultation";
+import type { ConsultationStatusValue, RecommendationFunnelResponse } from "./expert";
 
 /**
  * Usage & cost analytics wire types (M10.1, PRD §"Phase 1 — MVP" → M10 "usage & cost"). The admin
@@ -87,4 +89,51 @@ export interface UsageAnalyticsDto {
   byModel: UsageByModelDto[];
   /** Trailing daily series (only days with activity), oldest first. */
   periods: UsagePeriodDto[];
+}
+
+/**
+ * Consultation-funnel analytics wire types (M10.2, PRD §"Phase 1 — MVP" → M10 "Consultation funnel +
+ * attribution"). The admin dashboard reads a single platform-wide funnel report tracing the
+ * question → conversation → recommendation → booking → revenue chain: conversations started,
+ * recommendations surfaced (by trigger and by user response), the consultations they produced (by
+ * status), and the booked consultation revenue attributed to the funnel.
+ *
+ * This is the {@link ExpertConversionsDto} shape — but admin cross-tenant (the whole platform, not one
+ * expert's voice). All counts cover the same trailing window; revenue stays in integer cents.
+ */
+
+/**
+ * Trailing-window query for the funnel report: how many whole days (including today) it covers. Same
+ * shape and bounds as {@link usageAnalyticsQuerySchema}.
+ */
+export const funnelAnalyticsQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(30),
+});
+export type FunnelAnalyticsQueryInput = z.infer<typeof funnelAnalyticsQuerySchema>;
+
+/**
+ * The admin consultation-funnel report (`GET /admin/analytics/funnel`). Each stage's count covers the
+ * trailing `windowDays`. The consultation stage and revenue are **attributed to the funnel** — they
+ * count only consultations that arose from an in-chat recommendation (a booking made directly outside
+ * the recommendation flow is not part of this funnel).
+ */
+export interface FunnelAnalyticsDto {
+  /** Days covered by the report. */
+  windowDays: number;
+  /** Start of the window (UTC ISO; start-of-day of the earliest day covered). */
+  since: string;
+  /** Conversations started in the window — the top of the funnel (each is a question thread). */
+  conversations: number;
+  /** Recommendations surfaced in the window. */
+  recommendations: number;
+  /** Recommendations grouped by which trigger fired. */
+  byTrigger: Record<RecommendationTriggerValue, number>;
+  /** Recommendations grouped by the user's response (incl. the not-yet-answered `pending` default). */
+  byResponse: Record<RecommendationFunnelResponse, number>;
+  /** Funnel-attributed consultations (those with a recommendation) created in the window. */
+  consultations: number;
+  /** Those consultations grouped by status. */
+  byConsultationStatus: Record<ConsultationStatusValue, number>;
+  /** Booked-and-beyond consultation revenue attributed to the funnel (cents). */
+  bookedRevenueCents: number;
 }

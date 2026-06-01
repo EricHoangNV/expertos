@@ -1969,3 +1969,35 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 **Notes for next iteration:**
 - **M10.2 (consultation funnel + attribution)** is the natural next slice on the same `AnalyticsService` host: question→conversation→recommendation→booking→revenue, `groupBy` over `consultation_recommendations`/`consultations` + the `transactions`/`amount_cents` revenue join — the `ExpertPortalService.conversions` shape but admin platform-wide. Add `GET /admin/analytics/funnel`.
 - **M10.3** (concierge metrics) awaits M9; **M10.4** (kill-line) is the only OD#1-gated piece.
+
+## M10.2 — Consultation funnel + attribution
+**Date:** 2026-06-01
+**Ref:** PRD §"Phase 1 — MVP" → M10.2 ("Consultation funnel + attribution (question→conversation→recommendation→booking→revenue)")
+
+**What was done:**
+- New `AnalyticsService.funnel(user, query)` method (`apps/api/src/analytics/analytics.service.ts`) behind a new `GET /admin/analytics/funnel` route (`@Roles("admin")`). Platform-wide cross-tenant funnel report over a trailing `days` window (default 30, max 365): conversation count, recommendations `groupBy` (trigger, response) → total + zeroed `byTrigger`/`byResponse`, funnel-attributed consultations `groupBy` (status) scoped to `recommendations: { some: {} }` → total + zeroed `byConsultationStatus` + booked revenue (`_sum.amountCents` over booked/confirmed/completed).
+- New shared DTOs `funnelAnalyticsQuerySchema` + `FunnelAnalyticsDto` in `packages/shared/src/analytics.ts` (importing the trigger/response/status unions from `consultation.ts`/`expert.ts`); exported from the shared index.
+- New `apps/admin/app/funnel/page.tsx` ("Funnel" nav entry, Admin group): Stat cards (conversations/recommendations/booked/consultations/revenue + two derived conversion rates), by-trigger table, by-response/by-status badge rows. Reuses `consultationStatusTone`/`funnelResponseTone`/`statusLabel` from `status-tone.ts`. New `getFunnelAnalytics` admin-client fn + AdminFrame nav entry.
+- Tests: `apps/api` +3 (`analytics.service.test.ts` funnel block), `apps/shared` +4 (`analytics.test.ts` `funnelAnalyticsQuerySchema`).
+
+**Key decisions:**
+- **Attribution scope:** the consultation stage + revenue count ONLY consultations that arose from an in-chat recommendation (`recommendations: { some: {} }`) — "attribution" means tying the booking back to the funnel, so a booking made directly outside the recommendation flow is excluded. Documented in the DTO comment + the page copy.
+- **Reused the M8.5 conversions shape + types** (the `ExpertPortalService.conversions` pattern) but admin platform-wide via `RlsService.run` under the admin principal (the `RevenueService`/`AnalyticsService.usage` cross-tenant template — no `tenant_id` predicate; the route guard is the boundary). Did NOT build a new module — `AnalyticsModule` is the analytics host.
+- **No BigInt coercion** — used Prisma `count`/`groupBy`/`_sum.amountCents` (Int sums come back as `number`), avoiding the raw-SQL BigInt gotcha the daily/monthly series paths hit.
+- **Conversion rates derived in the UI** (the API returns raw counts, consistent with `conversions`).
+
+**Files changed:**
+- `packages/shared/src/analytics.ts` — added `funnelAnalyticsQuerySchema` + `FunnelAnalyticsDto`.
+- `packages/shared/src/index.ts` — exported the new schema + type.
+- `apps/api/src/analytics/analytics.service.ts` — added `funnel()` + module-level TRIGGERS/RESPONSES/CONSULTATION_STATUSES/REVENUE_STATUSES constants + `zeroCounts` helper.
+- `apps/api/src/analytics/analytics.controller.ts` — added the `funnel` route.
+- `apps/admin/src/lib/admin-client.ts` — added `getFunnelAnalytics` + `FunnelAnalyticsDto` import.
+- `apps/admin/src/components/AdminFrame.tsx` — added the "Funnel" nav entry (Admin group).
+- `apps/admin/app/funnel/page.tsx` — new dashboard page.
+- `apps/api/src/analytics/analytics.service.test.ts` + `packages/shared/src/analytics.test.ts` — tests.
+
+**Gates:** typecheck ✅ (11 tasks), `analytics.service.test.ts` 8/8 @ 100% service coverage, `analytics.test.ts` 8/8, lint ✅ (eslint + stylelint), knip ✅, build ✅ (admin `/funnel` route builds — cleared the stale Next PackFileCache first per the deploy note). Sandbox parallel-`pnpm test` caveat unchanged (per-suite confirmed).
+
+**Notes for next iteration:**
+- **No fully-buildable Phase-1 engineering tasks remain offline.** What's left is gate/decision-bound or needs a live stack: M9 (Concierge) GATED by OD#5; M10.3 (concierge metrics) awaits M9; M10.4 (kill-line) awaits OD#1; M11.1 (Playwright E2E) + M11.3 (load smoke) need a live stack (Firebase + DB + LLM); M11.4 + NT.1–6 need product/legal sign-offs.
+- **M10.3 is the natural `AnalyticsService` follow-on** once M9 lands (concierge volume/SLA/verdict metrics + knowledge-quality signals) — same admin cross-tenant `groupBy` pattern.

@@ -17,6 +17,7 @@ import type {
   RecommendationTriggerValue,
   RevenueReportDto,
   UsageAnalyticsDto,
+  FunnelAnalyticsDto,
   FailedQueryDto,
   AdminAuditLogDto,
   AdminFairUseFlagDto,
@@ -178,6 +179,14 @@ export function getRevenueReport(
 export function getUsageAnalytics(token: string, days?: number): Promise<UsageAnalyticsDto> {
   const query = days != null ? `?days=${days}` : "";
   return request<UsageAnalyticsDto>(`/admin/analytics/usage${query}`, token);
+}
+
+// M10.2 — Admin consultation-funnel analytics
+
+/** Platform-wide consultation-funnel report (conversations → recommendations → bookings → revenue). */
+export function getFunnelAnalytics(token: string, days?: number): Promise<FunnelAnalyticsDto> {
+  const query = days != null ? `?days=${days}` : "";
+  return request<FunnelAnalyticsDto>(`/admin/analytics/funnel${query}`, token);
 }
 
 // M8.3 — Admin plan-entitlement matrix editor

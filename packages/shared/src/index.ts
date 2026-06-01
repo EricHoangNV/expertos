@@ -121,13 +121,15 @@ export type {
   RevenuePeriodDto,
   RevenueReportDto,
 } from "./revenue";
-export { usageAnalyticsQuerySchema } from "./analytics";
+export { usageAnalyticsQuerySchema, funnelAnalyticsQuerySchema } from "./analytics";
 export type {
   UsageAnalyticsQueryInput,
   UsageByFeatureDto,
   UsageByModelDto,
   UsagePeriodDto,
   UsageAnalyticsDto,
+  FunnelAnalyticsQueryInput,
+  FunnelAnalyticsDto,
 } from "./analytics";
 export { failedQueryListQuerySchema } from "./failed-queries";
 export type { FailedQueryListQueryInput, FailedQueryDto } from "./failed-queries";

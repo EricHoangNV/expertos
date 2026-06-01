@@ -1,5 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import type {
+  ConsultationStatusValue,
+  FunnelAnalyticsDto,
+  FunnelAnalyticsQueryInput,
+  RecommendationFunnelResponse,
+  RecommendationTriggerValue,
   UsageAnalyticsDto,
   UsageAnalyticsQueryInput,
   UsageByFeatureDto,
@@ -12,6 +17,35 @@ import type { AuthUser } from "../auth/auth.types";
 
 /** Label for usage rows that logged no model (a cache/marker row, M6.4) — kept visible, not dropped. */
 const NO_MODEL_LABEL = "(none)";
+
+/** Stable key sets so every grouped count starts at zero (a `Record<Union, number>` needs all keys). */
+const TRIGGERS: readonly RecommendationTriggerValue[] = [
+  "topic",
+  "depth",
+  "low_confidence",
+  "high_intent",
+];
+const RESPONSES: readonly RecommendationFunnelResponse[] = [
+  "pending",
+  "book",
+  "maybe_later",
+  "ask_another",
+];
+const CONSULTATION_STATUSES: readonly ConsultationStatusValue[] = [
+  "recommended",
+  "booked",
+  "confirmed",
+  "completed",
+  "canceled",
+  "no_show",
+];
+
+/** Statuses whose `amount_cents` count as realised/attributable booked revenue (mirrors ExpertPortal). */
+const REVENUE_STATUSES: ReadonlySet<ConsultationStatusValue> = new Set([
+  "booked",
+  "confirmed",
+  "completed",
+]);
 
 /** A Prisma `groupBy` rollup row over `usage_logs` (counts + token/cost sums). */
 interface GroupRow {
@@ -88,6 +122,69 @@ export class AnalyticsService {
     });
   }
 
+  /**
+   * Build the platform consultation-funnel report for the trailing `query.days` window (M10.2). The
+   * {@link ExpertPortalService} `conversions` shape, but admin cross-tenant: every count covers the
+   * whole platform (the admin GUC inside {@link RlsService.run} grants the cross-tenant read, so no
+   * `tenant_id` predicate appears). Traces question → conversation → recommendation → booking →
+   * revenue.
+   */
+  async funnel(user: AuthUser, query: FunnelAnalyticsQueryInput): Promise<FunnelAnalyticsDto> {
+    const since = windowStart(query.days, new Date());
+
+    return this.rls.run(user, async (tx) => {
+      const conversations = await tx.conversation.count({ where: { createdAt: { gte: since } } });
+
+      // Recommendations surfaced in the window, broken down by trigger and by user response.
+      const byTrigger = zeroCounts(TRIGGERS);
+      const byResponse = zeroCounts(RESPONSES);
+      let recommendations = 0;
+      const recGrouped = await tx.consultationRecommendation.groupBy({
+        by: ["trigger", "response"],
+        where: { createdAt: { gte: since } },
+        _count: { _all: true },
+      });
+      for (const row of recGrouped) {
+        const n = row._count._all;
+        recommendations += n;
+        byTrigger[row.trigger] += n;
+        byResponse[row.response] += n;
+      }
+
+      // Funnel-attributed consultations: those that arose from a recommendation. Booked revenue is
+      // summed over the realised-status rows.
+      const byConsultationStatus = zeroCounts(CONSULTATION_STATUSES);
+      let consultations = 0;
+      let bookedRevenueCents = 0;
+      const consGrouped = await tx.consultation.groupBy({
+        by: ["status"],
+        where: { createdAt: { gte: since }, recommendations: { some: {} } },
+        _count: { _all: true },
+        _sum: { amountCents: true },
+      });
+      for (const row of consGrouped) {
+        const n = row._count._all;
+        consultations += n;
+        byConsultationStatus[row.status] += n;
+        if (REVENUE_STATUSES.has(row.status)) {
+          bookedRevenueCents += row._sum.amountCents ?? 0;
+        }
+      }
+
+      return {
+        windowDays: query.days,
+        since: since.toISOString(),
+        conversations,
+        recommendations,
+        byTrigger,
+        byResponse,
+        consultations,
+        byConsultationStatus,
+        bookedRevenueCents,
+      };
+    });
+  }
+
   /** Per-feature rollup, highest spend first. */
   private async byFeature(
     tx: Prisma.TransactionClient,
@@ -138,6 +235,15 @@ export class AnalyticsService {
     const rows = await tx.$queryRawUnsafe<ActiveUsersRow[]>(ACTIVE_USERS_SQL, since);
     return Number(rows[0]?.active_users ?? 0);
   }
+}
+
+/** A zeroed `Record<K, number>` with every key present (so callers can `+=` safely). */
+function zeroCounts<K extends string>(keys: readonly K[]): Record<K, number> {
+  const out = {} as Record<K, number>;
+  for (const key of keys) {
+    out[key] = 0;
+  }
+  return out;
 }
 
 /** Coalesce a groupBy row's nullable sums to safe integers. */
