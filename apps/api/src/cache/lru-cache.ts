@@ -26,11 +26,39 @@ interface Entry<V> {
   expiresAt: number;
 }
 
+/**
+ * A point-in-time snapshot of a cache's effectiveness (M11.3). Hit rate is the lever the caching
+ * tuning turns — `maxEntries`/`ttlMs` are only worth changing once you can see the hit rate they
+ * produce, so this is what {@link ResponseCacheService.stats} surfaces to the admin cache endpoint.
+ * Counters are cumulative since process start and **per-instance** (the cache is in-process), so a
+ * multi-instance deployment reports per-instance rates — fine for a single-instance load smoke.
+ */
+interface LruCacheStats {
+  /** Live entries currently held (including not-yet-read expired ones). */
+  size: number;
+  /** Configured capacity — `size` pressing on this with a high `evictions` count means it's too small. */
+  maxEntries: number;
+  /** Lookups that returned a live value. */
+  hits: number;
+  /** Lookups that found nothing live (a never-seen key or an expired one — see `expirations`). */
+  misses: number;
+  /** Entries dropped by the capacity ceiling (a high count argues for a larger `maxEntries`). */
+  evictions: number;
+  /** Misses caused by a TTL expiry specifically (a high count argues for a longer `ttlMs`). */
+  expirations: number;
+  /** `hits / (hits + misses)`, or `0` before any lookup. The headline tuning number. */
+  hitRate: number;
+}
+
 export class LruCache<V> {
   private readonly store = new Map<string, Entry<V>>();
   private readonly maxEntries: number;
   private readonly ttlMs: number;
   private readonly now: () => number;
+  private hits = 0;
+  private misses = 0;
+  private evictions = 0;
+  private expirations = 0;
 
   constructor(options: LruCacheOptions) {
     this.maxEntries = Math.max(1, options.maxEntries);
@@ -42,15 +70,19 @@ export class LruCache<V> {
   get(key: string): V | undefined {
     const entry = this.store.get(key);
     if (!entry) {
+      this.misses += 1;
       return undefined;
     }
     if (entry.expiresAt <= this.now()) {
       this.store.delete(key);
+      this.expirations += 1;
+      this.misses += 1;
       return undefined;
     }
     // Refresh recency: re-insert at the most-recent position.
     this.store.delete(key);
     this.store.set(key, entry);
+    this.hits += 1;
     return entry.value;
   }
 
@@ -65,6 +97,7 @@ export class LruCache<V> {
         break;
       }
       this.store.delete(oldest);
+      this.evictions += 1;
     }
   }
 
@@ -93,5 +126,19 @@ export class LruCache<V> {
   /** Number of entries currently held (including not-yet-read expired ones). */
   get size(): number {
     return this.store.size;
+  }
+
+  /** Cumulative effectiveness snapshot since process start (M11.3 — see {@link LruCacheStats}). */
+  stats(): LruCacheStats {
+    const lookups = this.hits + this.misses;
+    return {
+      size: this.store.size,
+      maxEntries: this.maxEntries,
+      hits: this.hits,
+      misses: this.misses,
+      evictions: this.evictions,
+      expirations: this.expirations,
+      hitRate: lookups === 0 ? 0 : this.hits / lookups,
+    };
   }
 }

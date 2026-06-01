@@ -4,6 +4,7 @@ import {
   funnelAnalyticsQuerySchema,
   conciergeAnalyticsQuerySchema,
   validationAnalyticsQuerySchema,
+  type CacheAnalyticsDto,
   type ConciergeAnalyticsDto,
   type ConciergeAnalyticsQueryInput,
   type FunnelAnalyticsDto,
@@ -17,6 +18,7 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import { Roles } from "../auth/roles.decorator";
 import type { AuthUser } from "../auth/auth.types";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
+import { ResponseCacheService } from "../cache/response-cache.service";
 import { AnalyticsService } from "./analytics.service";
 
 /**
@@ -28,7 +30,10 @@ import { AnalyticsService } from "./analytics.service";
 @Controller("admin/analytics")
 @Roles("admin")
 export class AnalyticsController {
-  constructor(private readonly service: AnalyticsService) {}
+  constructor(
+    private readonly service: AnalyticsService,
+    private readonly responseCache: ResponseCacheService,
+  ) {}
 
   /** Usage & cost totals + per-feature/per-model breakdown + a trailing daily series. */
   @Get("usage")
@@ -68,5 +73,17 @@ export class AnalyticsController {
     query: ValidationAnalyticsQueryInput,
   ): Promise<ValidationAnalyticsDto> {
     return this.service.validation(user, query);
+  }
+
+  /**
+   * Cache effectiveness across the three M6.4 layers (retrieval / answer-memory / semantic) — the
+   * observability the M11.3 caching tuning turns on. A pure in-process snapshot ({@link
+   * ResponseCacheService.stats}), so unlike the other reports it takes no window and does no DB read;
+   * it is **per-instance** (the caches are in-process). Delegated straight to the cache choke point —
+   * no branchy logic to land in the service.
+   */
+  @Get("cache")
+  cache(): CacheAnalyticsDto {
+    return this.responseCache.stats();
   }
 }

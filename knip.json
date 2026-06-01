@@ -35,5 +35,5 @@
     }
   },
   "ignoreDependencies": ["ts-jest", "@types/jest", "@prisma/client"],
-  "ignore": ["**/*.test.ts", "**/*.test.tsx", "**/jest*.config.*"]
+  "ignore": ["**/*.test.ts", "**/*.test.tsx", "**/jest*.config.*", "load/**"]
 }

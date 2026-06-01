@@ -148,6 +148,8 @@ export type {
   ValidationWtpDto,
   ValidationFunnelDto,
   ValidationAnalyticsDto,
+  CacheLayerStatsDto,
+  CacheAnalyticsDto,
 } from "./analytics";
 export { failedQueryListQuerySchema } from "./failed-queries";
 export type { FailedQueryListQueryInput, FailedQueryDto } from "./failed-queries";

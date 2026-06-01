@@ -61,6 +61,50 @@ describe("LruCache", () => {
     expect(cache.size).toBe(1);
   });
 
+  it("reports a zeroed snapshot with hitRate 0 before any lookup", () => {
+    const cache = new LruCache<number>({ maxEntries: 3, ttlMs: 1000, now: () => 0 });
+    cache.set("a", 1);
+    expect(cache.stats()).toEqual({
+      size: 1,
+      maxEntries: 3,
+      hits: 0,
+      misses: 0,
+      evictions: 0,
+      expirations: 0,
+      hitRate: 0,
+    });
+  });
+
+  it("tracks hits, misses and the expiration-driven miss, with the derived hit rate", () => {
+    let clock = 0;
+    const cache = new LruCache<number>({ maxEntries: 4, ttlMs: 100, now: () => clock });
+    cache.set("a", 1);
+    cache.set("b", 2);
+
+    cache.get("a"); // hit
+    cache.get("missing"); // miss (never-seen)
+
+    clock = 200; // entries now past TTL
+    cache.get("b"); // miss via expiry → counts an expiration AND a miss
+
+    const stats = cache.stats();
+    expect(stats.hits).toBe(1);
+    expect(stats.misses).toBe(2);
+    expect(stats.expirations).toBe(1);
+    expect(stats.evictions).toBe(0); // capacity never pressed
+    // hitRate = hits / (hits + misses) = 1 / 3.
+    expect(stats.hitRate).toBeCloseTo(1 / 3, 10);
+  });
+
+  it("counts an eviction each time capacity is exceeded", () => {
+    const cache = new LruCache<number>({ maxEntries: 2, ttlMs: 1000, now: () => 0 });
+    cache.set("x", 1);
+    cache.set("y", 2);
+    cache.set("z", 3); // evicts x
+    cache.set("w", 4); // evicts y
+    expect(cache.stats().evictions).toBe(2);
+  });
+
   it("deletes only the entries matching a prefix and reports the count removed", () => {
     const cache = new LruCache<number>({ maxEntries: 10, ttlMs: 1000, now: () => 0 });
     cache.set("answer\nt1\nq1", 1);

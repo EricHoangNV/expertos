@@ -165,6 +165,79 @@ describe("ResponseCacheService answer layer", () => {
   });
 });
 
+describe("ResponseCacheService.stats", () => {
+  const ANSWER: CachedAnswer = {
+    text: "Answer [1].",
+    model: "m1",
+    sourceVersionIds: ["dv1"],
+    citations: [{ ordinal: 1, chunkId: "c1", documentVersionId: "dv1", content: "fact" }],
+  };
+
+  it("reports an all-zero snapshot with hitRate 0 before any traffic", () => {
+    const { service } = makeService();
+    const stats = service.stats();
+    expect(stats.answerOverall).toEqual({ lookups: 0, served: 0, hitRate: 0 });
+    expect(stats.retrieval.hitRate).toBe(0);
+    expect(stats.semantic).toEqual({
+      size: null,
+      maxEntries: null,
+      hits: 0,
+      misses: 0,
+      evictions: 0,
+      expirations: 0,
+      hitRate: 0,
+    });
+  });
+
+  it("counts retrieval and answer-memory hits/misses", async () => {
+    const { service } = makeService();
+    service.getRetrieval("k"); // miss
+    service.setRetrieval("k", CHUNKS);
+    service.getRetrieval("k"); // hit
+
+    await service.storeAnswer(USER, "key", ANSWER);
+    await service.lookupAnswer(USER, "key", "m1"); // memory hit
+
+    const stats = service.stats();
+    expect(stats.retrieval.hits).toBe(1);
+    expect(stats.retrieval.misses).toBe(1);
+    expect(stats.retrieval.hitRate).toBeCloseTo(0.5, 10);
+    expect(stats.answerMemory.hits).toBe(1);
+    expect(stats.answerOverall).toEqual({ lookups: 1, served: 1, hitRate: 1 });
+  });
+
+  it("folds a semantic-tier hit into answerOverall as served", async () => {
+    const row = {
+      id: "e1",
+      answer: "Persisted [1].",
+      model: "m1",
+      citations: [{ ordinal: 1, chunkId: "c1", documentVersionId: "dv1", content: "fact" }],
+    };
+    const { service } = makeService(row);
+
+    await service.lookupAnswer(USER, "key", "m1"); // memory miss → semantic hit
+
+    const stats = service.stats();
+    expect(stats.answerMemory.hits).toBe(0);
+    expect(stats.answerMemory.misses).toBe(1);
+    expect(stats.semantic.hits).toBe(1);
+    expect(stats.semantic.misses).toBe(0);
+    expect(stats.semantic.hitRate).toBe(1);
+    // One lookup, served via the semantic tier.
+    expect(stats.answerOverall).toEqual({ lookups: 1, served: 1, hitRate: 1 });
+  });
+
+  it("counts a full miss against both tiers", async () => {
+    const { service } = makeService();
+    await service.lookupAnswer(USER, "key", "m1"); // memory miss + semantic miss
+
+    const stats = service.stats();
+    expect(stats.answerMemory.misses).toBe(1);
+    expect(stats.semantic.misses).toBe(1);
+    expect(stats.answerOverall).toEqual({ lookups: 1, served: 0, hitRate: 0 });
+  });
+});
+
 describe("ResponseCacheService.invalidateTenant", () => {
   it("drops the tenant's in-process retrieval/answer entries and its semantic rows", async () => {
     const { service, tx, info } = makeService();

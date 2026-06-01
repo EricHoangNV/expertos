@@ -339,3 +339,51 @@ export interface ValidationAnalyticsDto {
   /** Funnel conversion + revenue per buyer. */
   funnel: ValidationFunnelDto;
 }
+
+// Cache effectiveness (M11.3) ────────────────────────────────────────────────
+
+/**
+ * One cache layer's effectiveness snapshot. Mirrors the API's in-process `LruCache` stats — counters
+ * are cumulative since process start. The two LRU layers (retrieval + answer-memory) report this
+ * shape directly; the persistent semantic tier reports the `hitRate`-bearing subset.
+ */
+export interface CacheLayerStatsDto {
+  /** Live entries currently held. `null` for the persistent semantic tier (size lives in Postgres). */
+  size: number | null;
+  /** Configured in-process capacity. `null` for the persistent semantic tier. */
+  maxEntries: number | null;
+  /** Lookups that returned a live value. */
+  hits: number;
+  /** Lookups that found nothing live. */
+  misses: number;
+  /** Entries dropped by the capacity ceiling (in-process layers only; `0` for semantic). */
+  evictions: number;
+  /** Misses caused by a TTL expiry specifically (in-process layers only; `0` for semantic). */
+  expirations: number;
+  /** `hits / (hits + misses)`, a fraction in `[0, 1]` (0 before any lookup). */
+  hitRate: number;
+}
+
+/**
+ * The admin cache-effectiveness report (`GET /admin/analytics/cache`, M11.3) — the observability the
+ * caching tuning turns on. **Per-instance**: the caches are in-process, so this reflects only the
+ * instance that served the request (fine for a single-instance load smoke; a multi-instance
+ * deployment reports per-instance rates). Counters are cumulative since that instance started.
+ */
+export interface CacheAnalyticsDto {
+  /** Retrieval layer: query + scope → knowledge chunks (skips the embed + vector/keyword search). */
+  retrieval: CacheLayerStatsDto;
+  /** Answer in-process hot tier: query + scope + voice + language + model → resolved answer. */
+  answerMemory: CacheLayerStatsDto;
+  /** Persistent semantic tier: the durable cross-instance answer cache, consulted on a memory miss. */
+  semantic: CacheLayerStatsDto;
+  /** Combined answer effectiveness across both answer tiers (the headline number for tuning). */
+  answerOverall: {
+    /** Total answer lookups (every chat turn that consults the cache). */
+    lookups: number;
+    /** Lookups served from either answer tier (memory hits + semantic hits). */
+    served: number;
+    /** `served / lookups`, a fraction in `[0, 1]` (0 before any lookup). */
+    hitRate: number;
+  };
+}

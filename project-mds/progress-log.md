@@ -2360,3 +2360,33 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - The emulator popup-widget selectors (`Add new account` / `Auto-generate user information` / `Sign in with Google.com`) are based on the documented Firebase Auth emulator widget; if a Firebase version changes them, adjust `clickGoogleSignInAndDrivePopup` in `e2e/fixtures/auth.ts`.
 - M11.1 left `[~]` (not `[x]`): the harness + buildable specs are done but the suite is unexecuted here and 3 legs are `fixme`. Resolve the fixmes as the consumer checkout CTA / ingestion-driven publish path land.
 - This unblocks M11.3 (load smoke) which needs the same live stack.
+
+## M11.3 — Performance / caching tuning + load smoke test
+**Date:** 2026-06-01
+**Ref:** PRD §"Testing Strategy" / Phase 1 M11.3
+
+**What was done:**
+- **Cache instrumentation (the "tuning" enabler — you can't size a cache you can't measure):**
+  - `apps/api/src/cache/lru-cache.ts`: cumulative `hits`/`misses`/`evictions`/`expirations` counters on the in-process `LruCache` + a `stats()` snapshot (`size`, `maxEntries`, the four counters, derived `hitRate`). `get()` now distinguishes a never-seen miss from a TTL-expiry miss (the latter bumps both `expirations` and `misses`); `set()`'s capacity loop bumps `evictions`.
+  - `apps/api/src/cache/response-cache.service.ts`: per-instance semantic-tier hit/miss counters (the DB lookup, not an LRU) + a `stats()` that folds all three M6.4 layers — retrieval LRU, answer-memory LRU, persistent semantic — into `CacheAnalyticsDto`, with a combined `answerOverall { lookups, served, hitRate }` (every `lookupAnswer` consults memory first, so memory hits+misses is the total; a lookup is "served" by a memory **or** semantic hit).
+  - `packages/shared/src/analytics.ts`: new `CacheLayerStatsDto` + `CacheAnalyticsDto` (exported from the shared index).
+  - `apps/api/src/analytics/analytics.controller.ts`: admin-guarded `GET /admin/analytics/cache` delegating straight to `ResponseCacheService.stats()` (no branchy logic, no DB read, no window); `AnalyticsModule` now imports `CacheModule` for the singleton.
+- **Load smoke harness:** `load/smoke.mjs` — a dependency-free Node driver (global `fetch` + `node:perf_hooks`). Fixed-concurrency timed phases over `health` (unauth), `me/entitlements` (authed read), and a cache-warming `chat` leg (one repeated question so the answer cache engages: cold first turn → hot thereafter). Per-phase p50/p95/p99 + rps + error rate; gated on `LOAD_P95_MS` and `LOAD_MAX_ERROR_RATE` (exit 1 on breach so it can gate a deploy); optionally GETs `/admin/analytics/cache` after the run to print hit rates. `load/README.md` documents the env surface + the live-stack prerequisites.
+- Tests: +3 `LruCache` (zeroed snapshot, hit/miss/expiry counters, eviction count) and +4 `ResponseCacheService.stats` (zeroed, retrieval+memory hit/miss, semantic-hit fold-in, full miss). 1013 → 1020 pass; api 635 → 642. All gates green (typecheck, test ≥90% coverage, lint, knip, build).
+
+**Key decisions:**
+- **Top-level `load/` dir, not a pnpm workspace.** The driver has zero deps, so unlike the Playwright `e2e/` workspace it needs no `node_modules`; keeping it a sibling of `infra/` (a `load/**` knip-ignore entry) keeps it out of the default turbo/jest/knip gates while staying opt-in/live-stack only.
+- **Endpoint, no admin dashboard page.** The other M10 analytics have admin pages, but cache stats are **per-instance** (in-process counters) — a cross-tenant "dashboard" of them would mislead on a multi-instance deployment. The endpoint is the right surface: an ops/load-smoke signal the harness reads, with the per-instance caveat documented in the DTO doc + README. No new admin UI.
+- **No config change to `cache.config.ts`.** "Tuning" without production traffic would be guessing; the deliverable is the *observability* that lets the sizes be set from real eviction/expiry counts post-launch. Left the conservative M6.4 defaults intact.
+- Counted a TTL-expiry as both an `expiration` and a `miss` so `hitRate = hits/(hits+misses)` stays honest while `expirations` still isolates "too short a TTL" from "never seen."
+
+**Files changed:**
+- `apps/api/src/cache/lru-cache.ts` — hit/miss/eviction/expiration counters + `stats()`.
+- `apps/api/src/cache/response-cache.service.ts` — semantic-tier counters + three-layer `stats()`.
+- `apps/api/src/cache/lru-cache.test.ts`, `.../response-cache.service.test.ts` — +7 tests.
+- `apps/api/src/analytics/analytics.controller.ts`, `analytics.module.ts` — `GET /admin/analytics/cache`.
+- `packages/shared/src/analytics.ts`, `src/index.ts` — `CacheLayerStatsDto` / `CacheAnalyticsDto`.
+- `load/smoke.mjs`, `load/README.md` — new opt-in load smoke harness.
+- `knip.json` — ignore `load/**`.
+
+**Note for reviewers (env, not code):** a stale `apps/admin/.next/cache` can fail the admin standalone build with `Unexpected end of JSON input` / `Expected end of object`; `rm -rf apps/admin/.next/cache` clears it. Typecheck/pages are unaffected.

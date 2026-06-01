@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { normalizeText, type RetrievedChunk } from "@expertos/ai";
-import type { RetrievalQueryInput } from "@expertos/shared";
+import type { RetrievalQueryInput, CacheAnalyticsDto } from "@expertos/shared";
 import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { StructuredLogger } from "../observability/logger.service";
@@ -49,6 +49,9 @@ interface AnswerKeyParams {
 export class ResponseCacheService {
   private readonly retrievalCache = new LruCache<RetrievedChunk[]>(RETRIEVAL_CACHE);
   private readonly answerCache = new LruCache<CachedAnswer>(ANSWER_CACHE);
+  /** Persistent semantic-tier hit/miss counters (the DB lookup, not an LRU — see {@link stats}). */
+  private semanticHits = 0;
+  private semanticMisses = 0;
 
   constructor(
     private readonly rls: RlsService,
@@ -120,10 +123,12 @@ export class ResponseCacheService {
       }),
     );
     if (persisted) {
+      this.semanticHits += 1;
       this.answerCache.set(key, persisted);
       this.logger.info("answer cache hit", { tier: "semantic" });
       return persisted;
     }
+    this.semanticMisses += 1;
     return undefined;
   }
 
@@ -138,6 +143,42 @@ export class ResponseCacheService {
         answer,
       }),
     );
+  }
+
+  // Effectiveness (M11.3) ─────────────────────────────────────────────────────
+
+  /**
+   * A cumulative, **per-instance** effectiveness snapshot across all three layers — the
+   * observability the caching tuning turns on (you can't size `maxEntries`/`ttlMs` without seeing
+   * the hit rate they produce). Surfaced by the admin cache endpoint and read by the load-smoke
+   * harness after a run. `answerOverall` folds both answer tiers into one served-vs-lookups rate:
+   * every {@link lookupAnswer} consults the in-process tier first (so its hits + misses is the total
+   * lookup count), and a lookup is "served" by a memory hit *or* a semantic hit.
+   */
+  stats(): CacheAnalyticsDto {
+    const retrieval = this.retrievalCache.stats();
+    const answerMemory = this.answerCache.stats();
+    const semanticLookups = this.semanticHits + this.semanticMisses;
+    const lookups = answerMemory.hits + answerMemory.misses;
+    const served = answerMemory.hits + this.semanticHits;
+    return {
+      retrieval: { ...retrieval },
+      answerMemory: { ...answerMemory },
+      semantic: {
+        size: null,
+        maxEntries: null,
+        hits: this.semanticHits,
+        misses: this.semanticMisses,
+        evictions: 0,
+        expirations: 0,
+        hitRate: semanticLookups === 0 ? 0 : this.semanticHits / semanticLookups,
+      },
+      answerOverall: {
+        lookups,
+        served,
+        hitRate: lookups === 0 ? 0 : served / lookups,
+      },
+    };
   }
 
   // Invalidation ─────────────────────────────────────────────────────────────
