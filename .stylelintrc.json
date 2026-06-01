@@ -12,6 +12,19 @@
     "keyframes-name-pattern": null,
     "value-keyword-case": null,
     "property-no-vendor-prefix": null,
-    "shorthand-property-no-redundant-values": null
-  }
+    "shorthand-property-no-redundant-values": null,
+    "declaration-block-single-line-max-declarations": null,
+    "color-hex-length": null,
+    "color-no-hex": true,
+    "unit-disallowed-list": ["px"]
+  },
+  "overrides": [
+    {
+      "files": ["**/ds.css"],
+      "rules": {
+        "color-no-hex": null,
+        "unit-disallowed-list": null
+      }
+    }
+  ]
 }

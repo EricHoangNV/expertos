@@ -20,6 +20,13 @@
     "*.config.cjs"
   ],
   "rules": {
-    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "Literal[value=/^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/]",
+        "message": "Hardcoded hex colors are banned — use a ds.css design token (var(--token)) instead. (design-system guard, P0.6)"
+      }
+    ]
   }
 }

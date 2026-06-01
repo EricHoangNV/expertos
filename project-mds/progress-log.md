@@ -191,3 +191,26 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - The DI graph (global module + middleware + APP_FILTER + Sentry) was validated by bootstrapping the built `dist/app.module` (`NestFactory.create` → `init` → `close`) with dummy creds — confirmed clean wiring + correct structured log output. Throwaway smoke, not committed.
 - `RlsService` now has its **first real consumer** (`UsageLogService`). M1's ingestion/retrieval route should record usage via `UsageLogService.record(...)` and is the natural place to add the first `@nestjs/testing` module-level test (re-add the dep + knip ignore then).
 - `costMicros` unit = millionths of a USD cent. Feeds Open Decision #4 (unit economics) + M10 analytics.
+
+---
+
+## P0.6 — Design system foundation (UI primitives + token guard)
+
+**Date:** 2026-06-01
+
+**What shipped**
+- Added the remaining `packages/ui` React primitives over the ds.css class components: `Card`, `Chip`, `Cite`, `Field` (+ `Input`/`Select`/`Textarea`), `Table`, `Stat`, `Bar`, `Shell` (+ `Topbar`/`Content`). `Button`/`Badge`/`cx` already existed. All exported from `src/index.ts`.
+- `Cite` enforces the citation-integrity rule structurally: defaults `resolved={false}` and returns `null` until resolved, so an unresolved marker is never flashed. `variant="upload"` renders the info-blue `.cite.upload` treatment; `knowledge` is crimson.
+- `Bar` clamps + `Number.isFinite`-guards its `value` (directive #9).
+- **Token guard wired into `pnpm lint`:**
+  - Stylelint: `.stylelintrc.json` now sets `color-no-hex: true` + `unit-disallowed-list: ["px"]` globally, with a `**/ds.css` override exempting the token source-of-truth. Also disabled `declaration-block-single-line-max-declarations` + `color-hex-length` so ds.css passes stylelint-config-standard (these were the failures noted in the prior state). New root scripts: `lint:css` (stylelint over `packages/**/src/**/*.css` + `apps/**/app/**/*.css`), chained into `lint`.
+  - ESLint: `no-restricted-syntax` rule banning anchored hex-color string literals (`^#([0-9a-fA-F]{3,4}|{6}|{8})$`) added to root `.eslintrc.json` and both app configs (`apps/web`, `apps/admin`).
+- ds.css + Google Fonts were already imported at both Next.js app roots (no change needed).
+
+**Verification**
+- `pnpm build` (7/7), `pnpm typecheck` (10/10), `pnpm test` (ui cx 3/3, 100%), `pnpm lint` (7/7 + lint:css), `pnpm deadcode` (knip clean) — all green.
+- Guards proven non-vacuous: a temp `.tsx` with `"#fff"` fails ESLint; a temp non-ds `.css` with `#abcdef` + `13px` fails stylelint (`color-no-hex` + `unit-disallowed-list`).
+
+**Notes**
+- Component `.tsx` files are intentionally not unit-tested: ui `jest.config.cjs` collects coverage only from `src/**/*.ts` (helpers), so the 90% gate stays on `cx.ts`. Component rendering is covered by app-level E2E later (M11).
+- knip stays clean because `index.ts` is the package entry (its exports are the public API).
