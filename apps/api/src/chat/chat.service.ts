@@ -21,6 +21,7 @@ import { UsageLogService } from "../observability/usage-log.service";
 import { StructuredLogger } from "../observability/logger.service";
 import { ResponseCacheService } from "../cache/response-cache.service";
 import type { CachedAnswer } from "../cache/cache.types";
+import { RecommendationService } from "../consultation/recommendation.service";
 import { CHAT_DEGRADED_LLM_PROVIDER, CHAT_LLM_PROVIDER } from "./chat.tokens";
 import { ConversationService } from "./conversation.service";
 
@@ -54,6 +55,7 @@ export class ChatService {
     private readonly usage: UsageLogService,
     private readonly logger: StructuredLogger,
     private readonly cache: ResponseCacheService,
+    private readonly recommendation: RecommendationService,
   ) {}
 
   /**
@@ -232,6 +234,17 @@ export class ChatService {
         degraded,
       });
 
+      // M7.1 consultation funnel: evaluate the admin-configured rules against this turn and, if one
+      // fires, surface an in-chat "book a consultation" prompt on the terminal event. Non-fatal by
+      // design — the service degrades to null rather than break an answer that has already streamed.
+      const recommendation = await this.recommendation.recommend(user, {
+        conversationId: persisted.conversationId,
+        question: input.text,
+        answer: built.text,
+        citationCount: built.citations.length,
+        insufficientKnowledge: facts.length === 0,
+      });
+
       yield {
         type: "done",
         conversationId: persisted.conversationId,
@@ -242,6 +255,7 @@ export class ChatService {
         // than present an ungrounded reply as a confident answer.
         insufficientKnowledge: facts.length === 0,
         degraded,
+        recommendation,
       };
     } catch (error) {
       this.logger.error("chat answer failed", {
@@ -299,6 +313,16 @@ export class ChatService {
       degraded,
     });
 
+    // A cached answer is a real turn in this user's history, so it gets the same M7.1 funnel
+    // evaluation (a cacheable answer is grounded + first-turn, so topic/high-intent can still fire).
+    const recommendation = await this.recommendation.recommend(user, {
+      conversationId: persisted.conversationId,
+      question: input.text,
+      answer: hit.text,
+      citationCount: hit.citations.length,
+      insufficientKnowledge: false,
+    });
+
     yield {
       type: "done",
       conversationId: persisted.conversationId,
@@ -312,6 +336,7 @@ export class ChatService {
       })),
       insufficientKnowledge: false,
       degraded,
+      recommendation,
     };
   }
 

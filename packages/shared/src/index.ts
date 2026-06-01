@@ -57,6 +57,11 @@ export type {
   EntitlementsDto,
   EntitlementDeniedPayload,
 } from "./entitlements";
+export type {
+  RecommendationTriggerValue,
+  ConsultationTypeDto,
+  ConsultationRecommendationDto,
+} from "./consultation";
 export { billingCheckoutSchema } from "./billing";
 export type {
   BillingCheckoutInput,

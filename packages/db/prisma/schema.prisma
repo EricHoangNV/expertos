@@ -927,6 +927,30 @@ model ConsultationNote {
   @@map("consultation_notes")
 }
 
+/// Admin-configurable consultation-recommendation rules (M7.1) — one row per trigger.
+/// Reference/config data like `plan_entitlements` (no tenant RLS): seeded from a code default,
+/// then admin-editable in the portal (M8.3) so the funnel can be tuned with no deploy. The pure
+/// rules engine (`@expertos/ai` `evaluateRecommendation`) reads these rows; it never hardcodes them.
+model RecommendationRule {
+  id      String                @id @default(uuid()) @db.Uuid
+  trigger RecommendationTrigger @unique
+  enabled Boolean               @default(true)
+  /// `depth`: minimum assistant turns before firing; `low_confidence`: max citations still "low".
+  /// Unused by `topic`/`high_intent` (keyword rules).
+  threshold Int?
+  /// Lowercased match terms for `topic` (in question + answer) / `high_intent` (in question only).
+  /// Unused by `depth`/`low_confidence` (threshold rules).
+  keywords String[] @default([])
+  /// Higher wins when several rules fire on the same turn (only one recommendation is surfaced).
+  priority Int @default(0)
+  /// Which `consultation_types.key` to recommend booking; null falls back to the active default.
+  consultationTypeKey String?  @map("consultation_type_key")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("recommendation_rules")
+}
+
 // ──────────────────────────── Cache ────────────────────────────
 
 /// Semantic question cache (normalized question → cached answer + citations).

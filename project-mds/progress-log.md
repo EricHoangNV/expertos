@@ -1080,3 +1080,37 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - `cost_micros` is now the margin signal for M10 analytics + the M8.3 reconciliation view (sum per user/window vs `plan_prices.amountCents`).
 - **M6 is COMPLETE.** Next milestone is M7 (consultation funnel) or M8 (admin/expert portals — and the matrix editor that operationalises these quotas).
 - Sandbox note: the whole-monorepo `pnpm test` intermittently SIGSEGVs jest workers under memory pressure (0 assertion failures, only "suite failed to run") — confirmed all suites pass run individually / per-package; the standalone `pnpm --filter @expertos/api test` passed 354/354.
+
+## M7.1 — Rule-based recommendation hooks (consultation funnel)
+**Date:** 2026-06-01
+**Ref:** PRD §"Consultation funnel" / Task Manifest M7.1
+
+**What was done:**
+- New pure, deterministic recommendation engine `@expertos/ai` `recommendation/` (`types.ts` + `evaluate.ts`): `evaluateRecommendation(signals, rules)` returns the single highest-priority fired rule (ties broken by declared trigger order) or null. Four triggers — `high_intent` (intent phrase in question), `topic` (high-stakes term in question or answer), `low_confidence` (insufficient-knowledge OR citations ≤ threshold), `depth` (assistant-turn count ≥ threshold). Keyword matching is whole-word over the shared `tokenize` (NFC+lowercase, directive §36) so VI diacritics stay whole and multi-word phrases match a contiguous run; a null/≤0 threshold never fires.
+- New `apps/api/src/consultation/` module: `RecommendationService.recommend(user, input)` loads enabled `recommendation_rules` (RLS-exempt config), derives the conversation's true assistant-turn count, runs the engine, and on a fire persists a `consultation_recommendations` row + returns the wire DTO (trigger, plain-language reason, resolved consultation type). Wrapped non-fatally — any failure degrades to null so it never breaks an already-streamed answer. `ConsultationModule` (imports AuthModule) exports it.
+- Wired into `ChatService.answerStream` on both terminal paths (freshly generated + cache hit); result carried on `ChatStreamEvent.done.recommendation`.
+- Schema: new `recommendation_rules` table (migration `20260601030000_recommendation_rules`) on the pre-existing `recommendation_trigger` enum — one row per trigger (`@unique`), reference/config (no tenant RLS, admin-editable via M8.3). Seed adds launch defaults (high_intent 50 / low_confidence 40 thr 0 / topic 30 / depth 10 thr 4, all → `intro_call`).
+- New shared contract `packages/shared/src/consultation.ts` (`RecommendationTriggerValue`, `ConsultationTypeDto`, `ConsultationRecommendationDto`).
+- Added a non-Error-throw test to bring `recommendation.service.ts` branch coverage to 100%.
+
+**Key decisions:**
+- Rules are config (DB rows), not code — the funnel tunes with no deploy (mirrors `plan_entitlements`). The engine never embeds thresholds/keywords.
+- Reuse the shared tokenizer for keyword matching so the funnel can't drift from the embedder/eval text pipeline.
+- Non-fatal by design: the recommendation runs after the answer streamed, so a hiccup must degrade to "no prompt", never an error.
+- `depth` uses the conversation's true assistant-turn count (a `message.count`), not the token-windowed prompt history.
+- API + persistence only — the in-chat Book/Maybe-later/Ask-another UI + TidyCal booking are M7.2 (DTO already on the wire).
+
+**Files changed:**
+- `packages/ai/src/recommendation/{types.ts,evaluate.ts,evaluate.test.ts}` — new engine + 15 unit tests.
+- `packages/ai/src/index.ts` — export `evaluateRecommendation`, `RECOMMENDATION_TRIGGERS`, rule/signal/outcome types.
+- `apps/api/src/consultation/{consultation.module.ts,recommendation.service.ts,recommendation.service.test.ts}` — new service + module + 8 tests.
+- `apps/api/src/chat/{chat.module.ts,chat.service.ts,chat.service.test.ts}` — import ConsultationModule, evaluate on `done` (both paths), tests.
+- `packages/shared/src/{consultation.ts,index.ts,chat.ts}` — new wire types + `done.recommendation`.
+- `packages/db/prisma/schema.prisma` — `RecommendationRule` model.
+- `packages/db/prisma/migrations/20260601030000_recommendation_rules/migration.sql` — table + unique index + GRANT.
+- `packages/db/prisma/seed.ts` — launch-default rules.
+
+**Notes for next iteration:**
+- M7.2 extends `RecommendationService`: add a `respond(user, recId, response)` + `POST /consultation-recommendations/:id/respond` (the `recommendation_response` enum already exists — add the column), build TidyCal booking off `ConsultationType.tidycalLink` (null in seed, configured later), and surface the prompt in the web chat UI from `done.recommendation`.
+- Seam-tested with a mocked tx (the real `consultation_recommendations` write + `message.count` join the M11 Testcontainers list). Migration + seed were validated against a live Postgres this session — all 4 rules present with correct priority/threshold/keywords.
+- Sandbox: regenerating the Prisma client with `engineType=binary` (env `PRISMA_CLIENT_ENGINE_TYPE=binary`) produced an `index.js` jest can't parse (`SyntaxError` on the inline schema) — the default **library** engine generation parses fine for jest (all api tests mock the tx, no runtime SIGILL). The seed/CLI still need the binary engine at runtime. So: default library generation for tests, binary only when actually executing Prisma queries.

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ConsultationRecommendationDto } from "./consultation";
 import { languageSchema, type LanguageValue } from "./ingestion";
 import { normalizeText } from "./text";
 
@@ -95,6 +96,12 @@ export type ChatStreamEvent =
        * client can surface a subtle "fair-use mode" note — never an error.
        */
       degraded?: boolean;
+      /**
+       * An in-chat consultation recommendation (M7.1): present only when an admin-configured rule
+       * fired on this turn (topic / depth / low confidence / high intent), otherwise null. The
+       * client renders a Book / Maybe later / Ask another prompt from it.
+       */
+      recommendation?: ConsultationRecommendationDto | null;
     }
   | { type: "error"; message: string };
 

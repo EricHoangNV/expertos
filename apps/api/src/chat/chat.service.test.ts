@@ -7,6 +7,7 @@ import type { StructuredLogger } from "../observability/logger.service";
 import type { AuthUser } from "../auth/auth.types";
 import type { ResponseCacheService } from "../cache/response-cache.service";
 import type { CachedAnswer } from "../cache/cache.types";
+import type { RecommendationService } from "../consultation/recommendation.service";
 import type { ChatMessage, LlmProvider, RetrievedChunk } from "@expertos/ai";
 import type { ChatRequestInput, ChatStreamEvent } from "@expertos/shared";
 
@@ -43,7 +44,12 @@ function baseInput(over: Partial<ChatRequestInput> = {}): ChatRequestInput {
 }
 
 function makeService(
-  opts: { streaming?: boolean; deltas?: string[]; cacheHit?: CachedAnswer } = {},
+  opts: {
+    streaming?: boolean;
+    deltas?: string[];
+    cacheHit?: CachedAnswer;
+    recommendation?: unknown;
+  } = {},
 ) {
   const streaming = opts.streaming ?? true;
   const deltas = opts.deltas ?? ["Answer [1]", "[2]."];
@@ -94,6 +100,9 @@ function makeService(
   const storeAnswer = jest.fn().mockResolvedValue(undefined);
   const cache = { answerKey, lookupAnswer, storeAnswer } as unknown as ResponseCacheService;
 
+  const recommend = jest.fn().mockResolvedValue(opts.recommendation ?? null);
+  const recommendation = { recommend } as unknown as RecommendationService;
+
   const service = new ChatService(
     { retrieve, retrieveUploads } as unknown as RetrievalService,
     { retrieveVoice } as unknown as VoiceService,
@@ -103,6 +112,7 @@ function makeService(
     { record } as unknown as UsageLogService,
     { info, error } as unknown as StructuredLogger,
     cache,
+    recommendation,
   );
 
   return {
@@ -120,6 +130,7 @@ function makeService(
       answerKey,
       lookupAnswer,
       storeAnswer,
+      recommend,
     },
   };
 }
@@ -195,6 +206,63 @@ describe("ChatService.answerStream", () => {
         { ordinal: 2, chunkId: "c2", documentVersionId: "dv1", quote: "fact two", kind: "knowledge" },
       ],
     });
+  });
+
+  it("threads a fired consultation recommendation onto the done event (M7.1)", async () => {
+    const rec = {
+      id: "rec-1",
+      trigger: "high_intent" as const,
+      reason: "book a consultation",
+      consultationType: { key: "intro_call", name: "Intro", durationMinutes: 30, tidycalLink: null },
+    };
+    const { service, stubs } = makeService({ recommendation: rec });
+    const input = baseInput({ conversationId: "conv-1" });
+
+    const events = await drain(service.answerStream(USER, input));
+
+    // The engine is fed this turn's signals against the persisted conversation, after generation.
+    expect(stubs.recommend).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({
+        conversationId: "conv-1",
+        question: input.text,
+        citationCount: 2,
+        insufficientKnowledge: false,
+      }),
+    );
+    expect(events.at(-1)).toMatchObject({ type: "done", recommendation: rec });
+  });
+
+  it("emits recommendation:null on the done event when no rule fires (M7.1)", async () => {
+    const { service, stubs } = makeService();
+
+    const events = await drain(service.answerStream(USER, baseInput()));
+
+    expect(stubs.recommend).toHaveBeenCalledTimes(1);
+    expect(events.at(-1)).toMatchObject({ type: "done", recommendation: null });
+  });
+
+  it("evaluates the funnel on a cache hit too, with the cached answer's signals (M7.1)", async () => {
+    const rec = {
+      id: "rec-2",
+      trigger: "topic" as const,
+      reason: "high-stakes topic",
+      consultationType: null,
+    };
+    const { service, stubs } = makeService({ cacheHit: CACHED_ANSWER, recommendation: rec });
+
+    const events = await drain(service.answerStream(USER, baseInput()));
+
+    expect(stubs.recommend).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({
+        conversationId: "conv-1",
+        answer: "Cached answer [1].",
+        citationCount: 1,
+        insufficientKnowledge: false,
+      }),
+    );
+    expect(events.at(-1)).toMatchObject({ type: "done", recommendation: rec });
   });
 
   it("serves the cheaper degraded model when the fair-use gate degrades (M6.3)", async () => {

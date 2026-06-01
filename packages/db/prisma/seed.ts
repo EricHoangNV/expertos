@@ -89,6 +89,50 @@ const MATRIX: Record<string, Record<string, Cell>> = {
   },
 };
 
+// Launch defaults for the M7.1 consultation-recommendation rules (admin-tunable via the M8.3
+// editor — no deploy). One row per trigger; `priority` resolves which fires when several match
+// (high intent strongest, then low confidence, topic, depth). Keywords are lowercased — the engine
+// matches them whole-word over the shared tokenizer, so "tax" hits "income tax" but not "syntax".
+type RuleSeed = {
+  trigger: "topic" | "depth" | "low_confidence" | "high_intent";
+  enabled: boolean;
+  threshold?: number | null;
+  keywords?: string[];
+  priority: number;
+  consultationTypeKey?: string | null;
+};
+const RECOMMENDATION_RULES: RuleSeed[] = [
+  {
+    trigger: "high_intent",
+    enabled: true,
+    priority: 50,
+    keywords: [
+      "book",
+      "hire",
+      "consult",
+      "consultation",
+      "work with you",
+      "talk to you",
+      "schedule a call",
+      "engage you",
+    ],
+    consultationTypeKey: "intro_call",
+  },
+  // Fire only on a genuinely ungrounded answer (no citations / insufficient knowledge), so a normal
+  // well-cited reply never nags the user (M3.4 graceful next step → human path).
+  { trigger: "low_confidence", enabled: true, priority: 40, threshold: 0, consultationTypeKey: "intro_call" },
+  // High-stakes topics where the PRD says to steer toward a human rather than a confident AI answer.
+  {
+    trigger: "topic",
+    enabled: true,
+    priority: 30,
+    keywords: ["legal", "lawsuit", "tax", "taxes", "invest", "investment", "medical", "diagnosis", "contract"],
+    consultationTypeKey: "intro_call",
+  },
+  // An engaged user who keeps asking is a strong consultation candidate — after several turns.
+  { trigger: "depth", enabled: true, priority: 10, threshold: 4, consultationTypeKey: "intro_call" },
+];
+
 async function main() {
   await prisma.tenant.upsert({
     where: { id: GLOBAL_TENANT_ID },
@@ -149,6 +193,27 @@ async function main() {
     update: { name: "Intro consultation", durationMinutes: 30 },
     create: { key: "intro_call", name: "Intro consultation", durationMinutes: 30 },
   });
+
+  for (const rule of RECOMMENDATION_RULES) {
+    await prisma.recommendationRule.upsert({
+      where: { trigger: rule.trigger },
+      update: {
+        enabled: rule.enabled,
+        threshold: rule.threshold ?? null,
+        keywords: rule.keywords ?? [],
+        priority: rule.priority,
+        consultationTypeKey: rule.consultationTypeKey ?? null,
+      },
+      create: {
+        trigger: rule.trigger,
+        enabled: rule.enabled,
+        threshold: rule.threshold ?? null,
+        keywords: rule.keywords ?? [],
+        priority: rule.priority,
+        consultationTypeKey: rule.consultationTypeKey ?? null,
+      },
+    });
+  }
 
   const [tenants, features, plans, entitlements] = await Promise.all([
     prisma.tenant.count(),

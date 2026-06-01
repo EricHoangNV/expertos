@@ -47,6 +47,14 @@ export type {
   AnswerPromptInput,
   AnswerPrompt,
 } from "./prompt/types";
+export { evaluateRecommendation } from "./recommendation/evaluate";
+export { RECOMMENDATION_TRIGGERS } from "./recommendation/types";
+export type {
+  RecommendationTrigger,
+  RecommendationRule,
+  RecommendationSignals,
+  RecommendationOutcome,
+} from "./recommendation/types";
 export { evaluateRetrieval } from "./eval/harness";
 export { RETRIEVAL_GOLDEN_SET } from "./eval/golden-set";
 export type {
