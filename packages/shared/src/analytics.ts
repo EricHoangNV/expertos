@@ -1,6 +1,12 @@
 import { z } from "zod";
 import type { RecommendationTriggerValue } from "./consultation";
 import type { ConsultationStatusValue, RecommendationFunnelResponse } from "./expert";
+import type {
+  ReviewRequestStatusValue,
+  ReviewTriggerModeValue,
+  ReviewVerdictValue,
+  ReviewVisibilityValue,
+} from "./concierge";
 
 /**
  * Usage & cost analytics wire types (M10.1, PRD §"Phase 1 — MVP" → M10 "usage & cost"). The admin
@@ -136,4 +142,105 @@ export interface FunnelAnalyticsDto {
   byConsultationStatus: Record<ConsultationStatusValue, number>;
   /** Booked-and-beyond consultation revenue attributed to the funnel (cents). */
   bookedRevenueCents: number;
+}
+
+/**
+ * Concierge (human-in-the-loop) operations analytics wire types (M10.3, PRD §"Phase 1 — MVP" → M10
+ * "concierge volume/SLA/verdict metrics; knowledge-quality signals"). The admin dashboard reads a
+ * single platform-wide concierge report over the `human_review_requests` / `review_responses` ledgers
+ * (M9) plus the chunk-flagging knowledge-gap signal (M9.4): how many reviews were requested (by
+ * status / trigger mode / visibility), whether the team is hitting its SLA, the spread of reviewer
+ * verdicts, and which published source chunks reviewers have flagged as weak.
+ *
+ * Read-only and OD#1-independent — the {@link UsageAnalyticsDto} / {@link FunnelAnalyticsDto}
+ * cross-tenant admin shape, but over the concierge tables. All request/verdict counts cover the
+ * trailing window; the knowledge-quality flag counts are **cumulative** (a chunk's `flag_count` has no
+ * per-event history) — only `recentlyFlagged` is windowed via `last_flagged_at`.
+ */
+
+/**
+ * Trailing-window query for the concierge report: how many whole days (including today) it covers.
+ * Same shape and bounds as {@link usageAnalyticsQuerySchema}.
+ */
+export const conciergeAnalyticsQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(30),
+});
+export type ConciergeAnalyticsQueryInput = z.infer<typeof conciergeAnalyticsQuerySchema>;
+
+/** SLA adherence over the review requests created in the window. */
+export interface ConciergeSlaDto {
+  /** Requests that carry an SLA due date (the denominator for adherence). */
+  tracked: number;
+  /** Answered at or before their SLA due date. */
+  met: number;
+  /** Answered after their SLA due date. */
+  breached: number;
+  /** Still unanswered (`requested`/`in_review`) and already past their SLA due date. */
+  openOverdue: number;
+  /** Mean minutes from request to answer across answered requests, or null when none were answered. */
+  avgResponseMinutes: number | null;
+}
+
+/** Reviewer-verdict spread over the responses recorded in the window. */
+export interface ConciergeVerdictsDto {
+  /** Total verdicts recorded in the window. */
+  total: number;
+  /** Verdicts grouped by quality call (good/bad/great), every key present. */
+  byVerdict: Record<ReviewVerdictValue, number>;
+  /** Responses where the reviewer edited the answer (the flywheel's voice/knowledge feed). */
+  edited: number;
+  /** Responses whose refined answer was delivered back to the user (M9.3 visible delivery). */
+  delivered: number;
+}
+
+/** One published source chunk a reviewer flagged as weak (a knowledge-gap signal, M9.4). */
+export interface ConciergeFlaggedChunkDto {
+  /** The chunk id. */
+  chunkId: string;
+  /** The document version the chunk belongs to (provenance for re-authoring). */
+  documentVersionId: string;
+  /** How many times an answer grounded on this chunk was flagged `bad` (cumulative). */
+  flagCount: number;
+  /** When it was last flagged (ISO-8601), or null. */
+  lastFlaggedAt: string | null;
+  /** A short snippet of the chunk's summary/content so the operator can recognise it. */
+  excerpt: string;
+}
+
+/** Knowledge-quality signals derived from the concierge `bad`-verdict chunk flagging (M9.4). */
+export interface ConciergeKnowledgeQualityDto {
+  /** Published chunks with at least one flag (cumulative). */
+  flaggedChunks: number;
+  /** Sum of every chunk's flag count (cumulative). */
+  totalFlags: number;
+  /** Chunks flagged within the trailing window (`last_flagged_at >= since`). */
+  recentlyFlagged: number;
+  /** The most-flagged chunks, highest flag count first (capped); empty when nothing is flagged. */
+  topFlagged: ConciergeFlaggedChunkDto[];
+}
+
+/**
+ * The admin concierge analytics report (`GET /admin/analytics/concierge`). Request/verdict counts
+ * cover the trailing `windowDays`; the knowledge-quality flag counts are cumulative (see the module
+ * note above).
+ */
+export interface ConciergeAnalyticsDto {
+  /** Days covered by the request/verdict metrics. */
+  windowDays: number;
+  /** Start of the window (UTC ISO; start-of-day of the earliest day covered). */
+  since: string;
+  /** Review requests created in the window. */
+  totalRequests: number;
+  /** Requests grouped by lifecycle status, every key present. */
+  byStatus: Record<ReviewRequestStatusValue, number>;
+  /** Requests grouped by trigger mode (Mode A `user_prompted` vs Mode B `auto_silent`). */
+  byTriggerMode: Record<ReviewTriggerModeValue, number>;
+  /** Requests grouped by visibility (surfaced to the user vs silent shadow review). */
+  byVisibility: Record<ReviewVisibilityValue, number>;
+  /** SLA adherence over the window's requests. */
+  sla: ConciergeSlaDto;
+  /** Reviewer-verdict spread over the window's responses. */
+  verdicts: ConciergeVerdictsDto;
+  /** Knowledge-quality signals from chunk flagging (cumulative; see the module note). */
+  knowledge: ConciergeKnowledgeQualityDto;
 }

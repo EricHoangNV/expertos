@@ -18,6 +18,16 @@ function makeTx() {
     conversation: { count: jest.fn().mockResolvedValue(0) },
     consultationRecommendation: { groupBy: jest.fn().mockResolvedValue([]) },
     consultation: { groupBy: jest.fn().mockResolvedValue([]) },
+    humanReviewRequest: { groupBy: jest.fn().mockResolvedValue([]) },
+    reviewResponse: {
+      groupBy: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+    },
+    chunk: {
+      count: jest.fn().mockResolvedValue(0),
+      aggregate: jest.fn().mockResolvedValue({ _sum: { flagCount: null } }),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     // dailySeries reads first, then activeUsers — sequence with mockResolvedValueOnce in tests.
     $queryRawUnsafe: jest.fn().mockResolvedValue([]),
   };
@@ -274,5 +284,188 @@ describe("AnalyticsService.funnel", () => {
       createdAt: { gte: since },
       recommendations: { some: {} },
     });
+  });
+});
+
+describe("AnalyticsService.concierge", () => {
+  it("combines volume, SLA, verdicts, and knowledge-quality signals", async () => {
+    const tx = makeTx();
+    // Volume: one groupBy folded into status / trigger-mode / visibility.
+    tx.humanReviewRequest.groupBy.mockResolvedValue([
+      { status: "answered", triggerMode: "auto_silent", visibility: "silent", _count: { _all: 6 } },
+      { status: "requested", triggerMode: "auto_silent", visibility: "silent", _count: { _all: 2 } },
+      {
+        status: "answered",
+        triggerMode: "user_prompted",
+        visibility: "visible",
+        _count: { _all: 3 },
+      },
+      {
+        status: "escalated",
+        triggerMode: "user_prompted",
+        visibility: "visible",
+        _count: { _all: 1 },
+      },
+    ]);
+    // SLA: FILTERed counts (bigint) + average response seconds (numeric string).
+    tx.$queryRawUnsafe.mockResolvedValue([
+      { tracked: 12n, met: 8n, breached: 1n, open_overdue: 2n, avg_response_seconds: "5400" },
+    ]);
+    // Verdicts: grouped + windowed edited/delivered.
+    tx.reviewResponse.groupBy.mockResolvedValue([
+      { verdict: "good", _count: { _all: 5 } },
+      { verdict: "great", _count: { _all: 3 } },
+      { verdict: "bad", _count: { _all: 1 } },
+    ]);
+    tx.reviewResponse.count.mockResolvedValueOnce(4).mockResolvedValueOnce(4); // edited, delivered
+    // Knowledge quality: flagged-chunk count, total flags, recently flagged, top list.
+    tx.chunk.count.mockResolvedValueOnce(3).mockResolvedValueOnce(2); // flaggedChunks, recentlyFlagged
+    tx.chunk.aggregate.mockResolvedValue({ _sum: { flagCount: 7 } });
+    tx.chunk.findMany.mockResolvedValue([
+      {
+        id: "c1",
+        documentVersionId: "dv1",
+        flagCount: 4,
+        lastFlaggedAt: new Date("2026-05-30T10:00:00Z"),
+        summary: "  A weak\n  paragraph   summary  ",
+        content: "full content",
+      },
+      {
+        id: "c2",
+        documentVersionId: "dv2",
+        flagCount: 3,
+        lastFlaggedAt: null,
+        summary: null,
+        content: "fallback content when summary is null",
+      },
+    ]);
+    const { service, run } = makeService(tx);
+
+    const report = await service.concierge(ADMIN, { days: 30 });
+
+    expect(run).toHaveBeenCalledWith(ADMIN, expect.any(Function));
+    expect(report.windowDays).toBe(30);
+    expect(report.totalRequests).toBe(12);
+    expect(report.byStatus).toEqual({
+      requested: 2,
+      in_review: 0,
+      answered: 9,
+      escalated: 1,
+      dismissed: 0,
+    });
+    expect(report.byTriggerMode).toEqual({ user_prompted: 4, auto_silent: 8 });
+    expect(report.byVisibility).toEqual({ visible: 4, silent: 8 });
+    // SLA: bigints coerced; 5400s → 90 minutes.
+    expect(report.sla).toEqual({
+      tracked: 12,
+      met: 8,
+      breached: 1,
+      openOverdue: 2,
+      avgResponseMinutes: 90,
+    });
+    // Verdicts: every key present, plus windowed edited/delivered.
+    expect(report.verdicts).toEqual({
+      total: 9,
+      byVerdict: { good: 5, bad: 1, great: 3 },
+      edited: 4,
+      delivered: 4,
+    });
+    // Knowledge quality: cumulative counts + collapsed-whitespace excerpts (summary, then content).
+    expect(report.knowledge.flaggedChunks).toBe(3);
+    expect(report.knowledge.totalFlags).toBe(7);
+    expect(report.knowledge.recentlyFlagged).toBe(2);
+    expect(report.knowledge.topFlagged).toEqual([
+      {
+        chunkId: "c1",
+        documentVersionId: "dv1",
+        flagCount: 4,
+        lastFlaggedAt: "2026-05-30T10:00:00.000Z",
+        excerpt: "A weak paragraph summary",
+      },
+      {
+        chunkId: "c2",
+        documentVersionId: "dv2",
+        flagCount: 3,
+        lastFlaggedAt: null,
+        excerpt: "fallback content when summary is null",
+      },
+    ]);
+  });
+
+  it("returns zeros/empties for an idle concierge with no requests, verdicts, or flags", async () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+
+    const report = await service.concierge(ADMIN, { days: 7 });
+
+    expect(report.windowDays).toBe(7);
+    expect(report.totalRequests).toBe(0);
+    expect(report.byStatus).toEqual({
+      requested: 0,
+      in_review: 0,
+      answered: 0,
+      escalated: 0,
+      dismissed: 0,
+    });
+    expect(report.byTriggerMode).toEqual({ user_prompted: 0, auto_silent: 0 });
+    expect(report.byVisibility).toEqual({ visible: 0, silent: 0 });
+    // Empty SLA aggregate row → all zero, no average.
+    expect(report.sla).toEqual({
+      tracked: 0,
+      met: 0,
+      breached: 0,
+      openOverdue: 0,
+      avgResponseMinutes: null,
+    });
+    expect(report.verdicts).toEqual({
+      total: 0,
+      byVerdict: { good: 0, bad: 0, great: 0 },
+      edited: 0,
+      delivered: 0,
+    });
+    expect(report.knowledge).toEqual({
+      flaggedChunks: 0,
+      totalFlags: 0,
+      recentlyFlagged: 0,
+      topFlagged: [],
+    });
+  });
+
+  it("truncates a long excerpt and binds the window into every read", async () => {
+    const tx = makeTx();
+    const long = "x".repeat(400);
+    tx.chunk.count.mockResolvedValue(1);
+    tx.chunk.findMany.mockResolvedValue([
+      {
+        id: "c1",
+        documentVersionId: "dv1",
+        flagCount: 2,
+        lastFlaggedAt: null,
+        summary: long,
+        content: "ignored",
+      },
+    ]);
+    const { service } = makeService(tx);
+
+    const report = await service.concierge(ADMIN, { days: 1 });
+
+    // days = 1 → start of today (UTC midnight).
+    const since = tx.humanReviewRequest.groupBy.mock.calls[0][0].where.createdAt.gte as Date;
+    expect(since).toBeInstanceOf(Date);
+    expect(since.getUTCHours()).toBe(0);
+    expect(report.since).toBe(since.toISOString());
+    // Excerpt capped at 160 chars + ellipsis.
+    const excerpt = report.knowledge.topFlagged[0].excerpt;
+    expect(excerpt.endsWith("…")).toBe(true);
+    expect(excerpt.length).toBe(161);
+    // The SLA raw read binds the window start ($1) and a now cutoff ($2).
+    expect(tx.$queryRawUnsafe.mock.calls[0][1]).toBe(since);
+    expect(tx.$queryRawUnsafe.mock.calls[0][2]).toBeInstanceOf(Date);
+    // Verdict + recently-flagged reads bound by the window.
+    expect(tx.reviewResponse.groupBy.mock.calls[0][0].where).toEqual({ createdAt: { gte: since } });
+    const recentCall = tx.chunk.count.mock.calls.find(
+      (c: unknown[]) => (c[0] as { where: { lastFlaggedAt?: unknown } }).where.lastFlaggedAt != null,
+    );
+    expect(recentCall?.[0].where).toEqual({ lastFlaggedAt: { gte: since } });
   });
 });

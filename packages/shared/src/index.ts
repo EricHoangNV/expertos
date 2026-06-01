@@ -121,7 +121,11 @@ export type {
   RevenuePeriodDto,
   RevenueReportDto,
 } from "./revenue";
-export { usageAnalyticsQuerySchema, funnelAnalyticsQuerySchema } from "./analytics";
+export {
+  usageAnalyticsQuerySchema,
+  funnelAnalyticsQuerySchema,
+  conciergeAnalyticsQuerySchema,
+} from "./analytics";
 export type {
   UsageAnalyticsQueryInput,
   UsageByFeatureDto,
@@ -130,6 +134,12 @@ export type {
   UsageAnalyticsDto,
   FunnelAnalyticsQueryInput,
   FunnelAnalyticsDto,
+  ConciergeAnalyticsQueryInput,
+  ConciergeSlaDto,
+  ConciergeVerdictsDto,
+  ConciergeFlaggedChunkDto,
+  ConciergeKnowledgeQualityDto,
+  ConciergeAnalyticsDto,
 } from "./analytics";
 export { failedQueryListQuerySchema } from "./failed-queries";
 export type { FailedQueryListQueryInput, FailedQueryDto } from "./failed-queries";

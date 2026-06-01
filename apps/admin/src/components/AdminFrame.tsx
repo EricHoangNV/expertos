@@ -30,6 +30,7 @@ const NAV: NavItem[] = [
   { href: "/revenue", label: "Revenue", group: "Admin" },
   { href: "/analytics", label: "Usage & cost", group: "Admin" },
   { href: "/funnel", label: "Funnel", group: "Admin" },
+  { href: "/concierge-analytics", label: "Concierge ops", group: "Admin" },
   { href: "/entitlements", label: "Entitlements", group: "Admin" },
   { href: "/recommendation-rules", label: "Funnel rules", group: "Admin" },
   { href: "/concierge", label: "Concierge", group: "Admin" },

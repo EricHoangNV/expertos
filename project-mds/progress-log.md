@@ -2220,3 +2220,29 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 
 **Notes for next iteration:**
 - When adding new tests, update only the count in progress-state.md (e.g., `987 pass`). Record the per-test breakdown in your progress-log.md entry instead.
+
+---
+
+## M10.3 — Concierge volume/SLA/verdict metrics + knowledge-quality signals
+**Date:** 2026-06-01
+**Ref:** PRD.md Task Manifest — Phase 1, M10.3 (§M10 Analytics)
+
+**What was done:**
+- Added `AnalyticsService.concierge(user, query)` → `GET /admin/analytics/concierge` (admin-only, the existing `@Roles("admin")` controller). Same admin cross-tenant RLS read pattern as `usage`/`funnel` (the `is_admin` GUC inside `RlsService.run` grants the platform-wide read; no `tenant_id` predicate).
+- Four reads over the M9 concierge ledgers, all window-bounded except the cumulative knowledge counts:
+  - **Volume** — one `humanReviewRequest.groupBy` over (status, triggerMode, visibility), folded into three zero-initialised breakdowns + the window total.
+  - **SLA** — a raw FILTERed aggregate (`SLA_SQL`): `tracked` (has `sla_due_at`), `met` (`answered_at <= sla_due_at`), `breached` (after), `open_overdue` (unanswered `requested`/`in_review` past due, vs a `now` cutoff bound as `$2`), and `avg_response_seconds` → `avgResponseMinutes`. `count() FILTER`/`avg(epoch)` have no Prisma Client expression; constant SQL, both args bound; enum literals cast to `review_request_status`.
+  - **Verdicts** — `reviewResponse.groupBy` by verdict + windowed `edited`/`deliveredToUser` counts.
+  - **Knowledge quality** — the M9.4 chunk-flagging signal: `flaggedChunks` (cumulative `flag_count > 0`), `totalFlags` (`_sum`), `recentlyFlagged` (windowed via `last_flagged_at`), and a most-flagged top-10 (`flagCount desc, lastFlaggedAt desc`) with collapsed-whitespace excerpts (summary → content fallback). Flag counts are cumulative (no per-event history); only `recentlyFlagged` is windowed.
+- Shared wire types in `packages/shared/src/analytics.ts`: `conciergeAnalyticsQuerySchema` + `ConciergeAnalyticsDto`/`ConciergeSlaDto`/`ConciergeVerdictsDto`/`ConciergeFlaggedChunkDto`/`ConciergeKnowledgeQualityDto`, exported from the index.
+- Admin UI `apps/admin/app/concierge-analytics/page.tsx` (mirrors `funnel/page.tsx`): window selector + `Stat` headline row (requests, answered, SLA-met %, avg response, verdicts) + SLA badges + by-status table + trigger-mode/visibility/verdict badge rows + cumulative knowledge-quality stats + most-flagged table. Wired `getConciergeAnalytics` in `admin-client` and a "Concierge ops" nav entry (Admin group, after Funnel).
+
+**Tests:** `apps/api` +3 in `analytics.service.test.ts` (full report fold, idle-zeros, excerpt-truncation + window binding). Coverage: 100% all metrics. api 624 → 627; total 989.
+
+**Key decisions:**
+- One `groupBy` (status, triggerMode, visibility) folded three ways rather than three separate queries — matches the `funnel` recommendation fold and avoids extra round-trips.
+- SLA + chunk aggregates done in SQL/Prisma aggregates (not by pulling rows) to stay consistent with the read-only, no-row-fetch analytics pattern.
+- Knowledge-quality flag counts kept cumulative (the design intent of `chunks.flag_count`) with a windowed `recentlyFlagged` companion, instead of forcing a window that the schema can't honour.
+- Verdict tone helper kept local to the page (the concierge-reviews page has its own); no shared dependency introduced.
+
+**Gates:** typecheck ✅, test ✅ (100% gate), lint ✅ (incl. stylelint), deadcode/knip ✅, build ✅ (7 workspaces).

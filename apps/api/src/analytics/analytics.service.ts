@@ -1,10 +1,17 @@
 import { Injectable } from "@nestjs/common";
 import type {
+  ConciergeAnalyticsDto,
+  ConciergeAnalyticsQueryInput,
+  ConciergeFlaggedChunkDto,
   ConsultationStatusValue,
   FunnelAnalyticsDto,
   FunnelAnalyticsQueryInput,
   RecommendationFunnelResponse,
   RecommendationTriggerValue,
+  ReviewRequestStatusValue,
+  ReviewTriggerModeValue,
+  ReviewVerdictValue,
+  ReviewVisibilityValue,
   UsageAnalyticsDto,
   UsageAnalyticsQueryInput,
   UsageByFeatureDto,
@@ -47,6 +54,23 @@ const REVENUE_STATUSES: ReadonlySet<ConsultationStatusValue> = new Set([
   "completed",
 ]);
 
+/** Concierge stable key sets (so every grouped count starts at zero, mirroring the funnel sets). */
+const REVIEW_STATUSES: readonly ReviewRequestStatusValue[] = [
+  "requested",
+  "in_review",
+  "answered",
+  "escalated",
+  "dismissed",
+];
+const TRIGGER_MODES: readonly ReviewTriggerModeValue[] = ["user_prompted", "auto_silent"];
+const VISIBILITIES: readonly ReviewVisibilityValue[] = ["visible", "silent"];
+const VERDICTS: readonly ReviewVerdictValue[] = ["good", "bad", "great"];
+
+/** How many most-flagged chunks the knowledge-quality signal surfaces. */
+const TOP_FLAGGED_LIMIT = 10;
+/** Excerpt length for a flagged chunk's summary/content snippet. */
+const EXCERPT_LEN = 160;
+
 /** A Prisma `groupBy` rollup row over `usage_logs` (counts + token/cost sums). */
 interface GroupRow {
   _count: { _all: number };
@@ -68,6 +92,16 @@ interface PeriodRow {
 /** Raw window-wide distinct-active-users row. */
 interface ActiveUsersRow {
   active_users: bigint | number;
+}
+
+/** Raw concierge SLA-adherence aggregate row (FILTERed counts + an average response time). */
+interface SlaRow {
+  tracked: bigint | number;
+  met: bigint | number;
+  breached: bigint | number;
+  open_overdue: bigint | number;
+  /** Mean request→answer seconds across answered requests (`AVG` → numeric string, or null). */
+  avg_response_seconds: string | number | null;
 }
 
 /**
@@ -185,6 +219,97 @@ export class AnalyticsService {
     });
   }
 
+  /**
+   * Build the platform concierge analytics report for the trailing `query.days` window (M10.3, PRD
+   * §M10 "concierge volume/SLA/verdict metrics; knowledge-quality signals"). Same admin cross-tenant
+   * read pattern as {@link usage}/{@link funnel} (the `is_admin` GUC inside {@link RlsService.run}
+   * grants the platform-wide read, so no `tenant_id` predicate appears).
+   *
+   *  - **volume** — one `human_review_requests` groupBy over (status, trigger_mode, visibility),
+   *    folded into the three breakdowns + the window total.
+   *  - **SLA** — a raw FILTERed aggregate (`count() FILTER (WHERE …)` + `avg(epoch)` have no Prisma
+   *    Client expression): met/breached/open-overdue against `sla_due_at` + mean response minutes.
+   *  - **verdicts** — `review_responses` grouped by verdict + windowed edited/delivered counts.
+   *  - **knowledge quality** — the M9.4 chunk-flagging signal: flagged-chunk count, total flags,
+   *    recently-flagged (windowed via `last_flagged_at`), and the most-flagged chunks. Flag counts are
+   *    **cumulative** (a chunk's `flag_count` has no per-event history); only `recentlyFlagged` is
+   *    windowed.
+   */
+  async concierge(
+    user: AuthUser,
+    query: ConciergeAnalyticsQueryInput,
+  ): Promise<ConciergeAnalyticsDto> {
+    const now = new Date();
+    const since = windowStart(query.days, now);
+
+    return this.rls.run(user, async (tx) => {
+      // Volume: one groupBy folded into status / trigger-mode / visibility breakdowns + total.
+      const byStatus = zeroCounts(REVIEW_STATUSES);
+      const byTriggerMode = zeroCounts(TRIGGER_MODES);
+      const byVisibility = zeroCounts(VISIBILITIES);
+      let totalRequests = 0;
+      const reqGrouped = await tx.humanReviewRequest.groupBy({
+        by: ["status", "triggerMode", "visibility"],
+        where: { createdAt: { gte: since } },
+        _count: { _all: true },
+      });
+      for (const row of reqGrouped) {
+        const n = row._count._all;
+        totalRequests += n;
+        byStatus[row.status as ReviewRequestStatusValue] += n;
+        byTriggerMode[row.triggerMode as ReviewTriggerModeValue] += n;
+        byVisibility[row.visibility as ReviewVisibilityValue] += n;
+      }
+
+      // SLA adherence (raw FILTERed aggregate). $1 = window start, $2 = now (open-overdue cutoff).
+      const slaRows = await tx.$queryRawUnsafe<SlaRow[]>(SLA_SQL, since, now);
+      const slaRow = slaRows[0];
+      const avgSeconds = slaRow?.avg_response_seconds;
+      const sla = {
+        tracked: Number(slaRow?.tracked ?? 0),
+        met: Number(slaRow?.met ?? 0),
+        breached: Number(slaRow?.breached ?? 0),
+        openOverdue: Number(slaRow?.open_overdue ?? 0),
+        avgResponseMinutes: avgSeconds == null ? null : Math.round(Number(avgSeconds) / 60),
+      };
+
+      // Verdicts: grouped over the window's responses + windowed edited/delivered counts.
+      const byVerdict = zeroCounts(VERDICTS);
+      let verdictTotal = 0;
+      const verdictGrouped = await tx.reviewResponse.groupBy({
+        by: ["verdict"],
+        where: { createdAt: { gte: since } },
+        _count: { _all: true },
+      });
+      for (const row of verdictGrouped) {
+        const n = row._count._all;
+        verdictTotal += n;
+        byVerdict[row.verdict as ReviewVerdictValue] += n;
+      }
+      const edited = await tx.reviewResponse.count({
+        where: { createdAt: { gte: since }, edited: true },
+      });
+      const delivered = await tx.reviewResponse.count({
+        where: { createdAt: { gte: since }, deliveredToUser: true },
+      });
+
+      // Knowledge-quality signals (cumulative flag counts; only recentlyFlagged is windowed).
+      const knowledge = await this.knowledgeQuality(tx, since);
+
+      return {
+        windowDays: query.days,
+        since: since.toISOString(),
+        totalRequests,
+        byStatus,
+        byTriggerMode,
+        byVisibility,
+        sla,
+        verdicts: { total: verdictTotal, byVerdict, edited, delivered },
+        knowledge,
+      };
+    });
+  }
+
   /** Per-feature rollup, highest spend first. */
   private async byFeature(
     tx: Prisma.TransactionClient,
@@ -235,6 +360,51 @@ export class AnalyticsService {
     const rows = await tx.$queryRawUnsafe<ActiveUsersRow[]>(ACTIVE_USERS_SQL, since);
     return Number(rows[0]?.active_users ?? 0);
   }
+
+  /**
+   * Knowledge-quality signals from the M9.4 chunk flagging. Flag counts are cumulative (a chunk's
+   * `flag_count` has no per-event history); only `recentlyFlagged` is windowed via `last_flagged_at`.
+   * The top list orders by flag count, then recency, so the weakest source material surfaces first.
+   */
+  private async knowledgeQuality(
+    tx: Prisma.TransactionClient,
+    since: Date,
+  ): Promise<ConciergeAnalyticsDto["knowledge"]> {
+    const flaggedChunks = await tx.chunk.count({ where: { flagCount: { gt: 0 } } });
+    const totalAgg = await tx.chunk.aggregate({
+      where: { flagCount: { gt: 0 } },
+      _sum: { flagCount: true },
+    });
+    const recentlyFlagged = await tx.chunk.count({ where: { lastFlaggedAt: { gte: since } } });
+    const top = await tx.chunk.findMany({
+      where: { flagCount: { gt: 0 } },
+      orderBy: [{ flagCount: "desc" }, { lastFlaggedAt: "desc" }],
+      take: TOP_FLAGGED_LIMIT,
+      select: {
+        id: true,
+        documentVersionId: true,
+        flagCount: true,
+        lastFlaggedAt: true,
+        summary: true,
+        content: true,
+      },
+    });
+
+    const topFlagged: ConciergeFlaggedChunkDto[] = top.map((c) => ({
+      chunkId: c.id,
+      documentVersionId: c.documentVersionId,
+      flagCount: c.flagCount,
+      lastFlaggedAt: c.lastFlaggedAt?.toISOString() ?? null,
+      excerpt: excerpt(c.summary ?? c.content),
+    }));
+
+    return {
+      flaggedChunks,
+      totalFlags: totalAgg._sum.flagCount ?? 0,
+      recentlyFlagged,
+      topFlagged,
+    };
+  }
 }
 
 /** A zeroed `Record<K, number>` with every key present (so callers can `+=` safely). */
@@ -264,6 +434,12 @@ function rollup(row: GroupRow): {
 /** Sort comparator: highest `costMicros` first (stable on the feature/model label tie). */
 function byCostDesc(a: { costMicros: number }, b: { costMicros: number }): number {
   return b.costMicros - a.costMicros;
+}
+
+/** A single-line, collapsed-whitespace snippet of chunk text, capped with an ellipsis. */
+function excerpt(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > EXCERPT_LEN ? `${flat.slice(0, EXCERPT_LEN).trimEnd()}…` : flat;
 }
 
 /**
@@ -300,3 +476,21 @@ const ACTIVE_USERS_SQL = `
   SELECT count(DISTINCT user_id) AS active_users
   FROM usage_logs
   WHERE occurred_at >= $1`;
+
+/**
+ * Concierge SLA adherence over the requests created in the window. `$1` = window start (inclusive),
+ * `$2` = now (the open-overdue cutoff). `count() FILTER (WHERE …)` and `avg(epoch …)` have no Prisma
+ * Client expression, so this is raw (constant SQL, both args bound). RLS scopes the table (admin GUC →
+ * all tenants); no `tenant_id` predicate appears. The status-literal comparisons cast to the
+ * `review_request_status` enum. `count`s are `bigint`; the average is `numeric` (or null when nothing
+ * was answered) — both coerced in the mapper.
+ */
+const SLA_SQL = `
+  SELECT
+    count(*) FILTER (WHERE sla_due_at IS NOT NULL) AS tracked,
+    count(*) FILTER (WHERE answered_at IS NOT NULL AND sla_due_at IS NOT NULL AND answered_at <= sla_due_at) AS met,
+    count(*) FILTER (WHERE answered_at IS NOT NULL AND sla_due_at IS NOT NULL AND answered_at > sla_due_at) AS breached,
+    count(*) FILTER (WHERE answered_at IS NULL AND sla_due_at IS NOT NULL AND sla_due_at < $2 AND status IN ('requested', 'in_review')) AS open_overdue,
+    avg(extract(epoch FROM (answered_at - created_at))) FILTER (WHERE answered_at IS NOT NULL) AS avg_response_seconds
+  FROM human_review_requests
+  WHERE created_at >= $1`;

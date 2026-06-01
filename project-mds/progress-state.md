@@ -2,6 +2,7 @@
 
 ## Current State
 - Completed:
+  - M10.3: Concierge volume/SLA/verdict metrics + knowledge-quality signals (admin analytics)
   - M9.3: Concierge async delivery (visible update vs silent) + transactional email
   - M9.4: Reviewer-feedback flywheel + escalate-to-consultation
   - M9.2: Concierge review queue + reviewer verdict/edit
@@ -51,13 +52,12 @@
   - M1.3: Vietnamese retrieval quality + NFC normalization
   - M1.2: Hybrid retrieval (vector + keyword RRF fusion)
   - M1.1: Versioned ingestion pipeline
-- Tests: 986 pass / 0 fail / 0 skip (shared 175, ui 29, db 9, ai 149, api 624)
+- Tests: 989 pass / 0 fail / 0 skip (shared 175, ui 29, db 9, ai 149, api 627)
 - Build: passing — `pnpm build` (turbo) builds all 7 workspaces.
 - Gates: typecheck ✅, test ✅ (coverage gate met, 100%), lint ✅ (incl. stylelint), build ✅, deadcode (knip) ✅
 - Next tasks (priority order):
-  1. **M10.3** — Concierge volume/SLA/verdict metrics + knowledge-quality signals
-  2. **M11.1** — Playwright E2E (needs live stack)
-  3. **M11.3** — Load smoke (needs live stack)
-  4. **M10.4** — Kill-line instrument (awaits OD#1)
-  5. **M11.4 / NT** — Product/legal sign-offs
-  6. Remaining Phase-0 Open Decisions (#1, #3, product halves of #2/#6)
+  1. **M11.1** — Playwright E2E (needs live stack)
+  2. **M11.3** — Load smoke (needs live stack)
+  3. **M10.4** — Kill-line instrument (awaits OD#1)
+  4. **M11.4 / NT** — Product/legal sign-offs
+  5. Remaining Phase-0 Open Decisions (#1, #3, product halves of #2/#6)

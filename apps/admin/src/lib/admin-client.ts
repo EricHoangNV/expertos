@@ -18,6 +18,7 @@ import type {
   RevenueReportDto,
   UsageAnalyticsDto,
   FunnelAnalyticsDto,
+  ConciergeAnalyticsDto,
   FailedQueryDto,
   AdminAuditLogDto,
   AdminFairUseFlagDto,
@@ -196,6 +197,17 @@ export function getUsageAnalytics(token: string, days?: number): Promise<UsageAn
 export function getFunnelAnalytics(token: string, days?: number): Promise<FunnelAnalyticsDto> {
   const query = days != null ? `?days=${days}` : "";
   return request<FunnelAnalyticsDto>(`/admin/analytics/funnel${query}`, token);
+}
+
+// M10.3 — Admin concierge ops analytics
+
+/** Platform-wide concierge report (volume by status/mode/visibility + SLA + verdicts + knowledge). */
+export function getConciergeAnalytics(
+  token: string,
+  days?: number,
+): Promise<ConciergeAnalyticsDto> {
+  const query = days != null ? `?days=${days}` : "";
+  return request<ConciergeAnalyticsDto>(`/admin/analytics/concierge${query}`, token);
 }
 
 // M8.3 — Admin plan-entitlement matrix editor

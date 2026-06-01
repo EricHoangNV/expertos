@@ -2,6 +2,9 @@ import { Controller, Get, Query } from "@nestjs/common";
 import {
   usageAnalyticsQuerySchema,
   funnelAnalyticsQuerySchema,
+  conciergeAnalyticsQuerySchema,
+  type ConciergeAnalyticsDto,
+  type ConciergeAnalyticsQueryInput,
   type FunnelAnalyticsDto,
   type FunnelAnalyticsQueryInput,
   type UsageAnalyticsDto,
@@ -42,5 +45,15 @@ export class AnalyticsController {
     query: FunnelAnalyticsQueryInput,
   ): Promise<FunnelAnalyticsDto> {
     return this.service.funnel(user, query);
+  }
+
+  /** Concierge ops: volume (by status/mode/visibility) + SLA + verdicts + knowledge-quality (M10.3). */
+  @Get("concierge")
+  concierge(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(conciergeAnalyticsQuerySchema))
+    query: ConciergeAnalyticsQueryInput,
+  ): Promise<ConciergeAnalyticsDto> {
+    return this.service.concierge(user, query);
   }
 }
