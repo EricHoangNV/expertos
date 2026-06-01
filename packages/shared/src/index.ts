@@ -40,6 +40,8 @@ export type {
   VoiceProfileUpdateInput,
   VoiceProfileListQueryInput,
 } from "./voice";
+export { uploadCreateSchema } from "./upload";
+export type { UploadCreateInput, UploadedFileDto } from "./upload";
 export {
   chatRequestSchema,
   conversationListQuerySchema,

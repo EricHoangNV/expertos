@@ -742,3 +742,47 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M5 upload-citation seam is already wired** (from M4.2): persist `uploadChunkId` and `loadCitations` derives `kind: "upload"`; surface info-blue `.cite.upload` / `badge-info` per §"Design System" M5.4. No DTO change needed.
 - **Remaining Phase-0 Open Decisions** (#1, #3, #4, product halves of #2/#6) are still open and can be resolved in parallel; #4 (unit economics) blocks the M6 seed quota matrix.
 - **OD#7 has no follow-up code.** If a future real LLM ever emits trustworthy mid-stream citation grammar, the deferral default can be revisited (noted in the resolution block), but nothing is owed today.
+
+## M5.1 — Query-time document upload with file-type/size validation + malware scan
+**Date:** 2026-06-01
+**Ref:** PRD M5.1 (Task Manifest); §"Document-assisted Q&A"; §"Security" (input safety: file-type/size validation + malware scan); directive §1.2 (filename sanitization)
+
+**What was done:**
+- New `apps/api/src/uploads/` module — the first multipart file-upload route in the codebase. Wired `UploadModule` into `AppModule`.
+- `UploadService.upload(user, filePart, {conversationId?})` — the validate→scan→store→persist pipeline (the only coverage-gated file):
+  - size guard (empty → 400; > 10 MiB `MAX_UPLOAD_BYTES` → 413, before any work)
+  - MIME allowlist via `UPLOAD_TYPES` (txt/md/csv/pdf/docx/xlsx) → unsupported = 415
+  - anti-spoof: filename extension must match the declared type (400); binary formats magic-byte sniffed (`%PDF`; `PK` ZIP header for OOXML xlsx/docx) → 400
+  - malware scan behind `MalwareScanner` (offline `SignatureMalwareScanner` flags EICAR) → unclean = 422, never stored, warn-logged with signature
+  - storage behind `StorageProvider` (offline `InMemoryStorageProvider` → `memory://` URI)
+  - persist `uploaded_files` row inside `RlsService.run` (user-scoped isolation), DB-default `temporary` mode / `temporary_upload` scope
+  - attached `conversationId` ownership re-checked (user-scoped `conversation.findUnique`, 404) BEFORE storing bytes → no orphan
+  - untrusted filename sanitized (basename, strip control + path/markup-unsafe chars, NFC, ≤200, fallback `upload`)
+- Thin `UploadController` (`POST /uploads`, `@Roles("user")`) using `FileInterceptor` (multer default memory storage + `limits.fileSize`); structural `MultipartFile`/`UploadFilePart` types → no `@types/multer` dependency.
+- Swappable contracts + offline defaults: `storage-provider.ts`, `malware-scanner.ts`, `upload.tokens.ts` (`STORAGE_PROVIDER`/`MALWARE_SCANNER`), `upload.defaults.ts` (one composition root), `upload-content-types.ts` (allowlist + `MAX_UPLOAD_BYTES` + `normalizeContentType`).
+- New shared `uploadCreateSchema` + `UploadedFileDto`/`UploadCreateInput` (`packages/shared/src/upload.ts`), exported from the index.
+- Tests: `upload.service.test.ts` (16 cases — happy txt/pdf/xlsx, MIME-normalize, empty, oversize, unsupported type, extension spoof, no-extension, magic mismatch, short-buffer, malware reject ×2, owned/unowned conversation, filename sanitize, fallback name) + `malware-scanner.test.ts` + `storage-provider.test.ts`.
+
+**Key decisions:**
+- **Scope kept tight to M5.1.** Mode/retention (`temporary` vs `persistent`) is deferred to M5.2 — `mode` is NOT in the request yet; every upload persists under the DB default `temporary`. Parsing into `upload_chunks` is deferred to M5.2/M5.3; M5.1 stores the raw file + a validated row, NOT chunks. So the M1.1 `ParserRegistry` PDF/DOCX/XLSX seam is intentionally untouched (M5.1 only allowlists + magic-sniffs those types).
+- **Offline-default seams over real drivers**, mirroring the ingestion `EMBEDDING_PROVIDER`/`createDefaultLlmProvider` pattern: in-memory storage + EICAR-signature scanner run the full path with no network/GCS/AV, swap at one composition root. EICAR is the standard harmless AV test signature → the scan path is genuinely exercised and asserted.
+- **Layered, defense-in-depth validation** because uploads are an untrusted trust boundary (PRD §"Security"): a declared `Content-Type` and filename are attacker-controlled, so extension + magic-byte cross-checks back the MIME allowlist (a renamed binary is rejected).
+- **Ownership re-checked before storing bytes**, not after, so a rejected `conversationId` attach never leaves an orphaned object/row. Same `user_scoped` `conversation.findUnique` boundary as `SavedAnswerService`.
+- **No `@types/multer` dep** — structural `MultipartFile` type (the chat `SseResponse` precedent); keeps the dependency surface + knip clean.
+
+**Files changed:**
+- `packages/shared/src/upload.ts` (new) + `packages/shared/src/index.ts` — `uploadCreateSchema`, `UploadCreateInput`, `UploadedFileDto`.
+- `apps/api/src/uploads/upload.service.ts` (new) — pipeline + validation/sanitize helpers.
+- `apps/api/src/uploads/upload.controller.ts` (new) — `POST /uploads` multipart adapter.
+- `apps/api/src/uploads/upload.module.ts` (new) — DI wiring.
+- `apps/api/src/uploads/upload-content-types.ts` (new) — `UPLOAD_TYPES` allowlist, `MAX_UPLOAD_BYTES`, `normalizeContentType`.
+- `apps/api/src/uploads/storage-provider.ts` (new) — `StorageProvider` + `InMemoryStorageProvider`.
+- `apps/api/src/uploads/malware-scanner.ts` (new) — `MalwareScanner` + `SignatureMalwareScanner`.
+- `apps/api/src/uploads/upload.tokens.ts` + `upload.defaults.ts` (new) — DI tokens + offline-default factories.
+- `apps/api/src/uploads/{upload.service,malware-scanner,storage-provider}.test.ts` (new).
+- `apps/api/src/app.module.ts` — import `UploadModule`.
+
+**Notes for next iteration:**
+- **M5.2** adds `mode` to the request + divergent retention (temporary: `retentionDays`/`expiresAt`, not indexed) vs indexing (persistent: run M1.1 ingestion → `upload_chunks` under `user_private`/`tenant_customer`). The DTO already carries `mode`, so it's non-breaking. This is where the real PDF/DOCX/XLSX parsers land in `ParserRegistry`. `InMemoryStorageProvider` keeps bytes by key, but `StorageProvider` needs a `get`/`download` method (+ the real GCS driver) for a parse step to read them back.
+- **Uploads are not yet readable by retrieval/chat** — `upload_chunks` is empty until M5.2; `RetrievalService`/`ChatService` must fold in the user's uploaded chunks (M5.2+), and `Citation.uploadChunkId` populated so `ChatCitationDto.kind` derives `"upload"` (info-blue `.cite.upload`, M5.4 — the read-path seam is already in place from M4.2).
+- Real DB write path is seam-tested with a mocked tx (M11 Testcontainers caveat, same as the other stores). multer resolves from `@nestjs/platform-express`'s context at runtime (verified), not hoisted to apps/api.

@@ -42,7 +42,7 @@
 - [x] M4.3 Resolve Open Decision #7 (streaming vs citation-resolvability UX)
 
 #### M5 — Document uploads
-- [ ] M5.1 Query-time upload (PDF, XLSX, CSV, DOCX, MD, txt) with file-type/size validation + malware scan
+- [x] M5.1 Query-time upload (PDF, XLSX, CSV, DOCX, MD, txt) with file-type/size validation + malware scan
 - [ ] M5.2 Temporary vs persistent modes (retention + indexing strategy per mode)
 - [ ] M5.3 Spreadsheet handling (sheets/tables/headers, row/col refs, real numeric values, sheet/table citations)
 - [ ] M5.4 Distinct upload citations (info-blue `.cite.upload` / `badge-info`, per §"Design System"); tenant/user upload isolation

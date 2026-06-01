@@ -8,6 +8,7 @@ import { ObservabilityModule } from "./observability/observability.module";
 import { RetrievalModule } from "./retrieval/retrieval.module";
 import { VoiceModule } from "./voice/voice.module";
 import { ChatModule } from "./chat/chat.module";
+import { UploadModule } from "./uploads/upload.module";
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ChatModule } from "./chat/chat.module";
     RetrievalModule,
     VoiceModule,
     ChatModule,
+    UploadModule,
   ],
   controllers: [HealthController],
   providers: [HealthService],
