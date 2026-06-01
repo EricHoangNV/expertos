@@ -1786,3 +1786,35 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **The live DB (`expertos-pg`, localhost:5432, `app_user`/`app_user`) is the harness for the rest of the deferred raw-SQL validation.** The other stores still only unit-tested with mocked tx — `PgVectorStore` (cosine `<=>` + `ts_rank` keyword), conversation-search `SEARCH_SQL` (`ts_rank`/`ts_headline`/LATERAL + GIN index usage), `PgExpertStore` (`array_agg(DISTINCT)::text[]`), the semantic-cache store, and the `FailedQueryService`/`ExpertPortalService` `LATERAL` joins — can now get real integration tests on this same pattern (admin-context seed → app_user read).
 - **Watch LEARNINGS #7:** any new raw-SQL test (or a fix to those stores when they go live) must cast `uuid`/`uuid[]` bind params explicitly (`$n::uuid`), or Postgres aborts with `operator does not exist: uuid = text`. A passing mocked-tx unit test will not catch it.
 - **Remaining M11.2:** the `/cso` audit (run the `/security-review` skill over the branch) — the last sub-item; M11.2 stays `[~]` until then.
+
+## M11.2 (COMPLETE) — `/cso` security audit
+**Date:** 2026-06-01
+**Ref:** PRD M11.2 ("Security tests + `/cso` audit"); §"Security & Compliance"; §"Testing Strategy"
+
+**What was done:**
+- Ran the `/security-review` skill over the full branch `m7.2-consultation-booking` diff vs `main` (~17.9k insertions / 142 files): M3–M8 milestones, the consultation/booking funnel + TidyCal webhook, admin & expert portals, raw-SQL reporting services, billing/entitlements, the per-IP rate limiter, prompt-injection hardening, and DB migrations/RLS.
+- Methodology per the skill: an identification sub-task over the full diff + repo context (zero candidate findings), then independent verification by me of the highest-risk paths.
+- **Verdict: PASS — no HIGH or MEDIUM confidence vulnerabilities.** Recorded as FEEDBACKS Security Cycle 1.
+- Independently verified:
+  - **SQL injection** — `revenue.service.ts` (`PERIOD_SQL`), `expert-portal.service.ts` (`ANSWERS_SQL`), `failed-query.service.ts` (`INSPECTOR_SQL`) use constant SQL with bound `$1..$N` placeholders; no request value is string-interpolated. `ANSWERS_SQL` is bounded by `c.tenant_id = $1::uuid AND c.expert_id = $2::uuid`.
+  - **Elevated-but-bounded RLS** — `expert-portal.service.ts` runs under `is_admin` but re-bounds every query by tenant + expert; `resolveExpert` short-circuits to empty when no expert resolves, so a non-admin can never widen scope.
+  - **Webhook HMAC** — `http-tidycal-provider.ts` `verifyWebhook` rejects a missing signature, HMAC-SHA256s the raw body, compares constant-time (`safeEqualHex` w/ length guard), and parses only after verifying.
+  - **`@Roles` guards** — present on every new `admin/*`/`expert/*` route; the only `@Public()` route (TidyCal webhook) is authenticated by HMAC.
+  - **No XSS** — no `dangerouslySetInnerHTML` in any source `.tsx`.
+
+**Key decisions:**
+- Fixed the skill's diff base by pointing `origin/HEAD` at `origin/main` locally (it was unset, which made the skill's `git diff origin/HEAD...` abort).
+- Did NOT rely solely on the single identification pass — independently re-read the raw-SQL constants, the expert-portal RLS bounding, and the webhook HMAC compare before signing off, since this is a security gate.
+- No code changes: the audit is clean. The deliverables are the documentation updates (FEEDBACKS Cycle 1 + report, PRD manifest M11.2 → `[x]`).
+
+**Files changed:**
+- `project-mds/FEEDBACKS.MD` — Security Cycle 1 verdict line (PASS) + full Cycle 1 report inserted after the verdicts block.
+- `project-mds/PRD.md` — Task Manifest M11.2 `[~]` → `[x]`; appended the `/cso` audit DONE note + "M11.2 COMPLETE".
+- `project-mds/progress-state.md` — new top "Completed" bullet for the audit; Next-tasks M11.2 marked COMPLETE.
+- (no source code changed)
+
+**Notes for next iteration:**
+- **M11.2 is now fully complete** (prompt-injection + rate-limit + authz/RLS negative tests + `/cso` audit all done).
+- **Remaining M11 (all unblocked, no product/legal gate):** M11.1 full E2E Playwright path matrix; M11.3 perf/caching tuning + load smoke test; M11.5 design-system conformance audit (`/design-review`: token usage, citation render-after-resolve, upload-vs-knowledge color distinction, badge tones, hit-target/size minimums).
+- **Gated work:** M9 (Concierge) by OD#5 (legal/brand), M10 (analytics) by OD#1, NT.1–NT.6 sign-offs — all need product/legal decisions, not engineering.
+- The `/security-review` skill aborts if `origin/HEAD` is unset; set it (`git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main`) before running, or the diff base can't resolve.
