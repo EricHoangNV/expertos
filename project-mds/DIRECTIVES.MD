@@ -41,6 +41,7 @@
 33. **Debug logs before guessing** — add console.log to trace values, then fix (§9.1)
 34. **Multi-doc mutations use batches** — delete+count+quota+scan cleanup in one Firestore batch (§7.14)
 35. **Postgres RLS needs a non-superuser app role + FORCE RLS** — app connects as `app_user`, scope via `applyRlsContext` inside a transaction (§4.21)
+36. **NFC-normalize all indexed + query text** — decomposed (NFD) diacritics shatter tokenization and silently kill Vietnamese recall; normalize both sides (§1.2)
 
 ---
 
@@ -65,7 +66,7 @@ All text inputs must be sanitized to prevent script injection:
 - **Strip HTML tags** - Remove `<script>`, `<iframe>`, `<object>`, etc.
 - **Escape special characters** - `<`, `>`, `&`, `"`, `'`
 - **Trim whitespace** - Remove leading/trailing spaces
-- **Normalize unicode** - Prevent homoglyph attacks
+- **Normalize unicode to NFC** - Prevent homoglyph attacks *and* keep diacritic-bearing scripts retrievable. Vietnamese (and any combining-mark language) encodes the same word as NFC (precomposed) or NFD (decomposed); NFD combining marks are Unicode `Mark`, not `Letter`, so the letter/number tokenizer and Postgres `to_tsvector` shatter decomposed words (`"Việt"`→`["vie","t"]`) and recall silently collapses when query and indexed text differ in form. Apply `.normalize("NFC")` to **both** indexed content and query text. See LEARNINGS #6.
 
 ### 1.3 Implementation Pattern
 

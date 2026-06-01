@@ -54,4 +54,10 @@ describe("retrievalQuerySchema", () => {
     expect(() => retrievalQuerySchema.parse({ text: "q", topK: 51 })).toThrow();
     expect(() => retrievalQuerySchema.parse({ text: "q", topK: 2.5 })).toThrow();
   });
+
+  it("NFC-normalizes the query text so VI diacritics reach both retrieval paths intact", () => {
+    const decomposed = "Định giá".normalize("NFD");
+    const parsed = retrievalQuerySchema.parse({ text: ` ${decomposed} ` });
+    expect(parsed.text).toBe("Định giá".normalize("NFC"));
+  });
 });

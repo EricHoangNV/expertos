@@ -2,8 +2,9 @@
  * Deterministic, offline embedding provider for seed/CLI ingestion, tests, and local
  * dev (M1.1). It hashes word tokens into a fixed-dimension bag-of-words vector and
  * L2-normalizes — so cosine similarity is meaningful and identical text always yields
- * an identical vector, with no network or API key. Unicode-aware tokenization keeps it
- * usable for Vietnamese (Open Decision #9).
+ * an identical vector, with no network or API key. Tokenization is NFC-normalized and
+ * Unicode-aware (see {@link tokenize}) so Vietnamese diacritics survive intact regardless of
+ * the input's normalization form (Open Decision #9).
  *
  * This is NOT a semantic model: it captures lexical overlap only. The real
  * OpenAI/Vertex driver (same {@link EmbeddingProvider} contract, dimensions = 1536)
@@ -11,6 +12,7 @@
  */
 
 import type { EmbeddingProvider } from "../providers";
+import { tokenize } from "../text";
 
 const DEFAULT_DIMENSIONS = 1536;
 const FNV_OFFSET = 0x811c9dc5;
@@ -24,11 +26,6 @@ function fnv1a(token: string): number {
     hash = Math.imul(hash, FNV_PRIME);
   }
   return hash >>> 0;
-}
-
-/** Lowercased Unicode letter/number runs (keeps Vietnamese diacritics as letters). */
-function tokenize(text: string): string[] {
-  return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 
 export class HashingEmbeddingProvider implements EmbeddingProvider {

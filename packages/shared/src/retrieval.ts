@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { contentScopeSchema, languageSchema } from "./ingestion";
+import { normalizeText } from "./text";
 
 /**
  * Validated input for hybrid knowledge retrieval (M1.2). The metadata filters here are
@@ -31,8 +32,13 @@ export const retrievalFiltersSchema = z.object({
 export type RetrievalFilters = z.infer<typeof retrievalFiltersSchema>;
 
 export const retrievalQuerySchema = z.object({
-  /** Raw query text — used for keyword matching and (after embedding) vector search. */
-  text: z.string().trim().min(1).max(2000),
+  /**
+   * Query text — used for keyword matching and (after embedding) vector search. Trimmed,
+   * length-bounded, then NFC-normalized so Vietnamese diacritics tokenize consistently across
+   * both retrieval paths (Open Decision #9). NFC is length-preserving for these scripts, so
+   * normalizing after `.max()` cannot smuggle the result back over the bound.
+   */
+  text: z.string().trim().min(1).max(2000).transform(normalizeText),
   /** Max results returned after fusion. */
   topK: z.number().int().min(1).max(50).default(8),
   filters: retrievalFiltersSchema.default({}),

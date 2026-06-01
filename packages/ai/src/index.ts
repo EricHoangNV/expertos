@@ -26,3 +26,13 @@ export type {
   RetrievalRequest,
   RankedChunk,
 } from "./retrieval/types";
+export { evaluateRetrieval } from "./eval/harness";
+export { RETRIEVAL_GOLDEN_SET } from "./eval/golden-set";
+export type {
+  EvalDocument,
+  EvalCase,
+  EvalGoldenSet,
+  EvalOptions,
+  EvalCaseResult,
+  EvalReport,
+} from "./eval/types";

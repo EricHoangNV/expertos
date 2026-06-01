@@ -7,7 +7,15 @@
  * retrieval recall). Token counts are estimated, not exact — the real tokenizer lives
  * in the embedding provider; this estimate only drives the window budget and the
  * `chunks.token_count` column. Paragraph-aware chunking is a later refinement.
+ *
+ * Input is NFC-normalized before splitting so stored chunk content matches the form the
+ * embedder and keyword index expect — see {@link normalizeText} for why this matters on
+ * Vietnamese (Open Decision #9). The word→token estimate is English-tuned; Vietnamese (and
+ * other non-English) text expands to more sub-word tokens, so the estimate *under*-counts
+ * for VI — real chunks run slightly larger than the nominal budget, which is safe under the
+ * embedding model's large token limit and revisited when the real tokenizer lands.
  */
+import { normalizeText } from "../text";
 
 /** Rough word→token ratio (~4 chars/token ≈ 0.75 words/token for English). */
 const WORDS_PER_TOKEN = 0.75;
@@ -31,7 +39,7 @@ export interface ChunkOptions {
 }
 
 function words(text: string): string[] {
-  const trimmed = text.trim();
+  const trimmed = normalizeText(text).trim();
   return trimmed === "" ? [] : trimmed.split(/\s+/);
 }
 

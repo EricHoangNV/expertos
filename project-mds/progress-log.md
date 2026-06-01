@@ -281,3 +281,38 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Integration (M11):** the two raw queries aren't run against real pgvector here. Verify with Testcontainers: (1) `scope = ANY($n::content_scope[])` binds a JS `string[]` through `$queryRawUnsafe`; (2) `<=>` ordering + `ts_rank` return JS numbers. Add a GIN index on the `to_tsvector('simple', content||' '||summary)` expression for keyword perf when the corpus grows (currently per-row).
 - **M1.3 / OD#9 (next):** decide language-filter vs cross-lingual retrieval and build the eval golden-set (needs OD#6). The `'simple'` keyword config + Unicode embedder are the baseline to measure against.
 - **Same-model invariant:** retrieval and ingestion both build their embedder from `createDefaultEmbeddingProvider`. When the OpenAI driver lands, change that one factory; if they diverge, query/chunk vectors stop being comparable.
+
+## M1.3 — Vietnamese retrieval quality (OD#9) + RAG eval harness
+**Date:** 2026-06-01
+**Ref:** PRD.md Task Manifest M1.3; §"Open Decisions" #9; §"Testing Strategy" (LLM/RAG eval harness)
+
+**What was done:**
+- **Root-caused and fixed a silent Vietnamese recall killer:** VI diacritics encode as NFC (precomposed, e.g. `"ệ"` = 1 code point) or NFD (decomposed base letter + combining marks). Combining marks carry Unicode property `Mark`, not `Letter`, so the `[\p{L}\p{N}]+` tokenizer breaks decomposed words apart (`"Việt"`→`["vie","t"]`, `"trưởng"`→`["tru","o","ng"]` — only 2 of 6 words survive in a real sentence). A query and a document in different normalization forms then share almost no tokens, destroying recall in **both** the vector path (hashing embedder) and the keyword path (Postgres `to_tsvector`). Verified empirically before fixing.
+- **Fix: NFC-normalize at every text boundary.** New `@expertos/ai` `text.ts` exposes `normalizeText` (NFC) + `tokenize` (NFC → lowercased Unicode letter/number runs) as the *single* tokenizer definition; the embedder and chunker now both use it. New `@expertos/shared` `text.ts` `normalizeText`, applied as a `retrievalQuerySchema.text.transform(...)` so query text is NFC at the validation boundary (directive §1) — this covers the Postgres keyword path, which does not normalize.
+- **Built a deterministic, DB-free RAG eval harness** in `@expertos/ai` `eval/`: `evaluateRetrieval(goldenSet, opts)` reuses the production primitives (chunk → embed → cosine + keyword-overlap → `fuseHybrid` RRF; candidate over-fetch + default topK mirror `PgVectorStore`) and computes recall@k / precision@k / MRR / hit-rate. Pure metrics in `metrics.ts` (all divisions guarded — directive §9).
+- **Seeded `RETRIEVAL_GOLDEN_SET`** (12 docs / 7 cases): EN, VI (NFC), mixed EN-VI, and an NFD-query-vs-NFC-corpus regression case that passes only because normalization runs. Tests assert hitRate=1 over the curated set, NFD≡NFC ranked results, and an *intentional* cross-lingual miss with the lexical offline embedder (documents the policy boundary).
+- **Resolved OD#9** in PRD with the decisions: cross-lingual/multilingual retrieval by default (optional `language` filter), mandatory NFC, VI-safe whitespace chunking (noting the EN-tuned token estimate under-counts VI), and the offline-vs-out-of-band eval split. Marked M1.3 + OD#9 done.
+
+**Key decisions:**
+- **NFC normalization placed at three boundaries, not one:** the pure `@expertos/ai` primitives (embedder/chunker) self-normalize for correctness regardless of caller; the shared schema normalizes query text for the Postgres keyword path that bypasses the embedder. Defense-in-depth, idempotent (NFC∘NFC = NFC).
+- **`normalizeText` duplicated (one line) in `@expertos/ai` and `@expertos/shared`** rather than cross-importing — preserves the existing rule that `@expertos/shared` and `@expertos/ai` don't depend on each other (same reason their enums/types are mirrored). The body is a single canonical-form call; nothing to drift.
+- **Eval harness lives in `@expertos/ai`, lexical/offline by design.** It guards tokenization/normalization/fusion deterministically in CI; semantic quality (true cross-lingual recall) is explicitly out-of-band with the real model via the same fixtures + the `embedder` option. The cross-lingual miss is asserted, not hidden — honest about what a lexical model can/can't do.
+- **Single shared `tokenize`** for embedder + eval keyword scorer so they can't diverge; the eval keyword path is documented as the offline approximation of Postgres `'simple'` `ts_rank` (the real numbers are validated in the M11 Testcontainers eval).
+- Cross-lingual default over a hard language filter: experts hold mixed EN-VI knowledge and the production embedder is multilingual; a hard gate would block EN knowledge from answering VI questions. `language` stays optional.
+
+**Files changed:**
+- `packages/ai/src/text.ts` (new) — `normalizeText` + `tokenize` (shared NFC tokenizer).
+- `packages/ai/src/embedding/hashing-embedding-provider.ts` — use shared `tokenize` (removed private copy); doc updated.
+- `packages/ai/src/ingestion/chunk.ts` — `words()` NFC-normalizes input; doc notes VI token-estimate under-count.
+- `packages/ai/src/eval/{types,metrics,harness,golden-set}.ts` (new) — eval harness + seed golden set.
+- `packages/ai/src/eval/{metrics,harness,golden-set}.test.ts`, `packages/ai/src/text.test.ts` (new) — 100% coverage.
+- `packages/ai/src/index.ts` — export `evaluateRetrieval`, `RETRIEVAL_GOLDEN_SET`, eval types.
+- `packages/shared/src/text.ts` (new) + `packages/shared/src/text.test.ts` (new) — boundary `normalizeText`.
+- `packages/shared/src/retrieval.ts` — `text` field `.transform(normalizeText)`; `packages/shared/src/index.ts` exports it; `retrieval.test.ts` adds NFC assertion.
+- `project-mds/PRD.md` — OD#9 resolution narrative + table + manifest checkboxes (M1.3, OD#9).
+
+**Notes for next iteration:**
+- **OD#6 (eval golden-set ownership/size/refresh) is now directly actionable** — the harness + seed fixtures exist; OD#6 just needs the named owner, per-expert/topic size targets, and the refresh-on-republish cadence. Recommend resolving it alongside M2.
+- **M2.4 + M4 should extend this harness, not fork it:** add voice-fidelity (voice-on≈voice-off, per expert) and citation-resolvability assertions as new eval modes / golden-set fields.
+- The offline harness can't measure semantic VI quality (lexical embedder). Wire the out-of-band run when the real OpenAI embedder driver lands (pass it via `evaluateRetrieval({ embedder })`); keep NFC normalization in that driver's tokenization too.
+- Consider a GIN index on `to_tsvector('simple', content||' '||summary)` (M11) — still relevant; unaffected by this change.

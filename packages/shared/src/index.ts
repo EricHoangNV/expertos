@@ -1,5 +1,6 @@
 export { ROLES, roleSchema, satisfiesRole } from "./roles";
 export type { Role } from "./roles";
+export { normalizeText } from "./text";
 export {
   CONTENT_SCOPES,
   LANGUAGES,

@@ -21,7 +21,7 @@
 #### M1 — Expert knowledge ingestion + retrieval
 - [x] M1.1 Versioned ingestion pipeline: upload→GCS→parse (`Parser` contract)→chunk→summarize→embed→store as `document_versions` (seed/CLI loaded initially)
 - [x] M1.2 Hybrid retrieval (vector + keyword + metadata filters: `status=published`, `tenant_id`, `scope`, language) behind `VectorStore` interface
-- [ ] M1.3 Resolve Open Decision #9 (Vietnamese retrieval quality) and add VI cases to eval set
+- [x] M1.3 Resolve Open Decision #9 (Vietnamese retrieval quality) and add VI cases to eval set
 
 #### M2 — Expert voice layer
 - [ ] M2.1 Voice profiles + runtime voice-example retrieval; voice-on-top-of-facts enforced in prompt builder
@@ -95,7 +95,7 @@
 - [ ] OD#6 Eval golden-set ownership, size, refresh — blocks M2 / M4 (Eng lead, Phase 0)
 - [ ] OD#7 Streaming vs citation-resolvability UX — blocks M3 / M4 (Eng + Design, early M3)
 - [ ] OD#8 Conversation context-window / cost ceiling policy — blocks M3 (Eng, early M3)
-- [ ] OD#9 Vietnamese retrieval quality — blocks M1 (Eng, M1)
+- [x] OD#9 Vietnamese retrieval quality — blocks M1 (Eng, M1) — RESOLVED in M1.3 (cross-lingual default + mandatory NFC normalization; see §"Open Decisions" #9)
 - [ ] OD#10 TidyCal webhook reliability / missed-event recovery — blocks M7 (Eng, M7)
 
 ### Non-Technical Requirements (§"Non-Technical Requirements") — pre-launch sign-offs, blocking
@@ -501,7 +501,7 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 | 6 | **Eval golden-set ownership, size, refresh** | The harness is specified; the dataset isn't. A thin/stale golden set gives false confidence. | M2 / M4 | Eng lead | Phase 0 |
 | 7 | **Streaming vs. citation-resolvability UX** | Verifying every citation before display conflicts with token streaming — citations could flash then vanish, or buffering kills the streaming feel. | M3 / M4 | Eng + Design | early M3 |
 | 8 | **Conversation context-window / cost ceiling policy** | Long multi-turn chats grow the prompt unbounded — a correctness and cost risk. | M3 | Eng | early M3 |
-| 9 | **Vietnamese retrieval quality (not just voice tone)** | i18n affects embeddings, chunking, and retrieval — deeper than answer styling. | M1 | Eng | M1 |
+| 9 | **Vietnamese retrieval quality (not just voice tone)** | i18n affects embeddings, chunking, and retrieval — deeper than answer styling. | M1 | Eng | ✅ RESOLVED (M1.3) |
 | 10 | **TidyCal webhook reliability / missed-event recovery** | Booking confirmation depends on the webhook; a missed event leaves a booking in limbo. | M7 | Eng | M7 |
 
 **1. Validation success criteria & kill line** — the quantitative bar that means the hypothesis is validated, falsified, or needs a pivot (numbers PM-set): activation (% of new users reaching ≥1 cited answer in session 1); engagement (% returning within 7 days; median questions/active user/week); **willingness-to-pay** (free→paid %, trial→paid if any); funnel (recommendation→booking %, revenue per paying user); **explicit kill/pivot line** (e.g. *"if free→paid < X% and booking < Y% by [date], revisit pricing/positioning before scaling"*). Instrument in **M10** from day one; add chosen targets to §"Strategic risk & validation focus."
@@ -521,6 +521,12 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 **8. Conversation context-window / cost ceiling policy** — truncation/summarization strategy for long chats: max turns/tokens carried before summarizing earlier turns; whether summarization is itself an LLM call and on which model; interaction with the concierge "inject corrected answer into context" mechanism (don't summarize away a human correction).
 
 **9. Vietnamese retrieval quality** — confirm the embedding + retrieval stack performs on Vietnamese, not just that answers can be styled in VI: does the embedding model retrieve well for VI queries against VI / mixed EN-VI knowledge; VI chunking behavior; whether retrieval is language-filtered, multilingual, or cross-lingual — and add VI cases to the eval golden set (§6).
+
+> **RESOLVED (M1.3).** Decisions:
+> 1. **Retrieval is cross-lingual / multilingual by default.** No language filter is applied unless a caller explicitly sets `filters.language`. Rationale: the production embedding model (OpenAI `text-embedding-3-small`) is multilingual, and experts hold mixed EN-VI knowledge — a hard language gate would stop EN knowledge from answering a VI question (and vice-versa), which is wrong for the product. `language` stays an *optional* narrowing filter for tenants that want it. The keyword path uses Postgres `'simple'` config (no English stemming) so VI lexemes aren't distorted.
+> 2. **NFC normalization is mandatory at every text boundary** (the concrete engineering output). Vietnamese diacritics encode two visually-identical ways — NFC (precomposed) and NFD (decomposed combining marks). The combining marks are Unicode `Mark`, not `Letter`, so the letter/number tokenizer shatters a decomposed word (`"Việt"`→`["vie","t"]`, `"trưởng"`→`["tru","o","ng"]`): a query and a document in different forms share almost no tokens, silently destroying recall in **both** the vector (embedder tokenizer) and keyword (`to_tsvector`) paths. Fix: NFC-normalize at ingestion (chunk content), at embedding time, and at query time (`retrievalQuerySchema` transform). Verified by the eval harness's NFD-vs-NFC regression case.
+> 3. **VI chunking** uses the same whitespace word-window splitter — correct for Vietnamese (space-separated syllables). The English-tuned word→token estimate *under*-counts VI sub-word tokens, so real chunks run slightly larger than the nominal budget; safe under the model's large token limit, revisited when the real tokenizer lands.
+> 4. **Eval golden set:** a deterministic, offline RAG eval harness now lives in `@expertos/ai` (`evaluateRetrieval` + `RETRIEVAL_GOLDEN_SET`) reusing the production primitives (chunk → embed → cosine + keyword → RRF fuse). It ships EN, VI (NFC), mixed EN-VI, and the NFD-normalization regression case, and runs in CI with the offline hashing embedder to guard tokenization / normalization / fusion. The *semantic* VI quality number (true cross-lingual recall, which a lexical offline model cannot produce) is measured **out-of-band** against the real multilingual model using the same fixture format. Golden-set ownership / size / refresh cadence remains **Open Decision #6**.
 
 **10. TidyCal webhook reliability / missed-event recovery** — how a booking reconciles if the confirmation webhook is missed: retry/idempotency (mirror the Stripe webhook discipline already in the PRD); a reconciliation path (poll TidyCal or manual admin link) so a booked-but-unconfirmed consultation doesn't silently vanish; user-facing state while confirmation is pending.
 
