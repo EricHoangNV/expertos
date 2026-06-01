@@ -1,4 +1,10 @@
-import { chatRequestSchema } from "./chat";
+import {
+  chatRequestSchema,
+  conversationListQuerySchema,
+  conversationRenameSchema,
+  savedAnswerCreateSchema,
+  savedAnswerListQuerySchema,
+} from "./chat";
 
 describe("chatRequestSchema", () => {
   it("applies defaults and trims/normalizes the question", () => {
@@ -43,5 +49,71 @@ describe("chatRequestSchema", () => {
   it("rejects an out-of-range topK", () => {
     expect(chatRequestSchema.safeParse({ text: "q", topK: 0 }).success).toBe(false);
     expect(chatRequestSchema.safeParse({ text: "q", topK: 99 }).success).toBe(false);
+  });
+});
+
+describe("conversationListQuerySchema", () => {
+  it("applies pagination defaults", () => {
+    expect(conversationListQuerySchema.parse({})).toEqual({ limit: 20, offset: 0 });
+  });
+
+  it("coerces string query params from the URL", () => {
+    expect(conversationListQuerySchema.parse({ limit: "5", offset: "10" })).toEqual({
+      limit: 5,
+      offset: 10,
+    });
+  });
+
+  it("rejects an out-of-range limit or negative offset", () => {
+    expect(conversationListQuerySchema.safeParse({ limit: 0 }).success).toBe(false);
+    expect(conversationListQuerySchema.safeParse({ limit: 101 }).success).toBe(false);
+    expect(conversationListQuerySchema.safeParse({ offset: -1 }).success).toBe(false);
+  });
+});
+
+describe("conversationRenameSchema", () => {
+  it("trims the title", () => {
+    expect(conversationRenameSchema.parse({ title: "  My taxes  " })).toEqual({
+      title: "My taxes",
+    });
+  });
+
+  it("rejects an empty or over-long title", () => {
+    expect(conversationRenameSchema.safeParse({ title: "   " }).success).toBe(false);
+    expect(conversationRenameSchema.safeParse({ title: "x".repeat(101) }).success).toBe(false);
+  });
+});
+
+describe("savedAnswerCreateSchema", () => {
+  it("accepts a messageId with an optional trimmed note", () => {
+    const parsed = savedAnswerCreateSchema.parse({
+      messageId: "11111111-1111-1111-1111-111111111111",
+      note: "  useful  ",
+    });
+    expect(parsed.note).toBe("useful");
+  });
+
+  it("accepts a messageId without a note", () => {
+    const parsed = savedAnswerCreateSchema.parse({
+      messageId: "11111111-1111-1111-1111-111111111111",
+    });
+    expect(parsed.note).toBeUndefined();
+  });
+
+  it("rejects a non-uuid messageId or an over-long note", () => {
+    expect(savedAnswerCreateSchema.safeParse({ messageId: "nope" }).success).toBe(false);
+    expect(
+      savedAnswerCreateSchema.safeParse({
+        messageId: "11111111-1111-1111-1111-111111111111",
+        note: "x".repeat(501),
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("savedAnswerListQuerySchema", () => {
+  it("applies pagination defaults and coerces params", () => {
+    expect(savedAnswerListQuerySchema.parse({})).toEqual({ limit: 20, offset: 0 });
+    expect(savedAnswerListQuerySchema.parse({ limit: "3" })).toEqual({ limit: 3, offset: 0 });
   });
 });

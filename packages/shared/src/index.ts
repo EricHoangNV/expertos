@@ -40,10 +40,23 @@ export type {
   VoiceProfileUpdateInput,
   VoiceProfileListQueryInput,
 } from "./voice";
-export { chatRequestSchema } from "./chat";
+export {
+  chatRequestSchema,
+  conversationListQuerySchema,
+  conversationRenameSchema,
+  savedAnswerCreateSchema,
+  savedAnswerListQuerySchema,
+} from "./chat";
 export type {
   ChatRequestInput,
   ChatMessageDto,
   ChatCitationDto,
   ChatStreamEvent,
+  ConversationSummaryDto,
+  ConversationDetailDto,
+  ConversationListQueryInput,
+  ConversationRenameInput,
+  SavedAnswerDto,
+  SavedAnswerCreateInput,
+  SavedAnswerListQueryInput,
 } from "./chat";

@@ -512,3 +512,44 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **No real LLM driver yet** (deliberate, mirrors the M1.3 real-embedder deferral): `EchoLlmProvider` is offline/deterministic. Wire the real driver in `createDefaultLlmProvider`; it should implement `completeStream` for true token streaming, else the `complete()` fallback is used (no streaming feel).
 - **SSE controller is not coverage-gated** (only `*.service.ts` is) — the `chat.controller.test.ts` guards the framing with a fake `@Res()`; M11 E2E should exercise the real HTTP stream.
 - After any `pnpm install`, re-run `cd packages/db && PRISMA_CLIENT_ENGINE_TYPE=binary npx prisma generate` or `pnpm test` SIGILLs (LEARNINGS §2).
+
+---
+
+## M3.2 — Conversation history + auto-titling + saved answers
+**Date:** 2026-06-01
+**Ref:** PRD.md Task Manifest Phase 1 §"Chat experience" / §"History & retention" (M3.2)
+
+**What was done:**
+- Extended `ConversationService` with the history read/write surface, built on the M3.1 persistence seam (no re-wiring):
+  - `list(user, {limit, offset})` — the acting user's conversations as `ConversationSummaryDto[]`, ordered `updatedAt desc`; RLS scopes `conversations` to the owner so no `where` filter is needed for isolation.
+  - `get(user, id)` — one conversation + its full user/assistant transcript (oldest-first); throws 404 when the conversation isn't the actor's (RLS makes a peer's row invisible → null → NotFound).
+  - `rename(user, id, title)` — overrides the auto-title; ownership via `requireConversation` + RLS.
+- **Auto-titling:** `persistTurn` now sets `title: deriveTitle(turn.userText)` on conversation create. `deriveTitle` is a pure, offline, deterministic helper — collapse whitespace, truncate on a word boundary at 80 chars with an ellipsis (hard-cut a single over-long word).
+- New `SavedAnswerService` (bookmarks): `create` (bookmark an **assistant** answer — client passes only `messageId`; the owning conversation is derived server-side and ownership re-checked, since `messages` is `tenant_only` but `conversations` is `user_scoped`; 404 on missing/non-answer/unowned, 409 duplicate via the `(userId,messageId)` unique), `list` (RLS-scoped, newest-first), `remove` (404 when not the actor's, else delete).
+- New thin controllers wired into `ChatModule`: `ConversationsController` (`GET /conversations`, `GET /conversations/:id`, `PATCH /conversations/:id`) and `SavedAnswersController` (`POST /saved-answers`, `GET /saved-answers`, `DELETE /saved-answers/:id` → 204). Both `@Roles("user")`.
+- New shared DTOs/schemas in `packages/shared/src/chat.ts` (exported from the index): `ConversationSummaryDto`, `ConversationDetailDto`, `conversationListQuerySchema`, `conversationRenameSchema`, `SavedAnswerDto`, `savedAnswerCreateSchema`, `savedAnswerListQuerySchema`. Pagination via `z.coerce`; lengths bounded per directive §1.1.
+- Tests: `apps/api` +15 (conversation.service list/get/rename/auto-title incl. truncation + hard-cut branch; saved-answer.service full CRUD incl. ownership/duplicate paths). `@expertos/shared` +9 (new schema coverage in `chat.test.ts`). Both new services = 100% coverage.
+
+**Key decisions:**
+- **Auto-title derived, not LLM-generated.** PRD M3.2 says "meaningful title from first exchange" but doesn't mandate the method. Chose a deterministic string derivation over an LLM call: it's offline-safe with the `EchoLlmProvider`, adds zero token cost (aligned with the OD#8 cost concern), and is trivially testable. Rename endpoint covers the cases where the derived title is poor.
+- **`messageId`-only bookmark with server-side conversation derivation** (directive §26). `messages` is `tenant_only` under RLS, so any tenant peer can read any message row; the `user_scoped` conversation lookup is the actual ownership boundary. Bookmarking a non-owned answer returns 404 (don't leak existence).
+- **API + persistence only; web history UI deferred.** Mirrors the M2.3 precedent (voice-profile HTTP routes shipped before the M8.5 portal UI). Did NOT add web `chat-client.ts` helpers, since unused exports would fail knip before a UI consumes them.
+- Kept controllers thin (apps/api coverage gate collects only `*.service.ts`) — all branchy logic in the services, validated via `ZodValidationPipe`.
+
+**Files changed:**
+- `packages/shared/src/chat.ts` — new conversation-history + saved-answer DTOs and zod schemas.
+- `packages/shared/src/index.ts` — export the new schemas/types.
+- `packages/shared/src/chat.test.ts` — tests for the four new schemas (defaults, coercion, validation).
+- `apps/api/src/chat/conversation.service.ts` — `list`/`get`/`rename` methods, `deriveTitle` + auto-title on create, `toConversationSummary` + summary `select`.
+- `apps/api/src/chat/conversation.service.test.ts` — list/get/rename + auto-title (collapse/truncate/hard-cut) tests.
+- `apps/api/src/chat/saved-answer.service.ts` — new `SavedAnswerService` (create/list/remove).
+- `apps/api/src/chat/saved-answer.service.test.ts` — new test suite.
+- `apps/api/src/chat/conversations.controller.ts`, `apps/api/src/chat/saved-answers.controller.ts` — new controllers.
+- `apps/api/src/chat/chat.module.ts` — register the two controllers + `SavedAnswerService`.
+- `project-mds/PRD.md` — Task Manifest M3.2 `[ ]` → `[x]`.
+
+**Notes for next iteration:**
+- **M3.3 (full-text search)** should add a search method to `ConversationService` (or a sibling service) over `messages.content` (+ titles), scoped by RLS. Reuse the M1.2 keyword pattern: `to_tsvector('simple', content)` / `websearch_to_tsquery` (the `'simple'` config keeps Vietnamese undistorted — see the NFC-normalization directive §36); raw SQL is needed there for `ts_rank`. Consider a GIN index on the messages tsvector.
+- **M3.4 (feedback)** can copy `SavedAnswerService` verbatim for `AnswerFeedback` — same `user_scoped` + `(userId,messageId)` unique + derive-conversation-from-message ownership shape; just add `helpful`/`reason`.
+- The consumer-facing **web** history sidebar + saved-answers view is unbuilt — the API is ready; consume it from `apps/web/src/lib/chat-client.ts` when the UI lands (don't add helpers before then or knip fails).
+- DB note unchanged: run api tests with `PRISMA_CLIENT_ENGINE_TYPE=binary` on this sandbox (LEARNINGS §2); the new tests mock the tx so they don't hit a real engine, but the suite as a whole loads the client.

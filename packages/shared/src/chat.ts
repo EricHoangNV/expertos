@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { languageSchema } from "./ingestion";
+import { languageSchema, type LanguageValue } from "./ingestion";
 import { normalizeText } from "./text";
 
 /**
@@ -65,3 +65,78 @@ export type ChatStreamEvent =
       confidence?: number;
     }
   | { type: "error"; message: string };
+
+// ──────────────────────────── Conversation history (M3.2) ────────────────────────────
+
+/**
+ * A conversation as it appears in the history list (M3.2). `title` is auto-derived from the first
+ * question at creation, or a user-chosen rename; it is null only for a conversation created before
+ * auto-titling existed. The list is ordered by `updatedAt` (most recent activity first).
+ */
+export interface ConversationSummaryDto {
+  id: string;
+  title: string | null;
+  /** Expert whose voice the conversation was started in, if any. */
+  expertId: string | null;
+  language: LanguageValue;
+  /** ISO-8601 timestamp. */
+  createdAt: string;
+  /** ISO-8601 timestamp of the last turn — the history sort key. */
+  updatedAt: string;
+}
+
+/** A conversation plus its full user/assistant transcript (the M3.2 history detail view). */
+export interface ConversationDetailDto extends ConversationSummaryDto {
+  messages: ChatMessageDto[];
+}
+
+/** Pagination for the conversation history list. */
+export const conversationListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export type ConversationListQueryInput = z.infer<typeof conversationListQuerySchema>;
+
+/**
+ * Rename a conversation, overriding the auto-derived title (M3.2). Length-bounded as short text
+ * (directive §1.1); trimmed so a whitespace-only title can't slip through.
+ */
+export const conversationRenameSchema = z.object({
+  title: z.string().trim().min(1).max(100),
+});
+
+export type ConversationRenameInput = z.infer<typeof conversationRenameSchema>;
+
+// ──────────────────────────── Saved answers / bookmarks (M3.2) ────────────────────────────
+
+/** A bookmarked assistant answer (M3.2), with an optional user note. */
+export interface SavedAnswerDto {
+  id: string;
+  conversationId: string;
+  messageId: string;
+  note: string | null;
+  /** ISO-8601 timestamp. */
+  createdAt: string;
+}
+
+/**
+ * Bookmark an assistant answer (M3.2). Only the `messageId` is supplied — the owning conversation
+ * is derived server-side from the message and ownership re-checked there (directive §26), so the
+ * client can't bookmark an answer in a conversation it doesn't own.
+ */
+export const savedAnswerCreateSchema = z.object({
+  messageId: z.string().uuid(),
+  /** Optional note; medium-text bounded (directive §1.1). */
+  note: z.string().trim().max(500).optional(),
+});
+
+export type SavedAnswerCreateInput = z.infer<typeof savedAnswerCreateSchema>;
+
+/** Pagination for the saved-answers list. */
+export const savedAnswerListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export type SavedAnswerListQueryInput = z.infer<typeof savedAnswerListQuerySchema>;

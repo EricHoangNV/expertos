@@ -15,7 +15,12 @@ const USER: AuthUser = {
 
 function makeTx() {
   return {
-    conversation: { findUnique: jest.fn(), create: jest.fn() },
+    conversation: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+    },
     message: { findMany: jest.fn(), create: jest.fn() },
     citation: { create: jest.fn().mockResolvedValue({ id: "cit" }) },
   };
@@ -120,7 +125,7 @@ describe("ConversationService.persistTurn", () => {
     expect(tx.citation.create.mock.calls[1][0].data).toMatchObject({ ordinal: 2, chunkId: "c2" });
   });
 
-  it("creates a new conversation with voice attribution when none is given", async () => {
+  it("creates a new conversation with voice attribution and an auto-derived title", async () => {
     const tx = makeTx();
     tx.conversation.create.mockResolvedValue({ id: "conv-new" });
     tx.message.create.mockResolvedValue({ id: "assist-2" });
@@ -135,7 +140,38 @@ describe("ConversationService.persistTurn", () => {
       userId: USER.id,
       expertId: "ex-1",
       language: "en",
+      // Auto-title is the (whitespace-collapsed) first question.
+      title: "how do I file taxes",
     });
+  });
+
+  it("collapses whitespace and truncates a long first question into the title", async () => {
+    const tx = makeTx();
+    tx.conversation.create.mockResolvedValue({ id: "conv-long" });
+    tx.message.create.mockResolvedValue({ id: "assist-long" });
+    const { service } = makeService(tx);
+
+    const userText = `What   are\tthe   ${"detailed ".repeat(20)}steps to incorporate a company`;
+    await service.persistTurn(USER, { ...TURN, userText });
+
+    const title: string = tx.conversation.create.mock.calls[0][0].data.title;
+    expect(title.length).toBeLessThanOrEqual(81); // 80 chars + ellipsis
+    expect(title.endsWith("…")).toBe(true);
+    expect(title).not.toContain("  "); // whitespace collapsed
+    expect(title.startsWith("What are the detailed")).toBe(true);
+  });
+
+  it("hard-cuts a single over-long word that has no space to break on", async () => {
+    const tx = makeTx();
+    tx.conversation.create.mockResolvedValue({ id: "conv-word" });
+    tx.message.create.mockResolvedValue({ id: "assist-word" });
+    const { service } = makeService(tx);
+
+    const userText = "a".repeat(120);
+    await service.persistTurn(USER, { ...TURN, userText });
+
+    const title: string = tx.conversation.create.mock.calls[0][0].data.title;
+    expect(title).toBe(`${"a".repeat(80)}…`);
   });
 
   it("stores a null expert when starting a neutral-voice conversation", async () => {
@@ -158,5 +194,109 @@ describe("ConversationService.persistTurn", () => {
       service.persistTurn(USER, { ...TURN, conversationId: "conv-x" }),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(tx.message.create).not.toHaveBeenCalled();
+  });
+});
+
+const CONV_ROW = {
+  id: "conv-1",
+  title: "how do I file taxes",
+  expertId: "ex-1",
+  language: "en",
+  createdAt: new Date("2026-06-01T10:00:00.000Z"),
+  updatedAt: new Date("2026-06-01T10:05:00.000Z"),
+};
+
+describe("ConversationService.list", () => {
+  it("returns the user's conversations as summaries, newest activity first", async () => {
+    const tx = makeTx();
+    tx.conversation.findMany.mockResolvedValue([CONV_ROW]);
+    const { service, run } = makeService(tx);
+
+    const result = await service.list(USER, { limit: 20, offset: 0 });
+
+    expect(run).toHaveBeenCalledWith(USER, expect.any(Function));
+    expect(result).toEqual([
+      {
+        id: "conv-1",
+        title: "how do I file taxes",
+        expertId: "ex-1",
+        language: "en",
+        createdAt: "2026-06-01T10:00:00.000Z",
+        updatedAt: "2026-06-01T10:05:00.000Z",
+      },
+    ]);
+    const args = tx.conversation.findMany.mock.calls[0][0];
+    expect(args.orderBy).toEqual({ updatedAt: "desc" });
+    expect(args.take).toBe(20);
+    expect(args.skip).toBe(0);
+  });
+});
+
+describe("ConversationService.get", () => {
+  it("returns the conversation with its chronological transcript", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue(CONV_ROW);
+    tx.message.findMany.mockResolvedValue([
+      {
+        id: "m1",
+        role: "user",
+        content: "q1",
+        createdAt: new Date("2026-06-01T10:00:00.000Z"),
+      },
+      {
+        id: "m2",
+        role: "assistant",
+        content: "a1",
+        createdAt: new Date("2026-06-01T10:01:00.000Z"),
+      },
+    ]);
+    const { service } = makeService(tx);
+
+    const result = await service.get(USER, "conv-1");
+
+    expect(result.id).toBe("conv-1");
+    expect(result.title).toBe("how do I file taxes");
+    expect(result.messages).toEqual([
+      { id: "m1", role: "user", content: "q1", createdAt: "2026-06-01T10:00:00.000Z" },
+      { id: "m2", role: "assistant", content: "a1", createdAt: "2026-06-01T10:01:00.000Z" },
+    ]);
+    expect(tx.message.findMany.mock.calls[0][0].orderBy).toEqual({ createdAt: "asc" });
+  });
+
+  it("throws NotFound when the conversation is not the acting user's", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue(null);
+    const { service } = makeService(tx);
+
+    await expect(service.get(USER, "conv-x")).rejects.toBeInstanceOf(NotFoundException);
+    expect(tx.message.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("ConversationService.rename", () => {
+  it("updates the title after confirming ownership", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue({ id: "conv-1" });
+    tx.conversation.update.mockResolvedValue({ ...CONV_ROW, title: "My taxes" });
+    const { service } = makeService(tx);
+
+    const result = await service.rename(USER, "conv-1", "My taxes");
+
+    expect(result.title).toBe("My taxes");
+    expect(tx.conversation.update.mock.calls[0][0]).toMatchObject({
+      where: { id: "conv-1" },
+      data: { title: "My taxes" },
+    });
+  });
+
+  it("throws NotFound when renaming a conversation the user does not own", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue(null);
+    const { service } = makeService(tx);
+
+    await expect(service.rename(USER, "conv-x", "x")).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(tx.conversation.update).not.toHaveBeenCalled();
   });
 });

@@ -4,8 +4,11 @@ import { RetrievalModule } from "../retrieval/retrieval.module";
 import { VoiceModule } from "../voice/voice.module";
 import { createDefaultLlmProvider } from "../ingestion/ingestion.defaults";
 import { ChatController } from "./chat.controller";
+import { ConversationsController } from "./conversations.controller";
+import { SavedAnswersController } from "./saved-answers.controller";
 import { ChatService } from "./chat.service";
 import { ConversationService } from "./conversation.service";
+import { SavedAnswerService } from "./saved-answer.service";
 import { CHAT_LLM_PROVIDER } from "./chat.tokens";
 
 /**
@@ -19,10 +22,11 @@ import { CHAT_LLM_PROVIDER } from "./chat.tokens";
  */
 @Module({
   imports: [AuthModule, RetrievalModule, VoiceModule],
-  controllers: [ChatController],
+  controllers: [ChatController, ConversationsController, SavedAnswersController],
   providers: [
     ChatService,
     ConversationService,
+    SavedAnswerService,
     { provide: CHAT_LLM_PROVIDER, useFactory: createDefaultLlmProvider },
   ],
   exports: [ChatService],
