@@ -30,3 +30,23 @@ export const voiceQuerySchema = z.object({
 });
 
 export type VoiceQueryInput = z.infer<typeof voiceQuerySchema>;
+
+/**
+ * Validated input for listing the experts a user can pick a voice from (M2.2 — "Ask Expert A"
+ * vs "Ask Expert B"). The list surfaces only experts that have a *published* voice profile, so
+ * a picker never offers a voice that can't actually answer (the eligibility is enforced in the
+ * SQL, not here). Tenant isolation is enforced by Postgres RLS (directive §4.21), so there is
+ * no `tenant_id` here either.
+ *
+ * `language` is intentionally OPTIONAL with no default: omitted lists every selectable expert,
+ * while a value narrows to experts that have a published profile in that language (so the UI
+ * can disable a voice that exists but not in the language the user is asking in).
+ */
+export const expertListQuerySchema = z.object({
+  /** Narrow to experts with a published profile in this language. Omitted = all languages. */
+  language: languageSchema.optional(),
+  /** Max experts returned. Defaults to 20; higher ceiling than voice topK since it's a list. */
+  limit: z.number().int().min(1).max(100).default(20),
+});
+
+export type ExpertListQueryInput = z.infer<typeof expertListQuerySchema>;

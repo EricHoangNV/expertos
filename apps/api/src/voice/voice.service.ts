@@ -4,14 +4,15 @@ import {
   type EmbeddingProvider,
   type RetrievalLanguage,
 } from "@expertos/ai";
-import type { VoiceQueryInput } from "@expertos/shared";
+import type { ExpertListQueryInput, VoiceQueryInput } from "@expertos/shared";
 import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { UsageLogService } from "../observability/usage-log.service";
 import { StructuredLogger } from "../observability/logger.service";
 import { PgVoiceExampleStore } from "./voice-example.store";
+import { PgExpertStore } from "./expert.store";
 import { VOICE_EMBEDDING_PROVIDER } from "./voice.tokens";
-import type { RetrievedVoice } from "./voice.types";
+import type { ExpertVoiceMeta, RetrievedVoice } from "./voice.types";
 
 /**
  * Runtime voice layer (M2.1). Given an expert + topic, it resolves the expert's published
@@ -77,5 +78,28 @@ export class VoiceService {
     });
 
     return result;
+  }
+
+  /**
+   * Lists the expert voices a user can pick from (M2.2). Only active experts with a published
+   * voice profile are returned — eligibility is enforced in {@link PgExpertStore} SQL — so the
+   * picker never offers a voice that cannot answer. No embedding/model call is made, so unlike
+   * {@link retrieveVoice} there is nothing token-billed to record. The store runs inside the
+   * acting user's RLS context so tenant isolation is enforced by Postgres (directive §4.21).
+   */
+  async listExperts(
+    user: AuthUser,
+    query: ExpertListQueryInput,
+  ): Promise<ExpertVoiceMeta[]> {
+    const experts = await this.rls.run(user, (tx) =>
+      new PgExpertStore(tx).listExperts(query.language, query.limit),
+    );
+
+    this.logger.info("expert voice list completed", {
+      language: query.language ?? "any",
+      count: experts.length,
+    });
+
+    return experts;
   }
 }

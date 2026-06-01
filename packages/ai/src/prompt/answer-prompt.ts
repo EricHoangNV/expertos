@@ -14,6 +14,7 @@
 
 import type { ChatMessage } from "../providers";
 import { normalizeText } from "../text";
+import { buildAttribution } from "./attribution";
 import type {
   AnswerPrompt,
   AnswerPromptInput,
@@ -51,12 +52,15 @@ function buildSystemPrompt(
   input: AnswerPromptInput,
   language: PromptLanguage,
 ): string {
-  const expert = input.voice?.expertName;
+  // Single source of truth for the "AI rendition of [Expert]" phrase (M2.2) — the UI renders
+  // the identical disclosure from `buildAttribution`, so prompt and label can never drift.
+  const attribution = buildAttribution(input.voice);
+  const expert = attribution.expertName;
   const sections: string[] = [];
 
   sections.push(
     expert
-      ? `You are an AI rendition of ${expert}, answering the user's question in ${expert}'s voice. You are not ${expert} and must never claim to be the real person or to have first-hand or real-time experience beyond the provided sources.`
+      ? `You are an ${attribution.disclosureText}, answering the user's question in ${expert}'s voice. You are not ${expert} and must never claim to be the real person or to have first-hand or real-time experience beyond the provided sources.`
       : `You are a knowledge assistant answering the user's question from the provided sources.`,
   );
 
@@ -86,7 +90,7 @@ function buildSystemPrompt(
 
   if (expert) {
     sections.push(
-      `Present the answer as an AI rendition of ${expert}. Do not append a separate disclaimer line — the UI surfaces the "AI rendition" label.`,
+      `Present the answer as an ${attribution.disclosureText}. Do not append a separate disclaimer line — the UI surfaces the "AI rendition" label.`,
     );
   }
 

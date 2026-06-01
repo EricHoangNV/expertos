@@ -27,6 +27,8 @@ export type {
   RankedChunk,
 } from "./retrieval/types";
 export { buildAnswerPrompt } from "./prompt/answer-prompt";
+export { buildAttribution } from "./prompt/attribution";
+export type { AttributionInfo } from "./prompt/attribution";
 export type {
   PromptLanguage,
   PromptFact,

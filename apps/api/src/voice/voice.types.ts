@@ -11,6 +11,21 @@ export interface VoiceProfileMeta {
   guidelines: string | null;
 }
 
+/**
+ * A selectable expert voice for the picker (M2.2 — "Ask Expert A" vs "Ask Expert B"). Only
+ * experts that are *active* and have at least one *published* voice profile are listed, so the
+ * UI never offers a voice that cannot answer; `hasActiveProfile` is therefore always `true` and
+ * exists so the surface reads self-documenting on the client. `languages` is the set of
+ * languages the expert has a published profile in, so the picker can disable a voice that exists
+ * but not in the language the user is asking in.
+ */
+export interface ExpertVoiceMeta {
+  expertId: string;
+  displayName: string;
+  languages: RetrievalLanguage[];
+  hasActiveProfile: true;
+}
+
 /** A retrieved voice example, ranked by cosine similarity to the query topic. */
 export interface VoiceExampleHit {
   id: string;

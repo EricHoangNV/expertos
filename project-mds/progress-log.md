@@ -349,3 +349,44 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Voice examples are not seeded/authored yet.** When adding a seed/admin authoring path (M8), embed `voice_examples.embedding` via `createDefaultEmbeddingProvider` or cosine match is meaningless. The store's cosine SQL is not exercised against real pgvector — add to the M11 Testcontainers pass (same as `PgVectorStore`).
 - **M2.4** should extend the `@expertos/ai` `eval/` harness with voice-fidelity (voice-on≈voice-off per expert) + voice-vs-facts assertions that drive `buildAnswerPrompt` against a live LLM out-of-band; the offline harness can't judge tone.
 - No new bug/learning surfaced — monorepo build-order (rebuild `@expertos/shared`/`@expertos/ai` before api typecheck sees new exports) is already known behavior.
+
+## M2.2 — Multiple selectable expert voices + attribution / "AI rendition of [Expert]" disclosure
+**Date:** 2026-06-01
+**Ref:** PRD §"Expert voice layer" / Task Manifest M2.2
+
+**What was done:**
+- Added a pure, dependency-free attribution helper `@expertos/ai` `prompt/attribution.ts`: `buildAttribution(voice?) → { rendition, expertName?, disclosureText }`. The `"AI rendition of [Expert]"` phrase now lives ONLY here (single source of truth for prompt + UI).
+- Refactored `buildAnswerPrompt` to embed `attribution.disclosureText` verbatim in the two places that previously hardcoded the phrase. Emitted strings are byte-identical, so `answer-prompt.test.ts` needed no changes and stays green (proves no drift).
+- Exported `buildAttribution` + `AttributionInfo` from the `@expertos/ai` index for the future M3 chat UI to render the identical label.
+- Added shared `expertListQuerySchema` (`language` optional, `limit` int 1..100 default 20) + `ExpertListQueryInput`, re-exported from `@expertos/shared` index.
+- Added `apps/api/src/voice/expert.store.ts` `PgExpertStore.listExperts(language?, limit)`: raw SQL, bound params only, `array_agg(DISTINCT vp.language)` per expert, eligibility (`e.active = true` + `vp.status='published'`) enforced in SQL, RLS-scoped tx (no `tenant_id` predicate). Maps to new API-layer `ExpertVoiceMeta { expertId, displayName, languages[], hasActiveProfile:true }`.
+- Added `VoiceService.listExperts(user, query)` — runs the store inside `RlsService.run`; no embedding/usage-record (no token-billed call); logs `expert voice list completed`.
+- Tests: `prompt/attribution.test.ts` (5), `expertListQuerySchema` cases in shared `voice.test.ts` (4), `expert.store.test.ts` (3), `listExperts` cases in `voice.service.test.ts` (3). Counts 216→231; all new code 100% covered; `apps/api` 100% on gated services.
+
+**Key decisions:**
+- **Single source of truth for the disclosure phrase.** Rather than leave the literal in the prompt builder and re-type it in the UI later, centralized it in `buildAttribution` so the LLM framing and the visible label can never diverge. Kept emitted prompt strings identical to avoid churning existing tests.
+- **Attribution lives in `@expertos/ai`, not the API.** It pairs with the prompt builder and is pure (consumes only `VoiceProfileInput`), preserving the package's Prisma/shared-free constraint.
+- **No HTTP controller now (deferred to M3).** There is no UI or conversation persistence yet; M3's chat layer will call `listExperts`/`buildAttribution` in-process and own the route + the "which expert answered" persistence. Adding a controller now would be dead, un-E2E'd surface (the coverage gate only covers `*.service.ts`).
+- **`language` optional with no default** in `expertListQuerySchema` (diverged from one survey suggestion of `default('en')`) so a picker can list ALL selectable experts; callers narrow when they need language-specific availability.
+- **`limit` ceiling 100** (vs voice `topK` ≤10) since listing is not a few-shot crowding concern.
+
+**Files changed:**
+- `packages/ai/src/prompt/attribution.ts` — NEW pure helper + `AttributionInfo`.
+- `packages/ai/src/prompt/answer-prompt.ts` — derive disclosure from `buildAttribution` (no string drift).
+- `packages/ai/src/prompt/attribution.test.ts` — NEW (both branches, empty-name guard).
+- `packages/ai/src/index.ts` — export `buildAttribution` / `AttributionInfo`.
+- `packages/shared/src/voice.ts` — `expertListQuerySchema` + `ExpertListQueryInput`.
+- `packages/shared/src/voice.test.ts` — list-schema defaults/bounds/rejection cases.
+- `packages/shared/src/index.ts` — re-export the new schema + type.
+- `apps/api/src/voice/voice.types.ts` — `ExpertVoiceMeta`.
+- `apps/api/src/voice/expert.store.ts` — NEW `PgExpertStore`.
+- `apps/api/src/voice/expert.store.test.ts` — NEW seam tests (mocked tx).
+- `apps/api/src/voice/voice.service.ts` — `listExperts`.
+- `apps/api/src/voice/voice.service.test.ts` — `listExperts` cases + harness `expertRows` branch.
+
+**Notes for next iteration:**
+- **M3 chat UI MUST render the "AI rendition" label from `buildAttribution`**, not a hardcoded string, or prompt-vs-label drift returns. Wording changes go in `attribution.ts` + `answer-prompt.test.ts` together.
+- **Picker flow:** `VoiceService.listExperts` → user picks `expertId` → `VoiceService.retrieveVoice` → `buildAnswerPrompt({ voice, voiceExamples })`. `listExperts` only returns experts with a published profile, so the picker never offers a dead voice.
+- **Persisting which expert answered** is intentionally NOT done — it lands on the message row in M3 when the conversation model exists; the answer path returns/derives attribution today.
+- **`PgExpertStore` raw SQL is seam-tested only** (mocked tx): the `array_agg`→`text[]` mapping and the conditional `$1::language`/`LIMIT $n` param-position shift need the M11 Testcontainers pass (same policy as `PgVectorStore`/`PgVoiceExampleStore`).
+- No new bug/learning surfaced; no LEARNINGS/DIRECTIVES change warranted.
