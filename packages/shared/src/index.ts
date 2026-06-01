@@ -120,6 +120,34 @@ export type {
 } from "./revenue";
 export { failedQueryListQuerySchema } from "./failed-queries";
 export type { FailedQueryListQueryInput, FailedQueryDto } from "./failed-queries";
+export {
+  adminAuditListQuerySchema,
+  FAIR_USE_FLAG_STATUSES,
+  fairUseFlagStatusSchema,
+  fairUseFlagCreateSchema,
+  fairUseFlagUpdateSchema,
+  DATA_DELETION_STATUSES,
+  dataDeletionStatusSchema,
+  adminUserListQuerySchema,
+  adminUserRoleUpdateSchema,
+} from "./admin";
+export type {
+  AdminAuditListQueryInput,
+  AdminAuditLogDto,
+  FairUseFlagStatusValue,
+  FairUseFlagCreateInput,
+  FairUseFlagUpdateInput,
+  AdminFairUseFlagDto,
+  DataDeletionStatusValue,
+  DataDeletionRequestDto,
+  UserDeletionResultDto,
+  AdminUserListQueryInput,
+  AdminUserRoleUpdateInput,
+  AdminUserSummaryDto,
+  AdminUserSubscriptionDto,
+  AdminUserActivityDto,
+  AdminUserDetailDto,
+} from "./admin";
 export type {
   ChatRequestInput,
   ChatMessageDto,

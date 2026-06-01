@@ -18,6 +18,8 @@ const NAV: NavItem[] = [
   { href: "/entitlements", label: "Entitlements" },
   { href: "/recommendation-rules", label: "Funnel rules" },
   { href: "/failed-queries", label: "Flagged answers" },
+  { href: "/users", label: "Users" },
+  { href: "/audit", label: "Audit log" },
 ];
 
 function Sidebar({ pathname }: { pathname: string }) {

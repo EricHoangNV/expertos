@@ -16,6 +16,16 @@ import type {
   RecommendationTriggerValue,
   RevenueReportDto,
   FailedQueryDto,
+  AdminAuditLogDto,
+  AdminFairUseFlagDto,
+  AdminUserDetailDto,
+  AdminUserRoleUpdateInput,
+  AdminUserSummaryDto,
+  DataDeletionRequestDto,
+  FairUseFlagCreateInput,
+  FairUseFlagUpdateInput,
+  Role,
+  UserDeletionResultDto,
 } from "@expertos/shared";
 
 /**
@@ -202,4 +212,88 @@ export function getFailedQueries(
   if (params?.offset != null) search.set("offset", String(params.offset));
   const query = search.toString();
   return request<FailedQueryDto[]>(`/admin/failed-queries${query ? `?${query}` : ""}`, token);
+}
+
+// ── M8.4 — user / subscription / fair-use management + user-data deletion ───
+
+/** The user management list, optionally narrowed by role and/or an email/name substring. */
+export function listUsers(
+  token: string,
+  params?: { role?: Role; search?: string; limit?: number; offset?: number },
+): Promise<AdminUserSummaryDto[]> {
+  const search = new URLSearchParams();
+  if (params?.role != null) search.set("role", params.role);
+  if (params?.search != null && params.search !== "") search.set("search", params.search);
+  if (params?.limit != null) search.set("limit", String(params.limit));
+  if (params?.offset != null) search.set("offset", String(params.offset));
+  const query = search.toString();
+  return request<AdminUserSummaryDto[]>(`/admin/users${query ? `?${query}` : ""}`, token);
+}
+
+/** One user's full detail (subscription, activity, fair-use flags, deletion request). */
+export function getUser(token: string, id: string): Promise<AdminUserDetailDto> {
+  return request<AdminUserDetailDto>(`/admin/users/${id}`, token);
+}
+
+/** Change a user's role. */
+export function updateUserRole(
+  token: string,
+  id: string,
+  body: AdminUserRoleUpdateInput,
+): Promise<AdminUserSummaryDto> {
+  return request<AdminUserSummaryDto>(`/admin/users/${id}/role`, token, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Raise a fair-use flag against a user. */
+export function flagFairUse(
+  token: string,
+  id: string,
+  body: FairUseFlagCreateInput,
+): Promise<AdminFairUseFlagDto> {
+  return request<AdminFairUseFlagDto>(`/admin/users/${id}/fair-use-flags`, token, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Move a fair-use flag through its review lifecycle. */
+export function updateFairUseFlag(
+  token: string,
+  id: string,
+  body: FairUseFlagUpdateInput,
+): Promise<AdminFairUseFlagDto> {
+  return request<AdminFairUseFlagDto>(`/admin/fair-use-flags/${id}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Record a user-data deletion request (the workflow row, before the destructive execution). */
+export function requestUserDeletion(token: string, id: string): Promise<DataDeletionRequestDto> {
+  return request<DataDeletionRequestDto>(`/admin/users/${id}/deletion-request`, token, {
+    method: "POST",
+  });
+}
+
+/** Hard-delete a user and all their owned data (the GDPR cascade). */
+export function deleteUser(token: string, id: string): Promise<UserDeletionResultDto> {
+  return request<UserDeletionResultDto>(`/admin/users/${id}`, token, { method: "DELETE" });
+}
+
+/** A page of admin audit-log entries, newest first; optionally filtered. */
+export function getAuditLogs(
+  token: string,
+  params?: { action?: string; targetType?: string; limit?: number; offset?: number },
+): Promise<AdminAuditLogDto[]> {
+  const search = new URLSearchParams();
+  if (params?.action != null && params.action !== "") search.set("action", params.action);
+  if (params?.targetType != null && params.targetType !== "")
+    search.set("targetType", params.targetType);
+  if (params?.limit != null) search.set("limit", String(params.limit));
+  if (params?.offset != null) search.set("offset", String(params.offset));
+  const query = search.toString();
+  return request<AdminAuditLogDto[]>(`/admin/audit-logs${query ? `?${query}` : ""}`, token);
 }

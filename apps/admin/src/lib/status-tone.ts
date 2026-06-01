@@ -2,8 +2,10 @@ import type {
   BadgeTone,
 } from "@expertos/ui";
 import type {
+  FairUseFlagStatusValue,
   KnowledgeDraftStatusValue,
   PublishStatusValue,
+  Role,
 } from "@expertos/shared";
 
 /**
@@ -33,6 +35,33 @@ export function publishStatusTone(status: PublishStatusValue): BadgeTone {
 
 export function draftStatusTone(status: KnowledgeDraftStatusValue): BadgeTone {
   return DRAFT_TONES[status];
+}
+
+/**
+ * Fair-use flag review tones (M8.4): a fresh `open` flag needs attention (amber), a `throttled`
+ * account is a hard limit (red), `reviewed` is neutral progress (info), and a `cleared` flag is
+ * resolved (green).
+ */
+const FAIR_USE_TONES: Record<FairUseFlagStatusValue, BadgeTone> = {
+  open: "amber",
+  reviewed: "info",
+  throttled: "red",
+  cleared: "green",
+};
+
+export function fairUseFlagTone(status: FairUseFlagStatusValue): BadgeTone {
+  return FAIR_USE_TONES[status];
+}
+
+/** Role tones (M8.4): `admin` reads as elevated privilege (red), `expert` distinguished (info). */
+const ROLE_TONES: Record<Role, BadgeTone> = {
+  user: "ink",
+  expert: "info",
+  admin: "red",
+};
+
+export function roleTone(role: Role): BadgeTone {
+  return ROLE_TONES[role];
 }
 
 /** Human label for a status (replaces `_` with a space so `expert_review` reads naturally). */

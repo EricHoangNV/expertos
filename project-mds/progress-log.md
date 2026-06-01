@@ -1456,3 +1456,32 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - M8.3 is now fully complete (revenue + matrix editor + recommendation-rules editor + failed-query inspector, all API + admin UI). Remaining M8: M8.4 (manage users/subs/experts/voice profiles + audit logs + user-data deletion) and M8.5 (first-class expert portal — voice/knowledge approval, AI-answer review, consultation conversions; also wants the manual TidyCal reconcile + unmatched `booking_webhook_events` admin surface).
 - The real `LATERAL` join + the admin cross-tenant visibility join the M11 Testcontainers list (seam-tested with a mocked tx; no live DB this session — the raw-SQL caveat shared with conversation-search / `PgVectorStore`).
 - Possible follow-up if the feed grows noisy: a filter toggle for `insufficientKnowledge`-only, or include answers flagged insufficient even without explicit 👎 feedback (would be a second query path over `messages`, not `answer_feedback`).
+
+## M8.4 (partial) — Admin audit infrastructure + user/subscription management + user-data deletion
+**Date:** 2026-06-01
+**Ref:** PRD M8.4 (§"Admin web portal" → "Manage users, subscriptions, fair-use flags"; §"Foundational security/privacy" → "audit logs for admin & expert actions" + "User data deletion")
+
+**What was done:**
+- New `apps/api/src/admin/` module (registered in `AppModule`), the admin-management surface:
+  - `AdminAuditService` (`admin-audit.service.ts`) — the cross-cutting **immutable audit-log** backbone. `record(tx, actor, entry)` appends an `admin_audit_logs` row **inside the caller's transaction** (atomic with the action; append-only). `list(user, query)` reads the feed cross-tenant under the admin RLS context, resolving each actor to email/name.
+  - `AdminUserService` (`admin-user.service.ts`) — user / subscription / fair-use management + user-data deletion. `list`/`get` (subscription, activity `_count`, fair-use flags, deletion request); `updateRole` (self-lockout-guarded, audits from→to); `flagFairUse`/`updateFairUseFlag`; `requestDeletion`; `executeDeletion` (the GDPR cascade). Every mutation writes an `AdminAuditService` entry in the same tx.
+  - `AdminAuditController` (`GET /admin/audit-logs`) + `AdminUserController` (`GET /admin/users`, `GET /admin/users/:id`, `PATCH /admin/users/:id/role`, `POST /admin/users/:id/fair-use-flags`, `PATCH /admin/fair-use-flags/:id`, `POST /admin/users/:id/deletion-request`, `DELETE /admin/users/:id`), both `@Roles("admin")`.
+- New shared `packages/shared/src/admin.ts` — audit list query + `AdminAuditLogDto`; `fairUseFlag*`/`FAIR_USE_FLAG_STATUSES`; `dataDeletion*`; `adminUserListQuerySchema`/`adminUserRoleUpdateSchema` + user summary/detail/subscription/activity DTOs. Exported from the index.
+- Admin UI: `apps/admin/app/users/page.tsx` (role+search list), `apps/admin/app/users/[id]/page.tsx` (detail with role editor, fair-use raise/resolve, subscription view, two-step destructive delete + deletion-request), `apps/admin/app/audit/page.tsx` (audit feed w/ Load more). New admin-client fns (`listUsers`/`getUser`/`updateUserRole`/`flagFairUse`/`updateFairUseFlag`/`requestUserDeletion`/`deleteUser`/`getAuditLogs`), `fairUseFlagTone`/`roleTone` in `status-tone.ts`, "Users"/"Audit log" nav entries.
+
+**Key decisions:**
+- **Audit-in-the-same-transaction** — `record` takes the caller's `tx` so an action and its audit row commit/rollback together; there's no mutation without an audit entry. The audit log (tenant-scoped, actor `SetNull`) is also the **durable proof** a deletion happened, since the `data_deletion_requests` row cascades away with the user.
+- **Hard delete via `ON DELETE CASCADE`** — `executeDeletion` writes the audit entry first, then `tx.user.delete`, and Postgres' existing FK cascades remove all owned rows atomically. No manual paginated batch loop (that directive is Firestore-specific). `experts.user_id` is `SetNull`, so an expert's published knowledge/voice outlives a deleted operator account by design.
+- **Subscriptions read-only in admin** — the payment provider stays the billing source of truth (directive: only the webhook writes authoritative subscription status), so admin *views* a subscription but changes plan/cancellation through Stripe, not by writing `subscriptions` rows.
+- **Self-guards** — an admin can't change their own role or delete their own account (lockout protection), checked before any DB work.
+- Reused the `RevenueService`/`EntitlementMatrixService` admin-RLS + path-pinned-identity + mocked-tx-test templates.
+
+**Files changed:**
+- `packages/shared/src/admin.ts` (new) + `packages/shared/src/index.ts` (exports) + `packages/shared/src/admin.test.ts` (new, +12)
+- `apps/api/src/admin/{admin-audit.service,admin-audit.controller,admin-user.service,admin-user.controller,admin.module}.ts` (new) + `admin-audit.service.test.ts`/`admin-user.service.test.ts` (new, +22) + `apps/api/src/app.module.ts` (register `AdminModule`)
+- `apps/admin/src/lib/admin-client.ts` (+8 fns), `apps/admin/src/lib/status-tone.ts` (+`fairUseFlagTone`/`roleTone`), `apps/admin/src/components/AdminFrame.tsx` (+2 nav), `apps/admin/app/users/page.tsx`, `apps/admin/app/users/[id]/page.tsx`, `apps/admin/app/audit/page.tsx` (new)
+
+**Notes for next iteration:**
+- **M8.4 is not fully closed** — remaining: expert CRUD (no expert-management API exists; build an `AdminExpertService` on the `AdminUserService` template + an `apps/admin/app/experts` page) and a voice-profile admin UI over the existing M2.3 `/voice-profiles` routes (just admin-client fns + a page). Thread `AdminAuditService.record` through any new expert mutation. Marked `[~]` in the manifest.
+- Seam-tested with a mocked tx; the real cascade + admin cross-tenant visibility + the `fair_use_flags`/`data_deletion_requests` WITH-CHECK-under-`is_admin` inserts join the M11 Testcontainers list.
+- Full `apps/api` suite ran clean this session: 58 suites / 494 tests. Totals: 775 pass (shared 126, ui 3, db 9, ai 143, api 494).
