@@ -8,9 +8,11 @@ export {
 } from "./ingestion/summarize";
 export type { Summarizer, ExtractiveOptions } from "./ingestion/summarize";
 export { HashingEmbeddingProvider } from "./embedding/hashing-embedding-provider";
+export { EchoLlmProvider } from "./llm/echo-llm-provider";
 export type {
   ChatMessage,
   LlmCompletion,
+  LlmStreamChunk,
   LlmProvider,
   EmbeddingProvider,
   RetrievedChunk,

@@ -471,3 +471,44 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - To run the *semantic* voice-fidelity numbers, call `evaluateVoice(VOICE_GOLDEN_SET, { llm, judge })` out-of-band with a real `LlmProvider` and a `VoiceJudge` implementation (none exists yet — same deferral as the real embedder).
 - M3.4's insufficient-knowledge path can lean on the prompt builder's already-enforced INSUFFICIENT-KNOWLEDGE rule.
 - No bug surfaced; no LEARNINGS/DIRECTIVES change warranted. Coverage: whole `@expertos/ai` package at 100%.
+
+## M3.1 — Chat UI with streaming + context-retaining follow-ups
+**Date:** 2026-06-01
+**Ref:** PRD.md Task Manifest Phase 1 M3.1; PRD §"Phase 1 — MVP" (Core Q&A loop: streaming responses, context-retaining follow-ups); Open Decisions #7 (engineering resolution) & #8 (interim deferral).
+
+**What was done:**
+- **`@expertos/ai` streaming contract:** extended `LlmProvider` with an *optional* `completeStream(messages) → AsyncIterable<LlmStreamChunk>` (kept `complete()` mandatory so the M2 voice-eval harness / `LlmSummarizer` are unaffected). Added `LlmStreamChunk` type. New offline deterministic `EchoLlmProvider` (`packages/ai/src/llm/echo-llm-provider.ts`) — the completion-side counterpart of `HashingEmbeddingProvider`: parses the built prompt's SOURCES/QUESTION, cites every numbered source, states INSUFFICIENT-KNOWLEDGE when there are no sources, no network/key; `completeStream` slices the same text so deltas concatenate to exactly `complete().text`. Exported both from the package index.
+- **API chat module (`apps/api/src/chat/`):** `chat.tokens.ts` (`CHAT_LLM_PROVIDER`); `ConversationService` (RLS-scoped persistence — `loadHistory` capped at 10 msgs, `persistTurn` creates the conversation if new + writes user/assistant messages + ordinal-indexed citations in one transaction); `ChatService` (`answerStream` async generator wiring retrieval → voice → `buildAnswerPrompt` → history splice → LLM stream → persist → usage → terminal `done`; non-stream fallback when no `completeStream`); `ChatController` (`POST /chat` SSE over Express `@Res()`, `@Roles("user")`); `chat.module.ts` wired into `AppModule`.
+- **Experts picker route:** new `ExpertsController` (`GET /experts`, any authenticated user) backed by `VoiceService.listExperts`, registered in `VoiceModule` — the first consumer of the M2.2 picker.
+- **Shared:** new `packages/shared/src/chat.ts` — `chatRequestSchema` (NFC-normalized text, optional `conversationId`/`expertId`, `language` default en, `topK`) + `ChatMessageDto`/`ChatCitationDto`/`ChatStreamEvent` DTOs; re-exported from the shared index.
+- **Web:** `apps/web/src/lib/chat-client.ts` (`streamChat` SSE-frame parser, `fetchExperts`, `renditionLabel`) + `apps/web/app/chat/page.tsx` (streaming chat UI, expert-voice picker, render-after-complete citations, "AI rendition of [Expert]" disclosure). Added `@expertos/shared` to web deps.
+- **Composition root:** `createDefaultLlmProvider()` added to `apps/api/src/ingestion/ingestion.defaults.ts` (mirrors `createDefaultEmbeddingProvider` — swap the real LLM driver here).
+- Tests: ai +6 (echo provider, 100%), shared +6 (chat schema, 100%), api +13 (chat.service 6 + conversation.service 6 + chat.controller 1) + experts.controller 1. Suite 298→323, all green; gated `*.service.ts` at 100%. Full Nest DI graph boot-smoked (create→init→close) with a valid-format dummy Firebase key — ChatModule + all providers resolve.
+
+**Key decisions:**
+- **SSE over raw Express response, not NestJS `@Sse()` or WebSockets** — `@Sse()` expects an RxJS Observable and ties the contract to message-events; a plain async generator + `res.write` keeps the orchestration trivially unit-testable without HTTP and matches the bootstrap (Express is the Nest default, no transport override in `main.ts`).
+- **OD#7 (streaming vs citation-resolvability):** engineering resolution — stream only answer deltas; emit citations exactly once in a terminal `done` frame *after* generation AND persistence succeed, so a citation never flashes then vanishes. `prompt.citations` (the builder's list) is the single source of truth; never trust the model's emitted markers.
+- **OD#8 (context-window/cost ceiling):** explicitly deferred to M3.5. M3.1 ships a hardcoded `HISTORY_LIMIT = 10` cap in `ConversationService.loadHistory` with a comment pointing at M3.5 for the token-budget/summarization replacement.
+- **Optional `completeStream`** (not a breaking interface change) + a `ChatService` fallback to `complete()` — keeps every existing `LlmProvider` consumer valid and lets a future non-streaming driver work unchanged.
+- **History layered at the app seam, not in `buildAnswerPrompt`** — prior turns are spliced between the builder's system message and the freshly built user message, so the prompt builder stays pure (voice-on-facts enforced) and the M2.4 separation tests keep asserting against unchanged builder output.
+- **`renditionLabel` is a web-local one-liner**, not an import of `buildAttribution` — `@expertos/ai` is CommonJS (no tree-shaking), so importing it would pull the whole package (eval harnesses, golden sets) into the client bundle. Documented as a consolidation point.
+- **Single-transaction turn persistence** (conversation + both messages + citations) so a mid-stream failure can't leave a user message without an answer; continuing a non-owned conversation throws 404 via RLS invisibility.
+
+**Files changed:**
+- `packages/ai/src/providers.ts` — `LlmStreamChunk` + optional `LlmProvider.completeStream`
+- `packages/ai/src/llm/echo-llm-provider.ts` (+ `.test.ts`) — offline deterministic streaming LLM
+- `packages/ai/src/index.ts` — export `EchoLlmProvider` + `LlmStreamChunk`
+- `packages/shared/src/chat.ts` (+ `.test.ts`), `packages/shared/src/index.ts` — chat schema + DTOs
+- `apps/api/src/chat/{chat.tokens,chat.service,conversation.service,chat.controller,chat.module}.ts` (+ service/controller `.test.ts`) — chat backend
+- `apps/api/src/voice/experts.controller.ts` (+ `.test.ts`), `apps/api/src/voice/voice.module.ts` — picker route
+- `apps/api/src/ingestion/ingestion.defaults.ts` — `createDefaultLlmProvider()`
+- `apps/api/src/app.module.ts` — register `ChatModule`
+- `apps/web/src/lib/chat-client.ts`, `apps/web/app/chat/page.tsx`, `apps/web/package.json` — web chat UI + `@expertos/shared` dep
+- `project-mds/LEARNINGS.MD` — §2 nuance: `pnpm install` reverts the Prisma client to the library runtime; regenerate with `PRISMA_CLIENT_ENGINE_TYPE=binary npx prisma generate`.
+
+**Notes for next iteration:**
+- **M3.2** is the natural next step and the model/persistence already exist — add conversation list/get endpoints, auto-title from the first exchange (M3.1 leaves `Conversation.title` null), and saved-answer CRUD on `SavedAnswer`.
+- **M3.4** insufficient-knowledge UI path can hang off the already-enforced behavior (zero sources → `EchoLlmProvider` + prompt builder both emit the insufficient answer); add 👍/👎 on `AnswerFeedback`.
+- **No real LLM driver yet** (deliberate, mirrors the M1.3 real-embedder deferral): `EchoLlmProvider` is offline/deterministic. Wire the real driver in `createDefaultLlmProvider`; it should implement `completeStream` for true token streaming, else the `complete()` fallback is used (no streaming feel).
+- **SSE controller is not coverage-gated** (only `*.service.ts` is) — the `chat.controller.test.ts` guards the framing with a fake `@Res()`; M11 E2E should exercise the real HTTP stream.
+- After any `pnpm install`, re-run `cd packages/db && PRISMA_CLIENT_ENGINE_TYPE=binary npx prisma generate` or `pnpm test` SIGILLs (LEARNINGS §2).

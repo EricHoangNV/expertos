@@ -30,7 +30,7 @@
 - [x] M2.4 Voice-vs-facts separation tests; voice-fidelity assertion in eval harness (Open Decisions #2, #3, #6)
 
 #### M3 — Chat experience
-- [ ] M3.1 Chat UI with streaming + context-retaining follow-ups
+- [x] M3.1 Chat UI with streaming + context-retaining follow-ups
 - [ ] M3.2 Conversation history + auto-titling + saved answers
 - [ ] M3.3 Full-text conversation search (message content, not just titles)
 - [ ] M3.4 Insufficient-knowledge path + graceful next step; answer feedback (👍/👎 + reason)

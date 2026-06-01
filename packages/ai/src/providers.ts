@@ -17,9 +17,30 @@ export interface LlmCompletion {
   usage: { promptTokens: number; completionTokens: number };
 }
 
+/**
+ * One frame of a streamed completion (M3.1). A driver yields any number of `delta`-bearing
+ * chunks (the incremental answer text) and exactly one terminal chunk carrying `usage` — the
+ * same token counts {@link LlmCompletion} reports — so the chat layer can stream prose to the
+ * client and still record cost once generation finishes. The concatenation of every `delta`
+ * MUST equal the `text` a non-streamed {@link LlmProvider.complete} would return for the same
+ * messages, so streaming and non-streaming paths stay interchangeable.
+ */
+export interface LlmStreamChunk {
+  /** Incremental answer text. Absent on the terminal usage-only frame. */
+  delta?: string;
+  /** Present only on the final frame: total token usage for the completion. */
+  usage?: { promptTokens: number; completionTokens: number };
+}
+
 export interface LlmProvider {
   readonly name: string;
   complete(messages: ChatMessage[]): Promise<LlmCompletion>;
+  /**
+   * Optional streaming variant. When present, the chat layer streams `delta`s to the client and
+   * reads the terminal frame's `usage`; when absent, the caller falls back to {@link complete}.
+   * Optional so providers (and the M2 voice-eval harness) that only need `complete` are unaffected.
+   */
+  completeStream?(messages: ChatMessage[]): AsyncIterable<LlmStreamChunk>;
 }
 
 export interface EmbeddingProvider {

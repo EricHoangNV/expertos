@@ -8,9 +8,11 @@
  * loader write vectors from the same model into the same vector space.
  */
 import {
+  EchoLlmProvider,
   ExtractiveSummarizer,
   HashingEmbeddingProvider,
   type EmbeddingProvider,
+  type LlmProvider,
   type Summarizer,
 } from "@expertos/ai";
 import { ParserRegistry } from "./parser-registry";
@@ -27,4 +29,14 @@ export function createDefaultEmbeddingProvider(): EmbeddingProvider {
 
 export function createDefaultSummarizer(): Summarizer {
   return new ExtractiveSummarizer();
+}
+
+/**
+ * Default (offline, deterministic) chat LLM (M3.1). Mirrors {@link createDefaultEmbeddingProvider}:
+ * production swaps the real OpenAI/Anthropic driver in here once and both the chat endpoint and
+ * any other completion consumer follow. The {@link EchoLlmProvider} grounds its answer on the
+ * built prompt's sources and needs no network/API key, so the chat pipeline runs end-to-end here.
+ */
+export function createDefaultLlmProvider(): LlmProvider {
+  return new EchoLlmProvider();
 }

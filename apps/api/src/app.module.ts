@@ -7,6 +7,7 @@ import { IngestionModule } from "./ingestion/ingestion.module";
 import { ObservabilityModule } from "./observability/observability.module";
 import { RetrievalModule } from "./retrieval/retrieval.module";
 import { VoiceModule } from "./voice/voice.module";
+import { ChatModule } from "./chat/chat.module";
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { VoiceModule } from "./voice/voice.module";
     IngestionModule,
     RetrievalModule,
     VoiceModule,
+    ChatModule,
   ],
   controllers: [HealthController],
   providers: [HealthService],

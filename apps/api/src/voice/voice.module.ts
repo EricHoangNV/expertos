@@ -4,6 +4,7 @@ import { createDefaultEmbeddingProvider } from "../ingestion/ingestion.defaults"
 import { VoiceService } from "./voice.service";
 import { VoiceProfileService } from "./voice-profile.service";
 import { VoiceProfileController } from "./voice-profile.controller";
+import { ExpertsController } from "./experts.controller";
 import { VOICE_EMBEDDING_PROVIDER } from "./voice.tokens";
 
 /**
@@ -18,7 +19,7 @@ import { VOICE_EMBEDDING_PROVIDER } from "./voice.tokens";
  */
 @Module({
   imports: [AuthModule],
-  controllers: [VoiceProfileController],
+  controllers: [VoiceProfileController, ExpertsController],
   providers: [
     VoiceService,
     VoiceProfileService,

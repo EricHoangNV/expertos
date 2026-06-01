@@ -40,3 +40,10 @@ export type {
   VoiceProfileUpdateInput,
   VoiceProfileListQueryInput,
 } from "./voice";
+export { chatRequestSchema } from "./chat";
+export type {
+  ChatRequestInput,
+  ChatMessageDto,
+  ChatCitationDto,
+  ChatStreamEvent,
+} from "./chat";

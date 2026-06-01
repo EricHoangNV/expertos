@@ -136,6 +136,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@expertos/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@expertos/ui':
         specifier: workspace:*
         version: link:../../packages/ui
