@@ -1421,3 +1421,38 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - The last open M8.3 sub-deliverable is the **failed/low-confidence query inspector** over `answer_feedback` (read-only — the easiest remaining). Copy the `RevenueService`/`EntitlementMatrixService` admin cross-tenant RLS pattern: run under the admin principal so the `is_admin` GUC reads all tenants (no `tenant_id` predicate); add a read-only API route, then a page. `answer_feedback` has no `conversationId` column, so join through `messages` to surface the question/answer text + the 👎 reason.
 - The real `recommendation_rules` upsert joins the M11 Testcontainers list (seam-tested with a mocked tx this session; no live DB).
 - After the query inspector, M8.3 closes and M8.4 (manage users/subs/experts/voice + audit logs + user-data deletion) / M8.5 (expert portal) are the next M8 milestones.
+
+## M8.3 — Admin failed/low-confidence query inspector
+**Date:** 2026-06-01
+**Ref:** PRD §"Admin & Expert portals" → M8.3 (the last open M8.3 sub-deliverable)
+
+**What was done:**
+- New `apps/api/src/feedback-inspector/` module (`FailedQueryService` + `FailedQueryController` + `FeedbackInspectorModule`), registered in `AppModule`.
+- `GET /admin/failed-queries?limit&offset` (`@Roles("admin")`) — a read-only, platform-wide feed of answers users rated unhelpful (👎). Runs inside `RlsService.run` under the admin principal so the `is_admin` GUC reads across all tenants (the `RevenueService` cross-tenant template; no `tenant_id` predicate).
+- Raw `$queryRawUnsafe` over `answer_feedback` (`helpful = false`, newest first): joins each row to its rated assistant `messages` row (answer text, `model`, `confidence`, `insufficientKnowledge = cardinality(source_version_ids) = 0`) and `LEFT JOIN LATERAL` back to the most-recent `user` message at/before the answer for the original question.
+- Shared `failedQueryListQuerySchema` (limit 1..100 default 50, offset ≥0 default 0) + `FailedQueryDto` (`packages/shared/src/failed-queries.ts`), exported from the index.
+- Admin UI `apps/admin/app/failed-queries/page.tsx` — a "Flagged answers" card feed (insufficient-knowledge amber badge + model/confidence badges + timestamp; Question / Answer / Reason blocks) with offset "Load more"; new `getFailedQueries` in `admin-client.ts`; "Flagged answers" nav entry in `AdminFrame`.
+
+**Key decisions:**
+- Scoped to the persisted `answer_feedback` 👎 signal (concrete, per the manifest's "over answer_feedback" scope) and surfaced the `insufficientKnowledge` flag per-row for richer "failed-retrieval" triage — rather than also scanning every insufficient-knowledge message (a different query, broader scope).
+- Raw SQL only for the per-row `LATERAL` question lookup (Prisma Client can't express the correlated "preceding user message" — the M3.3 conversation-search precedent). No aggregates, so no BigInt-coercion gotcha here.
+- Verified both relevant RLS policies bypass under `app.is_admin()`: `messages` (tenant_isolation) and `answer_feedback` (tenant_user_isolation) — so the admin context reads cross-tenant without a manual predicate.
+- Read-only module (imports only `AuthModule`), mirroring `RevenueModule`.
+
+**Files changed:**
+- `apps/api/src/feedback-inspector/failed-query.service.ts` — new; the read choke point + the inspector SQL.
+- `apps/api/src/feedback-inspector/failed-query.controller.ts` — new; `@Roles("admin")` route.
+- `apps/api/src/feedback-inspector/feedback-inspector.module.ts` — new; wires the above.
+- `apps/api/src/feedback-inspector/failed-query.service.test.ts` — new; 4 mocked-tx tests (100% coverage).
+- `apps/api/src/app.module.ts` — register `FeedbackInspectorModule`.
+- `packages/shared/src/failed-queries.ts` + `failed-queries.test.ts` — new DTO/schema + 5 schema tests.
+- `packages/shared/src/index.ts` — export the new schema/types.
+- `apps/admin/app/failed-queries/page.tsx` — new flagged-answers page.
+- `apps/admin/src/lib/admin-client.ts` — new `getFailedQueries`.
+- `apps/admin/src/components/AdminFrame.tsx` — "Flagged answers" nav entry.
+- `project-mds/PRD.md` — M8.3 manifest line `[~]` → `[x]`.
+
+**Notes for next iteration:**
+- M8.3 is now fully complete (revenue + matrix editor + recommendation-rules editor + failed-query inspector, all API + admin UI). Remaining M8: M8.4 (manage users/subs/experts/voice profiles + audit logs + user-data deletion) and M8.5 (first-class expert portal — voice/knowledge approval, AI-answer review, consultation conversions; also wants the manual TidyCal reconcile + unmatched `booking_webhook_events` admin surface).
+- The real `LATERAL` join + the admin cross-tenant visibility join the M11 Testcontainers list (seam-tested with a mocked tx; no live DB this session — the raw-SQL caveat shared with conversation-search / `PgVectorStore`).
+- Possible follow-up if the feed grows noisy: a filter toggle for `insufficientKnowledge`-only, or include answers flagged insufficient even without explicit 👎 feedback (would be a second query path over `messages`, not `answer_feedback`).

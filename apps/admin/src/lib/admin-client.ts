@@ -15,6 +15,7 @@ import type {
   RecommendationRulesDto,
   RecommendationTriggerValue,
   RevenueReportDto,
+  FailedQueryDto,
 } from "@expertos/shared";
 
 /**
@@ -187,4 +188,18 @@ export function updateRecommendationRule(
     method: "PATCH",
     body: JSON.stringify(body),
   });
+}
+
+// M8.3 — Admin failed / low-confidence query inspector
+
+/** A page of the most-recent unhelpful-rated (👎) answers across all tenants, newest first. */
+export function getFailedQueries(
+  token: string,
+  params?: { limit?: number; offset?: number },
+): Promise<FailedQueryDto[]> {
+  const search = new URLSearchParams();
+  if (params?.limit != null) search.set("limit", String(params.limit));
+  if (params?.offset != null) search.set("offset", String(params.offset));
+  const query = search.toString();
+  return request<FailedQueryDto[]>(`/admin/failed-queries${query ? `?${query}` : ""}`, token);
 }

@@ -13,6 +13,7 @@ import { ChatModule } from "./chat/chat.module";
 import { UploadModule } from "./uploads/upload.module";
 import { BillingModule } from "./billing/billing.module";
 import { RevenueModule } from "./revenue/revenue.module";
+import { FeedbackInspectorModule } from "./feedback-inspector/feedback-inspector.module";
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { RevenueModule } from "./revenue/revenue.module";
     UploadModule,
     BillingModule,
     RevenueModule,
+    FeedbackInspectorModule,
   ],
   controllers: [HealthController],
   providers: [HealthService],

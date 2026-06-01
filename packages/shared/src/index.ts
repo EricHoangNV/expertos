@@ -118,6 +118,8 @@ export type {
   RevenuePeriodDto,
   RevenueReportDto,
 } from "./revenue";
+export { failedQueryListQuerySchema } from "./failed-queries";
+export type { FailedQueryListQueryInput, FailedQueryDto } from "./failed-queries";
 export type {
   ChatRequestInput,
   ChatMessageDto,
