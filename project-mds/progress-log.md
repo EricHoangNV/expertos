@@ -1353,3 +1353,37 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - Seam-tested with a mocked tx — the real `semantic_cache` `deleteMany` under RLS joins the M11 Testcontainers list (the standing raw-SQL/store caveat).
 - The retrieval-layer key (`retrieval\n<tenant>\n…`) is invalidated too even though publish only changes *published* chunks — coarse but safe; a finer scope (only the affected document's queries) isn't worth the complexity for an in-process hot cache.
 - No new wiring needed for future publishers as long as they route through `KnowledgeService`/`KnowledgeDraftService` (the documented single choke points).
+
+## M8.3 (partial) — Admin plan-entitlement matrix editor
+**Date:** 2026-06-01
+**Ref:** PRD §"Admin & Expert portals" → "Plan-entitlement matrix editor" (Task Manifest M8.3)
+
+**What was done:**
+- New `EntitlementMatrixService` (`apps/api/src/entitlements/entitlement-matrix.service.ts`) — the single write choke point over the `plan_entitlements` config table. `getMatrix(user)` returns every plan × feature + populated cells; `updateCell(user, planId, featureId, input)` upserts one cell by the `[planId, featureId]` natural key.
+- New `EntitlementAdminController` (`@Roles("admin")`): `GET /admin/entitlements`, `PATCH /admin/entitlements/:planId/features/:featureId` (ParseUUIDPipe + ZodValidationPipe). Wired into `EntitlementsModule.controllers` + providers.
+- New shared contract in `packages/shared/src/entitlements.ts` (now imports zod): `usageWindowSchema`, `entitlementUpdateSchema`, and DTOs `EntitlementMatrixDto`/`EntitlementMatrixPlanDto`/`EntitlementMatrixFeatureDto`/`EntitlementCellDto`/`EntitlementUpdateInput`/`UsageWindowValue`. Exported from the index.
+- New admin UI `apps/admin/app/entitlements/page.tsx` — plan × feature matrix table; per-cell `CellEditor` (enable checkbox; metered features add hard-limit/soft-limit/window inputs) with a per-cell Save. New `getEntitlementMatrix`/`updateEntitlementCell` in `admin-client.ts`; "Entitlements" nav entry in `AdminFrame`.
+- Tests: +9 service (`entitlement-matrix.service.test.ts`), +8 shared schema (`entitlements.test.ts`).
+
+**Key decisions:**
+- Per-cell PATCH over a bulk matrix POST: each save is atomic and its validation error stays local to the cell.
+- Type-coherence + cross-field validation lives in the service, not the schema — the zod schema can't see the feature type. Boolean features force metered fields to null (§4.20); incoherent metered configs (softLimit ≥ limit, or a quota with no window) → 400.
+- Identity is taken only from the path, never the body (§4.7) — a save can't reassign a cell to a different plan/feature.
+- Ran inside `RlsService.run` under the admin principal for the transaction + consistency with `RevenueService`, even though `plan_entitlements`/`plans`/`features` are RLS-exempt config (so the admin GUC is irrelevant to isolation here).
+- No cache invalidation: changing entitlements affects quotas/access on the next `EntitlementService` read, but not cached *answers* (the answer cache key already pins the model tier; answer content doesn't depend on the plan).
+
+**Files changed:**
+- `packages/shared/src/entitlements.ts` — added zod schemas + matrix DTOs.
+- `packages/shared/src/index.ts` — exported the new schemas/types.
+- `apps/api/src/entitlements/entitlement-matrix.service.ts` — new write service.
+- `apps/api/src/entitlements/entitlement-admin.controller.ts` — new admin controller.
+- `apps/api/src/entitlements/entitlements.module.ts` — registered the controller + service.
+- `apps/api/src/entitlements/entitlement-matrix.service.test.ts` — new service tests.
+- `packages/shared/src/entitlements.test.ts` — new schema tests.
+- `apps/admin/src/lib/admin-client.ts` — `getEntitlementMatrix`/`updateEntitlementCell`.
+- `apps/admin/app/entitlements/page.tsx` — new matrix editor page.
+- `apps/admin/src/components/AdminFrame.tsx` — "Entitlements" nav entry.
+
+**Notes for next iteration:**
+- The remaining M8.3 sub-deliverables: **recommendation-rules editor** (`recommendation_rules`, another mutation surface — follow this `EntitlementMatrixService` write template: identity-from-path, server-side coherence validation, RLS-exempt config) and **failed/low-confidence query inspector** over `answer_feedback` (read-only — the easiest remaining; copy the `RevenueService` admin cross-tenant RLS pattern).
+- The real `plan_entitlements` upsert joins the M11 Testcontainers list (seam-tested with a mocked tx this session; no live DB).

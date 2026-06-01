@@ -1,4 +1,7 @@
 import type {
+  EntitlementCellDto,
+  EntitlementMatrixDto,
+  EntitlementUpdateInput,
   KnowledgeDocumentDetailDto,
   KnowledgeDocumentDto,
   KnowledgeDraftDto,
@@ -140,4 +143,25 @@ export function getRevenueReport(
 ): Promise<RevenueReportDto> {
   const query = months != null ? `?months=${months}` : "";
   return request<RevenueReportDto>(`/admin/revenue/report${query}`, token);
+}
+
+// M8.3 — Admin plan-entitlement matrix editor
+
+/** The full plan × feature entitlement matrix. */
+export function getEntitlementMatrix(token: string): Promise<EntitlementMatrixDto> {
+  return request<EntitlementMatrixDto>("/admin/entitlements", token);
+}
+
+/** Save one (plan, feature) entitlement cell; identity is in the path, the value in the body. */
+export function updateEntitlementCell(
+  token: string,
+  planId: string,
+  featureId: string,
+  body: EntitlementUpdateInput,
+): Promise<EntitlementCellDto> {
+  return request<EntitlementCellDto>(
+    `/admin/entitlements/${planId}/features/${featureId}`,
+    token,
+    { method: "PATCH", body: JSON.stringify(body) },
+  );
 }

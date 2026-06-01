@@ -6,6 +6,8 @@
  * wire/decorator contract shared by the API and its clients.
  */
 
+import { z } from "zod";
+
 /**
  * The entitlement-catalog feature keys — one per gated capability. Kept in lockstep with the
  * catalog default in `packages/db/prisma/seed.ts` (the seed populates the DB; the DB is authoritative
@@ -82,4 +84,73 @@ export interface EntitlementDeniedPayload {
   upgradeOptions: UpgradeOption[];
   /** Remaining quota for a metered feature (0 at the wall); `null` for a boolean feature. */
   remainingQuota: number | null;
+}
+
+// ── M8.3 — admin plan-entitlement matrix editor ────────────────────────────
+
+/**
+ * The metered window a quota applies to (mirrors the DB `usage_window` enum). Only meaningful for a
+ * metered feature; a boolean feature always carries `null`.
+ */
+export const usageWindowSchema = z.enum(["day", "week", "month"]);
+export type UsageWindowValue = z.infer<typeof usageWindowSchema>;
+
+/** Upper bound on an editable quota — a guard against an accidental absurd cap, not a product limit. */
+const MAX_QUOTA = 1_000_000;
+
+/**
+ * The editable cell of the plan-entitlement matrix (`PATCH /admin/entitlements/:planId/features/:featureId`).
+ * Identity (`planId`/`featureId`) is carried in the path, never the body, so it can't be reassigned
+ * (directive §4.7 — freeze identity on update). The metered fields (`limit`/`softLimit`/`window`)
+ * default to `null` when omitted and are forced to `null` server-side for a boolean feature; the
+ * service rejects an incoherent metered config (e.g. `softLimit >= limit`, or a quota with no window).
+ */
+export const entitlementUpdateSchema = z.object({
+  /** Whether the plan grants the capability at all. */
+  enabled: z.boolean(),
+  /** Metered hard cap per window (`null` = no hard cap). */
+  limit: z.number().int().min(0).max(MAX_QUOTA).nullable().default(null),
+  /** Metered fair-use soft threshold — degrade past it (`null` = no degradation). */
+  softLimit: z.number().int().min(0).max(MAX_QUOTA).nullable().default(null),
+  /** The rolling window a metered quota applies to (`null` = none). */
+  window: usageWindowSchema.nullable().default(null),
+});
+export type EntitlementUpdateInput = z.infer<typeof entitlementUpdateSchema>;
+
+/** One feature in the editable matrix (a matrix row). */
+export interface EntitlementMatrixFeatureDto {
+  id: string;
+  key: string;
+  name: string;
+  type: "boolean" | "metered";
+}
+
+/** One plan in the editable matrix (a matrix column), lowest tier first. */
+export interface EntitlementMatrixPlanDto {
+  id: string;
+  key: string;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+}
+
+/** One (plan, feature) entitlement cell. Metered fields are `null` for a boolean feature. */
+export interface EntitlementCellDto {
+  planId: string;
+  featureId: string;
+  enabled: boolean;
+  limit: number | null;
+  softLimit: number | null;
+  window: UsageWindowValue | null;
+}
+
+/**
+ * The full plan-entitlement matrix (`GET /admin/entitlements`) the admin editor renders: every plan ×
+ * every feature, plus the entitlement cell for each populated (plan, feature) pair. A pair with no
+ * stored row is absent from `cells` (the editor renders it as a disabled default until first saved).
+ */
+export interface EntitlementMatrixDto {
+  plans: EntitlementMatrixPlanDto[];
+  features: EntitlementMatrixFeatureDto[];
+  cells: EntitlementCellDto[];
 }

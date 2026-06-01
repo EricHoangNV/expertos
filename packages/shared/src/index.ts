@@ -71,11 +71,18 @@ export {
   savedAnswerListQuerySchema,
   answerFeedbackSubmitSchema,
 } from "./chat";
+export { usageWindowSchema, entitlementUpdateSchema } from "./entitlements";
 export type {
   FeatureKey,
   EntitlementView,
   EntitlementsDto,
   EntitlementDeniedPayload,
+  UsageWindowValue,
+  EntitlementUpdateInput,
+  EntitlementMatrixFeatureDto,
+  EntitlementMatrixPlanDto,
+  EntitlementCellDto,
+  EntitlementMatrixDto,
 } from "./entitlements";
 export { recommendationRespondSchema, bookingReconcileSchema } from "./consultation";
 export type {
