@@ -5,7 +5,12 @@ import {
   Prisma,
   type PrismaClient,
 } from "@expertos/db";
-import type { BookingReconcileInput, BookingReconcileResultDto } from "@expertos/shared";
+import type {
+  BookingReconcileInput,
+  BookingReconcileResultDto,
+  UnmatchedBookingEventDto,
+  UnmatchedBookingListQueryInput,
+} from "@expertos/shared";
 import { StructuredLogger } from "../observability/logger.service";
 import { PRISMA } from "../database/database.module";
 import { TIDYCAL_PROVIDER } from "./tidycal.tokens";
@@ -21,6 +26,30 @@ const DEFAULT_RECONCILE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
 /** The outcome of applying one booking event — drives the reconcile summary counters. */
 type ApplyOutcome = "matched" | "unmatched" | "duplicate";
+
+/** The `booking_webhook_events` columns the unmatched feed selects (dates still as `Date`). */
+interface UnmatchedBookingRow {
+  id: string;
+  provider: string;
+  eventType: string;
+  bookingRef: string | null;
+  email: string | null;
+  scheduledAt: Date | null;
+  receivedAt: Date;
+}
+
+/** Flatten a ledger row into the public {@link UnmatchedBookingEventDto} (dates → ISO strings). */
+function toUnmatchedBookingDto(row: UnmatchedBookingRow): UnmatchedBookingEventDto {
+  return {
+    id: row.id,
+    provider: row.provider,
+    eventType: row.eventType,
+    bookingRef: row.bookingRef,
+    email: row.email,
+    scheduledAt: row.scheduledAt ? row.scheduledAt.toISOString() : null,
+    receivedAt: row.receivedAt.toISOString(),
+  };
+}
 
 /**
  * Booking-confirmation sync (M7.3, PRD §"Consultation funnel"; resolves Open Decision #10).
@@ -111,6 +140,36 @@ export class BookingService {
       });
     }
     return result;
+  }
+
+  /**
+   * The admin recovery feed: booking events that could not be correlated to a user/consultation
+   * (`matched = false`), newest first. These are kept (not dropped) so an admin can see and reconcile
+   * them — the OD#10 no-vanish guarantee. Reads in the same system context as the webhook/reconcile
+   * paths (`booking_webhook_events` is RLS-exempt and an unmatched booking can belong to any tenant);
+   * the `@Roles("admin")` route guard is the access boundary.
+   */
+  async listUnmatched(
+    query: UnmatchedBookingListQueryInput,
+  ): Promise<UnmatchedBookingEventDto[]> {
+    return this.runAsSystem(async (tx) => {
+      const rows = await tx.bookingWebhookEvent.findMany({
+        where: { matched: false },
+        orderBy: { receivedAt: "desc" },
+        take: query.limit,
+        skip: query.offset,
+        select: {
+          id: true,
+          provider: true,
+          eventType: true,
+          bookingRef: true,
+          email: true,
+          scheduledAt: true,
+          receivedAt: true,
+        },
+      });
+      return rows.map(toUnmatchedBookingDto);
+    });
   }
 
   /**

@@ -1,6 +1,7 @@
 import {
   recommendationRespondSchema,
   bookingReconcileSchema,
+  unmatchedBookingListQuerySchema,
   recommendationTriggerSchema,
   recommendationRuleUpdateSchema,
 } from "./consultation";
@@ -32,6 +33,28 @@ describe("bookingReconcileSchema", () => {
 
   it("rejects an unparseable since", () => {
     expect(bookingReconcileSchema.safeParse({ since: "not-a-date" }).success).toBe(false);
+  });
+});
+
+describe("unmatchedBookingListQuerySchema", () => {
+  it("defaults to limit 50 / offset 0", () => {
+    expect(unmatchedBookingListQuerySchema.parse({})).toEqual({ limit: 50, offset: 0 });
+  });
+
+  it("coerces query-string limit/offset to numbers", () => {
+    expect(unmatchedBookingListQuerySchema.parse({ limit: "10", offset: "20" })).toEqual({
+      limit: 10,
+      offset: 20,
+    });
+  });
+
+  it("rejects a non-positive or over-cap limit", () => {
+    expect(unmatchedBookingListQuerySchema.safeParse({ limit: 0 }).success).toBe(false);
+    expect(unmatchedBookingListQuerySchema.safeParse({ limit: 101 }).success).toBe(false);
+  });
+
+  it("rejects a negative offset", () => {
+    expect(unmatchedBookingListQuerySchema.safeParse({ offset: -1 }).success).toBe(false);
   });
 });
 

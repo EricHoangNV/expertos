@@ -35,6 +35,8 @@ import type {
   VoiceProfileUpdateInput,
   ExpertConversionsDto,
   ExpertAnswerReviewDto,
+  BookingReconcileResultDto,
+  UnmatchedBookingEventDto,
 } from "@expertos/shared";
 
 /**
@@ -433,6 +435,37 @@ export function voiceProfileAction(
   return request<VoiceProfileAdminDto>(`/voice-profiles/${id}/${action}`, token, {
     method: "POST",
   });
+}
+
+// ── M7.3 — TidyCal booking reconciliation (OD#10 missed-event recovery) ──────
+
+/**
+ * Trigger a missed-event reconcile poll. `since` (ISO timestamp) narrows the lookback window;
+ * omitted, the API uses its default 24h lookback. Returns the run summary counters.
+ */
+export function reconcileBookings(
+  token: string,
+  since?: string,
+): Promise<BookingReconcileResultDto> {
+  return request<BookingReconcileResultDto>("/consultation-bookings/reconcile", token, {
+    method: "POST",
+    body: JSON.stringify(since != null && since !== "" ? { since } : {}),
+  });
+}
+
+/** A page of booking webhook events that couldn't be tied to a user (`matched=false`), newest first. */
+export function getUnmatchedBookings(
+  token: string,
+  params?: { limit?: number; offset?: number },
+): Promise<UnmatchedBookingEventDto[]> {
+  const search = new URLSearchParams();
+  if (params?.limit != null) search.set("limit", String(params.limit));
+  if (params?.offset != null) search.set("offset", String(params.offset));
+  const query = search.toString();
+  return request<UnmatchedBookingEventDto[]>(
+    `/consultation-bookings/unmatched${query ? `?${query}` : ""}`,
+    token,
+  );
 }
 
 // ── session identity (role gating) ──────────────────────────────────────────

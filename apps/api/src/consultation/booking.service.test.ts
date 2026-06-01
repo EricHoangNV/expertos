@@ -23,7 +23,11 @@ const CREATED: BookingEvent = {
 function makeTx() {
   return {
     $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
-    bookingWebhookEvent: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+    bookingWebhookEvent: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn(),
+      findMany: jest.fn(),
+    },
     consultation: { findFirst: jest.fn(), update: jest.fn(), create: jest.fn() },
     user: { findFirst: jest.fn() },
   };
@@ -338,5 +342,77 @@ describe("BookingService.reconcile", () => {
     const result = await service.reconcile({ since: new Date() });
 
     expect(result).toEqual({ polled: 1, applied: 1, matched: 0, skipped: 0 });
+  });
+});
+
+describe("BookingService.listUnmatched", () => {
+  it("maps unmatched ledger rows to DTOs (dates → ISO, null scheduledAt preserved)", async () => {
+    const tx = makeTx();
+    const received = new Date("2026-06-09T12:00:00.000Z");
+    tx.bookingWebhookEvent.findMany.mockResolvedValue([
+      {
+        id: "evt_a",
+        provider: "tidycal",
+        eventType: "booking.created",
+        bookingRef: "bkg_a",
+        email: "ghost@expertos.local",
+        scheduledAt: SCHEDULED_AT,
+        receivedAt: received,
+      },
+      {
+        id: "evt_b",
+        provider: "offline",
+        eventType: "booking.cancelled",
+        bookingRef: null,
+        email: null,
+        scheduledAt: null,
+        receivedAt: received,
+      },
+    ]);
+    const { service } = makeService(tx, makeProvider());
+
+    const rows = await service.listUnmatched({ limit: 50, offset: 0 });
+
+    expect(tx.bookingWebhookEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { matched: false },
+        orderBy: { receivedAt: "desc" },
+        take: 50,
+        skip: 0,
+      }),
+    );
+    expect(rows).toEqual([
+      {
+        id: "evt_a",
+        provider: "tidycal",
+        eventType: "booking.created",
+        bookingRef: "bkg_a",
+        email: "ghost@expertos.local",
+        scheduledAt: SCHEDULED_AT.toISOString(),
+        receivedAt: received.toISOString(),
+      },
+      {
+        id: "evt_b",
+        provider: "offline",
+        eventType: "booking.cancelled",
+        bookingRef: null,
+        email: null,
+        scheduledAt: null,
+        receivedAt: received.toISOString(),
+      },
+    ]);
+  });
+
+  it("passes the limit/offset page window through to the query", async () => {
+    const tx = makeTx();
+    tx.bookingWebhookEvent.findMany.mockResolvedValue([]);
+    const { service } = makeService(tx, makeProvider());
+
+    const rows = await service.listUnmatched({ limit: 10, offset: 20 });
+
+    expect(rows).toEqual([]);
+    expect(tx.bookingWebhookEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 10, skip: 20 }),
+    );
   });
 });

@@ -87,6 +87,7 @@ export type {
 export {
   recommendationRespondSchema,
   bookingReconcileSchema,
+  unmatchedBookingListQuerySchema,
   recommendationTriggerSchema,
   recommendationRuleUpdateSchema,
 } from "./consultation";
@@ -100,6 +101,8 @@ export type {
   RecommendationResponseResultDto,
   BookingReconcileInput,
   BookingReconcileResultDto,
+  UnmatchedBookingListQueryInput,
+  UnmatchedBookingEventDto,
   RecommendationRuleUpdateInput,
   RecommendationRuleDto,
   RecommendationConsultationTypeDto,

@@ -30,6 +30,7 @@ const NAV: NavItem[] = [
   { href: "/entitlements", label: "Entitlements", group: "Admin" },
   { href: "/recommendation-rules", label: "Funnel rules", group: "Admin" },
   { href: "/failed-queries", label: "Flagged answers", group: "Admin" },
+  { href: "/reconcile", label: "Bookings", group: "Admin" },
   { href: "/users", label: "Users", group: "Admin" },
   { href: "/experts", label: "Experts", group: "Admin" },
   { href: "/audit", label: "Audit log", group: "Admin" },

@@ -1,8 +1,11 @@
-import { Body, Controller, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, Post, Query, Req } from "@nestjs/common";
 import {
   bookingReconcileSchema,
+  unmatchedBookingListQuerySchema,
   type BookingReconcileInput,
   type BookingReconcileResultDto,
+  type UnmatchedBookingEventDto,
+  type UnmatchedBookingListQueryInput,
 } from "@expertos/shared";
 import { Public } from "../auth/public.decorator";
 import { Roles } from "../auth/roles.decorator";
@@ -46,5 +49,14 @@ export class ConsultationBookingsController {
     @Body(new ZodValidationPipe(bookingReconcileSchema)) body: BookingReconcileInput,
   ): Promise<BookingReconcileResultDto> {
     return this.booking.reconcile(body);
+  }
+
+  @Get("unmatched")
+  @Roles("admin")
+  listUnmatched(
+    @Query(new ZodValidationPipe(unmatchedBookingListQuerySchema))
+    query: UnmatchedBookingListQueryInput,
+  ): Promise<UnmatchedBookingEventDto[]> {
+    return this.booking.listUnmatched(query);
   }
 }

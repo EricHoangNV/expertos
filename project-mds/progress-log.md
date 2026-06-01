@@ -1553,3 +1553,35 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Deferred admin surface:** the manual TidyCal reconcile (`POST /consultation-bookings/reconcile`, admin-only) + unmatched `booking_webhook_events` (`matched=false`) still have no UI — a small admin page closes the OD#10 loop.
 - Seam-tested with a mocked tx; the real elevated cross-user read + the `LATERAL` join join the M11 Testcontainers list (raw-SQL caveat shared with the failed-query inspector / `PgVectorStore`).
 - Full `apps/api` suite ran clean this session: **60 suites / 526 tests**. Totals: **824 pass** (shared 143, ui 3, db 9, ai 143, api 526).
+
+## Admin TidyCal reconciliation surface (M7.3 / OD#10 follow-up)
+**Date:** 2026-06-01
+**Ref:** PRD §"Consultation funnel" / §"Open Decisions" #10; deferred admin surface flagged in the M7.3 + M8.5 seam notes
+
+**What was done:**
+- Closed the missed-event-recovery loop end-to-end. M7.3 shipped `POST /consultation-bookings/reconcile` + the `booking_webhook_events` ledger that keeps an uncorrelated booking as `matched=false` (no-vanish), but there was no read path or UI for those unmatched rows.
+- **API read path:** `BookingService.listUnmatched({limit,offset})` — returns `matched=false` ledger rows newest-first via Prisma Client `findMany`, mapped to a new shared `UnmatchedBookingEventDto` (dates → ISO). Runs in the same `runAsSystem` context (admin GUC / GLOBAL tenant) the webhook/reconcile paths use; `booking_webhook_events` is RLS-exempt and an unmatched booking can belong to any tenant.
+- New `GET /consultation-bookings/unmatched` route (`@Roles("admin")`) on the existing `ConsultationBookingsController` + `unmatchedBookingListQuerySchema` (limit 1..100 default 50, offset ≥0) in `packages/shared/src/consultation.ts`.
+- **Admin UI:** new `apps/admin/app/reconcile/page.tsx` (a "Bookings" nav entry in the Admin group) — a "Run reconcile" card (optional `since` datetime-local + a Stat summary of polled/applied/matched/skipped) and the unmatched-event feed (amber "Unmatched" badge + event-type/provider badges + booking ref / contact email / scheduled time) with offset "Load more". New `reconcileBookings`/`getUnmatchedBookings` admin-client fns.
+
+**Key decisions:**
+- Reused `BookingService` + the private `runAsSystem` rather than introducing a new admin service — the reconcile path already lives there and the ledger is RLS-exempt, so it's the natural choke point (kept the booking-sync logic in one place).
+- Prisma Client `findMany` over raw SQL — no aggregate/`LATERAL` is needed here, so the M8.3 BigInt-coercion gotcha doesn't apply.
+- Reconcile refreshes the unmatched feed on success so any newly-recovered booking drops off the list immediately.
+- The page uses only design-system classes/primitives (no inline styles, matching the other admin pages; no hardcoded px/hex so the lint guard stays green).
+
+**Files changed:**
+- `packages/shared/src/consultation.ts` — `unmatchedBookingListQuerySchema` + `UnmatchedBookingListQueryInput` + `UnmatchedBookingEventDto`.
+- `packages/shared/src/index.ts` — re-export the new schema/types (the index uses explicit named re-exports, not `export *`).
+- `apps/api/src/consultation/booking.service.ts` — `listUnmatched` method + the `UnmatchedBookingRow`→DTO mapper.
+- `apps/api/src/consultation/consultation-bookings.controller.ts` — `GET /consultation-bookings/unmatched` (`@Roles("admin")`).
+- `apps/admin/src/lib/admin-client.ts` — `reconcileBookings` + `getUnmatchedBookings`.
+- `apps/admin/src/components/AdminFrame.tsx` — "Bookings" nav entry (Admin group).
+- `apps/admin/app/reconcile/page.tsx` — new page.
+- `apps/api/src/consultation/booking.service.test.ts` — +2 `listUnmatched` tests (mock tx gains `findMany`).
+- `packages/shared/src/consultation.test.ts` — +4 `unmatchedBookingListQuerySchema` tests.
+
+**Notes for next iteration:**
+- Seam-tested with a mocked tx; the real `booking_webhook_events` read joins the M11 Testcontainers list.
+- The unmatched feed is read-only — there's no per-row "manually link to a consultation" action. A reconcile poll is the only recovery mechanism; a manual link/dismiss action on a specific unmatched row could be a future follow-up if operators need it (would need a new write method on `BookingService`).
+- All gates green (typecheck/lint/knip/build all 7 workspaces); `booking.service.ts` stays 100% all metrics. Totals: **830 pass** (shared 147, ui 3, db 9, ai 143, api 528).

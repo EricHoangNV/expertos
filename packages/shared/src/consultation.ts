@@ -106,6 +106,38 @@ export interface BookingReconcileResultDto {
   skipped: number;
 }
 
+/**
+ * Trailing list query for the unmatched-booking feed (M7.3 admin recovery surface): a page of the
+ * most-recent rows, newest first.
+ */
+export const unmatchedBookingListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export type UnmatchedBookingListQueryInput = z.infer<typeof unmatchedBookingListQuerySchema>;
+
+/**
+ * One booking webhook event that could not be correlated to a user/consultation (`matched = false`).
+ * These are kept in the ledger rather than dropped (the OD#10 no-vanish guarantee), so the admin
+ * portal surfaces them: a booking whose contact email matched no user, awaiting manual recovery.
+ */
+export interface UnmatchedBookingEventDto {
+  /** The `booking_webhook_events` row id. */
+  id: string;
+  /** Booking provider that delivered the event (`tidycal`, `offline`, …). */
+  provider: string;
+  /** The normalized event kind (`booking.created` / `booking.cancelled` / `booking.rescheduled`). */
+  eventType: string;
+  /** The provider's booking reference, or null when the event carried none. */
+  bookingRef: string | null;
+  /** The booking contact email (why it stayed unmatched: no user has it), or null. */
+  email: string | null;
+  /** The booked time (UTC ISO), or null when the event carried none. */
+  scheduledAt: string | null;
+  /** When the event was recorded in the ledger (UTC ISO). */
+  receivedAt: string;
+}
+
 // ── M8.3 — admin recommendation-rules editor ───────────────────────────────
 
 /**
