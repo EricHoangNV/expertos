@@ -24,6 +24,11 @@ async function collect(stream: AsyncIterable<LlmStreamChunk>) {
 describe("EchoLlmProvider", () => {
   const llm = new EchoLlmProvider();
 
+  it("defaults its model name to echo-dev, overridable for a cheaper fair-use tier (M6.3)", () => {
+    expect(new EchoLlmProvider().name).toBe("echo-dev");
+    expect(new EchoLlmProvider("echo-dev-mini").name).toBe("echo-dev-mini");
+  });
+
   it("cites every numbered source and echoes the question", async () => {
     const messages = [SYSTEM, userPrompt(["fact a", "fact b"], "how do I file taxes")];
     const { text, usage } = await llm.complete(messages);

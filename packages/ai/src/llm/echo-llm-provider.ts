@@ -57,7 +57,16 @@ function usageFor(messages: ChatMessage[], text: string): LlmCompletion["usage"]
 }
 
 export class EchoLlmProvider implements LlmProvider {
-  readonly name = "echo-dev";
+  readonly name: string;
+
+  /**
+   * @param name reported as the completion model (defaults to `echo-dev`). A distinct name lets a
+   *   second instance stand in for a cheaper fair-use tier (M6.3) so the degraded model is
+   *   observable in usage logs and tests, even though the offline echo output itself is identical.
+   */
+  constructor(name = "echo-dev") {
+    this.name = name;
+  }
 
   complete(messages: ChatMessage[]): Promise<LlmCompletion> {
     const text = render(messages);

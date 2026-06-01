@@ -426,7 +426,10 @@ model PlanEntitlement {
   planId    String       @map("plan_id") @db.Uuid
   featureId String       @map("feature_id") @db.Uuid
   enabled   Boolean      @default(true)
-  limit     Int? // null = unlimited (for metered features)
+  limit     Int? // null = no hard cap (for metered features)
+  // Fair-use soft threshold (M6.3): once a metered feature's count passes this in the window the
+  // answer is served by a cheaper model (degrade) instead of blocking. null = no degradation.
+  softLimit Int?         @map("soft_limit")
   window    UsageWindow?
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")

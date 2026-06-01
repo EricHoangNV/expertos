@@ -89,6 +89,12 @@ export type ChatStreamEvent =
        * (e.g. rephrase, or book a consultation) instead of presenting it as a confident answer.
        */
       insufficientKnowledge: boolean;
+      /**
+       * True when the answer was served by the cheaper fair-use model (M6.3): the user has passed
+       * their plan's fair-use soft threshold this window, so we degrade rather than block. The
+       * client can surface a subtle "fair-use mode" note — never an error.
+       */
+      degraded?: boolean;
     }
   | { type: "error"; message: string };
 

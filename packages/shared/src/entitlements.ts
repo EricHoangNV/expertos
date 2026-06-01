@@ -38,13 +38,19 @@ export interface EntitlementView {
   type: "boolean" | "metered";
   /** Whether the plan grants the capability at all. */
   enabled: boolean;
-  /** Metered only: the cap per window, or `null` for unlimited. */
+  /** Metered only: the hard cap per window, or `null` when there is no hard cap. */
   limit?: number | null;
+  /**
+   * Metered only: the fair-use soft threshold (M6.3). Past it the answer degrades to a cheaper
+   * model instead of blocking; `null` when the feature has no degradation. The usage meter draws
+   * its `.bar.warn` band from this so an unlimited-but-fair-use plan still shows a wall approaching.
+   */
+  softLimit?: number | null;
   /** Metered only: the rolling window the cap applies to. */
   window?: "day" | "week" | "month" | null;
   /** Metered only: count consumed in the current window. */
   used?: number;
-  /** Metered only: `limit - used` (never negative), or `null` when unlimited. */
+  /** Metered only: `limit - used` (never negative), or `null` when there is no hard cap. */
   remaining?: number | null;
 }
 

@@ -19,7 +19,7 @@ import type { RetrievedUploadChunk } from "../retrieval/upload-chunk.store";
 import { VoiceService } from "../voice/voice.service";
 import { UsageLogService } from "../observability/usage-log.service";
 import { StructuredLogger } from "../observability/logger.service";
-import { CHAT_LLM_PROVIDER } from "./chat.tokens";
+import { CHAT_DEGRADED_LLM_PROVIDER, CHAT_LLM_PROVIDER } from "./chat.tokens";
 import { ConversationService } from "./conversation.service";
 
 /** Max characters of a source surfaced to the client as a citation preview. */
@@ -48,6 +48,7 @@ export class ChatService {
     private readonly voice: VoiceService,
     private readonly conversations: ConversationService,
     @Inject(CHAT_LLM_PROVIDER) private readonly llm: LlmProvider,
+    @Inject(CHAT_DEGRADED_LLM_PROVIDER) private readonly degradedLlm: LlmProvider,
     private readonly usage: UsageLogService,
     private readonly logger: StructuredLogger,
   ) {}
@@ -56,11 +57,18 @@ export class ChatService {
    * Answers one turn, streaming the prose as it generates and ending with a single terminal
    * event carrying the persisted ids + resolved citations. Any failure ends the stream with an
    * `error` event rather than a half-written turn.
+   *
+   * `options.degraded` (set from the entitlement gate's fair-use decision, M6.3) serves the answer
+   * with the cheaper {@link CHAT_DEGRADED_LLM_PROVIDER} instead of blocking — the only behavioural
+   * fork; retrieval, voice, prompt, citation, and persistence are identical across tiers.
    */
   async *answerStream(
     user: AuthUser,
     input: ChatRequestInput,
+    options?: { degraded?: boolean },
   ): AsyncGenerator<ChatStreamEvent> {
+    const degraded = options?.degraded ?? false;
+    const llm = degraded ? this.degradedLlm : this.llm;
     try {
       const history = input.conversationId
         ? await this.conversations.loadHistory(user, input.conversationId)
@@ -109,8 +117,8 @@ export class ChatService {
 
       let answer = "";
       let usage = { promptTokens: 0, completionTokens: 0 };
-      if (this.llm.completeStream) {
-        for await (const chunk of this.llm.completeStream(messages)) {
+      if (llm.completeStream) {
+        for await (const chunk of llm.completeStream(messages)) {
           if (chunk.delta) {
             answer += chunk.delta;
             yield { type: "delta", text: chunk.delta };
@@ -120,7 +128,7 @@ export class ChatService {
           }
         }
       } else {
-        const completion = await this.llm.complete(messages);
+        const completion = await llm.complete(messages);
         answer = completion.text;
         usage = completion.usage;
         yield { type: "delta", text: answer };
@@ -150,7 +158,7 @@ export class ChatService {
         assistant: {
           content: built.text,
           sourceVersionIds,
-          model: this.llm.name,
+          model: llm.name,
           confidence: null,
           citations: built.citations.map((c) => ({
             ordinal: c.ordinal,
@@ -164,7 +172,7 @@ export class ChatService {
 
       await this.usage.record(user, {
         featureKey: "chat.answer",
-        model: this.llm.name,
+        model: llm.name,
         promptTokens: usage.promptTokens,
         completionTokens: usage.completionTokens,
         conversationId: persisted.conversationId,
@@ -175,6 +183,7 @@ export class ChatService {
         expertId: input.expertId ?? "none",
         sources: facts.length,
         voiced: voice?.profile != null,
+        degraded,
       });
 
       yield {
@@ -186,6 +195,7 @@ export class ChatService {
         // answer (M3.4). Surface that to the client so it can offer a graceful next step rather
         // than present an ungrounded reply as a confident answer.
         insufficientKnowledge: facts.length === 0,
+        degraded,
       };
     } catch (error) {
       this.logger.error("chat answer failed", {

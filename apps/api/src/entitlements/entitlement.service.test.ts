@@ -71,6 +71,7 @@ describe("EntitlementService.getEntitlements", () => {
         type: "metered",
         enabled: true,
         limit: 5,
+        softLimit: null,
         window: "month",
         used: 2,
         remaining: 3,
@@ -163,7 +164,7 @@ describe("EntitlementService.enforce", () => {
     });
     const { service } = makeService(tx);
 
-    await expect(service.enforce(USER, "consultation_booking")).resolves.toBeUndefined();
+    await expect(service.enforce(USER, "consultation_booking")).resolves.toEqual({ outcome: "allow" });
     expect(tx.usageCounter.upsert).not.toHaveBeenCalled();
   });
 
@@ -214,7 +215,7 @@ describe("EntitlementService.enforce", () => {
     });
     const { service } = makeService(tx);
 
-    await expect(service.enforce(USER, "ask_question")).resolves.toBeUndefined();
+    await expect(service.enforce(USER, "ask_question")).resolves.toEqual({ outcome: "allow" });
     expect(tx.usageCounter.upsert).not.toHaveBeenCalled();
   });
 
@@ -229,7 +230,7 @@ describe("EntitlementService.enforce", () => {
     });
     const { service } = makeService(tx);
 
-    await expect(service.enforce(USER, "ask_question")).resolves.toBeUndefined();
+    await expect(service.enforce(USER, "ask_question")).resolves.toEqual({ outcome: "allow" });
     expect(tx.usageCounter.upsert).not.toHaveBeenCalled();
   });
 
@@ -247,7 +248,7 @@ describe("EntitlementService.enforce", () => {
       tx.usageCounter.upsert.mockResolvedValue({ count: 3 });
       const { service } = makeService(tx);
 
-      await expect(service.enforce(USER, "ask_question")).resolves.toBeUndefined();
+      await expect(service.enforce(USER, "ask_question")).resolves.toEqual({ outcome: "allow" });
 
       const arg = tx.usageCounter.upsert.mock.calls[0][0];
       expect(arg.where.userId_featureKey_window_windowStart).toEqual({
@@ -341,5 +342,90 @@ describe("EntitlementService.enforce", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it("meters and degrades (not blocks) an unlimited fair-use feature past its soft threshold (M6.3)", async () => {
+    const tx = makeTx();
+    tx.subscription.findFirst.mockResolvedValue({ plan: PREMIUM_PLAN });
+    tx.planEntitlement.findFirst.mockResolvedValue({
+      enabled: true,
+      limit: null,
+      softLimit: 1000,
+      window: "month",
+      feature: { type: "metered" },
+    });
+    // Reservation pushes the count past the fair-use threshold.
+    tx.usageCounter.upsert.mockResolvedValue({ count: 1001 });
+    const { service } = makeService(tx);
+
+    await expect(service.enforce(USER, "ask_question")).resolves.toEqual({
+      outcome: "degraded",
+      feature: "ask_question",
+    });
+    // It still reserves a unit (so fair-use usage is tracked) — degrade is not a free pass.
+    expect(tx.usageCounter.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows (not degrades) an unlimited fair-use feature still under its soft threshold (M6.3)", async () => {
+    const tx = makeTx();
+    tx.subscription.findFirst.mockResolvedValue({ plan: PREMIUM_PLAN });
+    tx.planEntitlement.findFirst.mockResolvedValue({
+      enabled: true,
+      limit: null,
+      softLimit: 1000,
+      window: "month",
+      feature: { type: "metered" },
+    });
+    tx.usageCounter.upsert.mockResolvedValue({ count: 500 });
+    const { service } = makeService(tx);
+
+    await expect(service.enforce(USER, "ask_question")).resolves.toEqual({ outcome: "allow" });
+    expect(tx.usageCounter.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks at the hard cap before degrading when both a cap and a soft threshold are set (M6.3)", async () => {
+    const tx = makeTx();
+    onFreePlan(tx);
+    tx.planEntitlement.findFirst.mockResolvedValue({
+      enabled: true,
+      limit: 100,
+      softLimit: 50,
+      window: "month",
+      feature: { type: "metered" },
+    });
+    tx.usageCounter.upsert.mockResolvedValue({ count: 101 });
+    tx.plan.findMany.mockResolvedValue([]);
+    const { service } = makeService(tx);
+
+    const err = await service.enforce(USER, "ask_question").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HttpException);
+    expect((err as HttpException).getStatus()).toBe(HttpStatus.PAYMENT_REQUIRED);
+    expect((err as HttpException).getResponse()).toMatchObject({ reason: "quota_exceeded" });
+  });
+
+  it("surfaces the fair-use soft threshold on /me/entitlements (M6.3)", async () => {
+    const tx = makeTx();
+    tx.subscription.findFirst.mockResolvedValue({ plan: PREMIUM_PLAN });
+    tx.planEntitlement.findMany.mockResolvedValue([
+      {
+        enabled: true,
+        limit: null,
+        softLimit: 1000,
+        window: "month",
+        feature: { key: "ask_question", name: "Ask", type: "metered" },
+      },
+    ]);
+    tx.usageCounter.findUnique.mockResolvedValue({ count: 1200 });
+    const { service } = makeService(tx);
+
+    const result = await service.getEntitlements(USER);
+
+    // No hard cap (remaining null) but the fair-use line is exposed for the usage meter.
+    expect(result.features[0]).toMatchObject({
+      used: 1200,
+      limit: null,
+      softLimit: 1000,
+      remaining: null,
+    });
   });
 });

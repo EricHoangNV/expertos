@@ -974,3 +974,43 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - The Stripe REST transport (`FetchStripeHttpClient`) joins the M11 integration list (needs live Stripe). The webhook signature/parse logic does NOT (fully unit-tested with computed signatures).
 - `cancelSubscription` is implemented on both drivers + the interface but **has no caller yet** — wire it into the M8.4 admin "manage subscriptions" action or a user-initiated cancel.
 - `subscriptions.tenant_id` on a mirrored row is set to the resolved user's tenant (not GLOBAL) — correct for B2B later.
+
+## M6.3 — Transparent usage indicator + fair-use thresholds + degrade-don't-block
+**Date:** 2026-06-01
+**Ref:** PRD §"Paywall, Entitlements & Feature Gating" / §"Design System" — Task Manifest M6.3
+
+**What was done:**
+- Added nullable `plan_entitlements.soft_limit` column (migration `20260601010000_entitlement_soft_limit`) — the per-entitlement fair-use threshold, admin-tunable alongside `limit`/`window`. Seed sets Premium `ask_question` `softLimit: 1000` (hard `limit` stays null).
+- `EntitlementService.enforce` now returns an `EntitlementDecision` (`allow` | `degraded`; block still throws `402`). A metered feature with a `softLimit` now meters even when `limit` is null (unlimited): reserve-before-work increment → hard-cap check (block, rolls back) → soft-threshold check (degrade). Truly-unlimited (both null) early-allows with no counter write. `getEntitlements` surfaces `softLimit`.
+- `EntitlementGuard` stashes the decision on the request; new `@EntitlementDecisionParam()` decorator (mirrors `@CurrentUser`) reads it. `ChatController` threads `{ degraded }` into `ChatService.answerStream`.
+- New `CHAT_DEGRADED_LLM_PROVIDER` token + `createDegradedLlmProvider()` (offline `EchoLlmProvider("echo-dev-mini")`). `ChatService` selects `degraded ? this.degradedLlm : this.llm` — the only behavioural fork. `done` event now carries `degraded`; usage log + structured log record it.
+- New `UsageMeter` UI primitive (`packages/ui`) over the existing `.bar`/`.bar.warn` — measures `used` against `limit` else `softLimit`, warns near/over the threshold, reads "Unlimited" when neither set. New token-only `.meter` styles in `ds.css`.
+- `EchoLlmProvider` constructor takes an optional `name`. New shared fields `EntitlementView.softLimit` + `ChatStreamEvent.done.degraded`.
+- Tests: api +7, ai +1 (total 521). Updated existing enforce tests (return value `{outcome:"allow"}`), getEntitlements exact-match (`softLimit: null`), guard test (stable request + stash assertion), chat service/controller (degraded provider injected + degrade-path tests).
+
+**Key decisions:**
+- `soft_limit` as a real DB column (config-not-code, admin-editable via M8.3) over a code constant — the matrix *is* the business model; additive/nullable = backwards-compatible.
+- Hard-cap check precedes the soft-threshold check, so a capped plan is never silently downgraded to a fair-use pass.
+- Degrade still consumes quota (reserve-before-work) so fair-use usage is tracked — degrade is not a free pass.
+- Decision propagation via a request-stashed value + param decorator (the `@CurrentUser` pattern) keeps `ChatService` request-agnostic; the guard remains the single reserve point (no double-metering).
+- `UsageMeter` takes plain props (not `@expertos/shared`) so `packages/ui` stays dependency-free; consumers map `EntitlementView` → props.
+
+**Files changed:**
+- `packages/db/prisma/schema.prisma` + `migrations/20260601010000_entitlement_soft_limit/migration.sql` — `soft_limit` column.
+- `packages/db/prisma/seed.ts` — `softLimit` in the matrix `Cell` + Premium `ask_question` 1000.
+- `apps/api/src/entitlements/entitlement.service.ts` — `EntitlementDecision` type, metered-degrade logic, `softLimit` in `getEntitlements`.
+- `apps/api/src/entitlements/entitlement.guard.ts` — stash decision on request.
+- `apps/api/src/entitlements/entitlement-decision.decorator.ts` — new `@EntitlementDecisionParam()` + request key.
+- `apps/api/src/chat/{chat.tokens,chat.module,chat.service,chat.controller}.ts` — degraded provider token/wiring/selection + decision passthrough.
+- `apps/api/src/ingestion/ingestion.defaults.ts` — `createDegradedLlmProvider()`.
+- `packages/ai/src/llm/echo-llm-provider.ts` — optional `name`.
+- `packages/shared/src/entitlements.ts` + `chat.ts` — `softLimit` + `done.degraded`.
+- `packages/ui/src/UsageMeter.tsx` + `index.ts` + `ds.css` — usage meter primitive + styles.
+- Test files: `entitlement.service.test.ts`, `entitlement.guard.test.ts`, `chat.service.test.ts`, `chat.controller.test.ts`, `echo-llm-provider.test.ts`.
+
+**Notes for next iteration:**
+- **M6.4 caching must be entitlement-aware:** a cached answer must not serve a degraded (cheaper-model) answer to a standard-tier user, and a cache hit must not re-reserve/double-count quota (the gate already reserved on the request path). Tier could be part of the answer-cache key.
+- **M6.5 (OD#4)** just sets the real numbers now that `soft_limit` is a tunable column — calibrate Free 5 / Plus 100 / Premium softLimit 1000 against cost-per-answer, plus the degraded model's cost envelope.
+- **Web:** the `/me/entitlements` usage page (consuming `UsageMeter`) and the chat `done.degraded` fair-use note are not built — the API + UI primitive are ready.
+- **Real metering** of an unlimited+softLimit feature (the `usage_counters` upsert/rollback under real pgvector/RLS) joins the M11 Testcontainers list — seam-tested with a mocked tx, same caveat as M6.1.
+- **Sandbox quirk reminder:** `pnpm build`/`turbo run typecheck` regenerate the Prisma client with the default **library** engine, which SIGILLs api tests at runtime on this box. Re-run `PRISMA_CLIENT_ENGINE_TYPE=binary prisma generate` in `packages/db` before running api tests. Also `turbo run typecheck` races two concurrent `prisma generate` (db build + db typecheck) after a schema change → ENOENT copyfile; run with `--concurrency=1`.

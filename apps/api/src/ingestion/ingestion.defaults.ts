@@ -41,3 +41,13 @@ export function createDefaultSummarizer(): Summarizer {
 export function createDefaultLlmProvider(): LlmProvider {
   return new EchoLlmProvider();
 }
+
+/**
+ * Default cheaper fair-use LLM tier (M6.3). Once a user passes their plan's fair-use soft threshold
+ * the chat layer serves answers with this provider instead of blocking. Offline it is the same echo
+ * engine under a distinct model name (so the degrade is observable in usage logs); production swaps a
+ * genuinely cheaper model here (e.g. a mini/haiku tier) alongside {@link createDefaultLlmProvider}.
+ */
+export function createDegradedLlmProvider(): LlmProvider {
+  return new EchoLlmProvider("echo-dev-mini");
+}

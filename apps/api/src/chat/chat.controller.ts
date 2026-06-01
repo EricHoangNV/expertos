@@ -3,6 +3,8 @@ import { chatRequestSchema, type ChatRequestInput } from "@expertos/shared";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { Roles } from "../auth/roles.decorator";
 import { RequiresEntitlement } from "../entitlements/requires-entitlement.decorator";
+import { EntitlementDecisionParam } from "../entitlements/entitlement-decision.decorator";
+import type { EntitlementDecision } from "../entitlements/entitlement.service";
 import type { AuthUser } from "../auth/auth.types";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { ChatService } from "./chat.service";
@@ -28,7 +30,9 @@ interface SseResponse {
  *
  * `@RequiresEntitlement('ask_question')` meters the route (M6.1): the {@link EntitlementGuard}
  * consumes one unit of the actor's per-window question quota before streaming, or returns `402`
- * with an upgrade payload at the wall.
+ * with an upgrade payload at the hard wall. Past a plan's fair-use soft threshold the gate instead
+ * reports `degraded` (M6.3) — read here via `@EntitlementDecisionParam()` and passed to the service
+ * so the answer is served by the cheaper model rather than blocked.
  */
 @Controller("chat")
 @Roles("user")
@@ -40,6 +44,7 @@ export class ChatController {
   async stream(
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(chatRequestSchema)) body: ChatRequestInput,
+    @EntitlementDecisionParam() decision: EntitlementDecision,
     @Res() res: SseResponse,
   ): Promise<void> {
     res.setHeader("Content-Type", "text/event-stream");
@@ -48,7 +53,8 @@ export class ChatController {
     // Disable proxy buffering so frames reach the client immediately (Cloud Run / nginx).
     res.setHeader("X-Accel-Buffering", "no");
 
-    for await (const event of this.chat.answerStream(user, body)) {
+    const degraded = decision.outcome === "degraded";
+    for await (const event of this.chat.answerStream(user, body, { degraded })) {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     }
     res.end();

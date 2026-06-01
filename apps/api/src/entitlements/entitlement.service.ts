@@ -23,6 +23,18 @@ interface ResolvedPlan {
   sortOrder: number;
 }
 
+/**
+ * The outcome of a passing {@link EntitlementService.enforce} gate (a blocked gate throws instead).
+ * `allow` is the normal path; `degraded` means the actor has passed the feature's fair-use soft
+ * threshold this window, so the caller should serve the work with a cheaper model (M6.3) rather than
+ * block. The guard stashes this on the request so a downstream handler (e.g. chat) can pick the tier.
+ */
+export type EntitlementDecision =
+  | { outcome: "allow" }
+  | { outcome: "degraded"; feature: FeatureKey };
+
+const ALLOW: EntitlementDecision = { outcome: "allow" };
+
 const PLAN_SELECT = {
   id: true,
   key: true,
@@ -40,9 +52,11 @@ const PLAN_SELECT = {
  * - {@link getEntitlements} powers `GET /me/entitlements` (the transparent usage indicator): every
  *   feature with its boolean access or metered `limit`/`used`/`remaining` for the current window.
  * - {@link enforce} is the guard's reserve-before-work check (directive §4.13): boolean-disabled and
- *   metered-over-cap both throw `402` with an upgrade payload; a metered allow **atomically consumes
- *   one unit** of the current window's counter inside the same transaction (so a concurrent burst can
- *   never exceed the cap, and the increment rolls back if the cap check then fails).
+ *   metered-over-hard-cap both throw `402` with an upgrade payload; a metered allow **atomically
+ *   consumes one unit** of the current window's counter inside the same transaction (so a concurrent
+ *   burst can never exceed the cap, and the increment rolls back if the cap check then fails). Past a
+ *   metered feature's fair-use soft threshold it returns `degraded` instead of blocking (M6.3) — the
+ *   caller serves the work with a cheaper model.
  *
  * `subscriptions`/`usage_counters` are `user_scoped` under Postgres RLS (directive §4.21) so every
  * read/write runs inside {@link RlsService.run}. The lookups still pin `userId: user.id` by natural
@@ -62,6 +76,7 @@ export class EntitlementService {
         select: {
           enabled: true,
           limit: true,
+          softLimit: true,
           window: true,
           feature: { select: { key: true, name: true, type: true } },
         },
@@ -81,6 +96,7 @@ export class EntitlementService {
             type: "metered",
             enabled: row.enabled,
             limit: row.limit,
+            softLimit: row.softLimit ?? null,
             window: row.window,
             used,
             remaining,
@@ -100,17 +116,19 @@ export class EntitlementService {
   }
 
   /**
-   * Enforces a gated feature for the acting user. Returns on allow; throws a `402` carrying an
-   * {@link EntitlementDeniedPayload} on a closed gate. A metered allow consumes one unit atomically.
+   * Enforces a gated feature for the acting user. Returns an {@link EntitlementDecision} on a passing
+   * gate (`allow`, or `degraded` once the fair-use soft threshold is passed); throws a `402` carrying
+   * an {@link EntitlementDeniedPayload} on a closed gate. A metered allow consumes one unit atomically.
    */
-  async enforce(user: AuthUser, feature: FeatureKey): Promise<void> {
-    await this.rls.run(user, async (tx) => {
+  async enforce(user: AuthUser, feature: FeatureKey): Promise<EntitlementDecision> {
+    return this.rls.run(user, async (tx) => {
       const plan = await this.resolvePlan(tx, user);
       const row = await tx.planEntitlement.findFirst({
         where: { planId: plan.id, feature: { key: feature } },
         select: {
           enabled: true,
           limit: true,
+          softLimit: true,
           window: true,
           feature: { select: { type: true } },
         },
@@ -121,14 +139,22 @@ export class EntitlementService {
         throw await this.deny(tx, plan, feature, "feature_disabled", null, null);
       }
 
-      // Boolean feature: enabled ⇒ allowed. Metered with no cap (e.g. Premium fair-use): allowed —
-      // degrade-don't-block lives in M6.3, so an unlimited entitlement passes the gate here.
-      if (row.feature.type === "boolean" || row.limit === null || row.window === null) {
-        return;
+      // Coalesce nullish → null so an absent cap/threshold reads consistently below.
+      const limit = row.limit ?? null;
+      const softLimit = row.softLimit ?? null;
+
+      // Boolean feature, or a metered feature with nothing to meter against (no window, or neither a
+      // hard cap nor a fair-use threshold = truly unlimited): allowed without touching the counter.
+      if (
+        row.feature.type === "boolean" ||
+        row.window === null ||
+        (limit === null && softLimit === null)
+      ) {
+        return ALLOW;
       }
 
-      // Metered: reserve one unit, then verify the cap. Both run in this transaction, so throwing on
-      // an over-cap reservation rolls the increment back — exactly `limit` uses succeed per window.
+      // Metered: reserve one unit, then evaluate. All in this transaction, so throwing on an over-cap
+      // reservation rolls the increment back — exactly `limit` uses succeed per window.
       const windowStart = currentWindowStart(row.window, new Date());
       const counter = await tx.usageCounter.upsert({
         where: {
@@ -151,9 +177,18 @@ export class EntitlementService {
         select: { count: true },
       });
 
-      if (counter.count > row.limit) {
-        throw await this.deny(tx, plan, feature, "quota_exceeded", row.limit, 0);
+      // Hard cap first: a blocked reservation rolls back. (Checked before degrade so a hard cap is
+      // never silently downgraded to a fair-use pass.)
+      if (limit !== null && counter.count > limit) {
+        throw await this.deny(tx, plan, feature, "quota_exceeded", limit, 0);
       }
+
+      // Fair-use soft threshold: serve the work with a cheaper model instead of blocking (M6.3).
+      if (softLimit !== null && counter.count > softLimit) {
+        return { outcome: "degraded", feature };
+      }
+
+      return ALLOW;
     });
   }
 

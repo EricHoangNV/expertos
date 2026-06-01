@@ -308,6 +308,12 @@ button { font-family: inherit; cursor: pointer; }
 .bar > i { display: block; height: 100%; background: var(--red-600); border-radius: inherit; }
 .bar.warn > i { background: var(--amber-600); }
 
+/* usage / quota meter (transparent usage indicator) */
+.meter { display: flex; flex-direction: column; gap: 7px; }
+.meter .meter-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.meter .meter-count { font-family: var(--font-mono); font-size: 11px; color: var(--ink-500); letter-spacing: .04em; }
+.meter.is-warn .meter-count { color: var(--amber-600); }
+
 /* divider */
 .hr { height: 1px; background: var(--line); border: none; margin: 0; }
 

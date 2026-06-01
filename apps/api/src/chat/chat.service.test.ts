@@ -52,31 +52,36 @@ function makeService(opts: { streaming?: boolean; deltas?: string[] } = {}) {
   const info = jest.fn();
   const error = jest.fn();
 
-  const llm: LlmProvider = streaming
-    ? {
-        name: "stub-llm",
-        complete: jest.fn(),
-        completeStream: async function* (messages: ChatMessage[]) {
-          seenMessages.push(messages);
-          for (const delta of deltas) {
-            yield { delta };
-          }
-          yield { usage: { promptTokens: 7, completionTokens: 3 } };
-        },
-      }
-    : {
-        name: "stub-llm",
-        complete: jest.fn(async (messages: ChatMessage[]) => {
-          seenMessages.push(messages);
-          return { text: "full answer", usage: { promptTokens: 5, completionTokens: 2 } };
-        }),
-      };
+  const makeLlm = (name: string): LlmProvider =>
+    streaming
+      ? {
+          name,
+          complete: jest.fn(),
+          completeStream: async function* (messages: ChatMessage[]) {
+            seenMessages.push(messages);
+            for (const delta of deltas) {
+              yield { delta };
+            }
+            yield { usage: { promptTokens: 7, completionTokens: 3 } };
+          },
+        }
+      : {
+          name,
+          complete: jest.fn(async (messages: ChatMessage[]) => {
+            seenMessages.push(messages);
+            return { text: "full answer", usage: { promptTokens: 5, completionTokens: 2 } };
+          }),
+        };
+
+  const llm = makeLlm("stub-llm");
+  const degradedLlm = makeLlm("stub-llm-mini");
 
   const service = new ChatService(
     { retrieve, retrieveUploads } as unknown as RetrievalService,
     { retrieveVoice } as unknown as VoiceService,
     { loadHistory, persistTurn } as unknown as ConversationService,
     llm,
+    degradedLlm,
     { record } as unknown as UsageLogService,
     { info, error } as unknown as StructuredLogger,
   );
@@ -168,6 +173,34 @@ describe("ChatService.answerStream", () => {
         { ordinal: 2, chunkId: "c2", documentVersionId: "dv1", quote: "fact two", kind: "knowledge" },
       ],
     });
+  });
+
+  it("serves the cheaper degraded model when the fair-use gate degrades (M6.3)", async () => {
+    const { service, stubs } = makeService();
+    const input = baseInput({ conversationId: "conv-1" });
+
+    const events = await drain(service.answerStream(USER, input, { degraded: true }));
+
+    // The degraded provider's name is what gets persisted + cost-logged + flagged on the done event.
+    expect(stubs.persistTurn.mock.calls[0][1].assistant.model).toBe("stub-llm-mini");
+    expect(stubs.record).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ model: "stub-llm-mini" }),
+    );
+    expect(stubs.info).toHaveBeenCalledWith(
+      "chat answer completed",
+      expect.objectContaining({ degraded: true }),
+    );
+    expect(events.at(-1)).toMatchObject({ type: "done", degraded: true });
+  });
+
+  it("serves the standard model and reports degraded:false by default (M6.3)", async () => {
+    const { service, stubs } = makeService();
+
+    const events = await drain(service.answerStream(USER, baseInput()));
+
+    expect(stubs.persistTurn.mock.calls[0][1].assistant.model).toBe("stub-llm");
+    expect(events.at(-1)).toMatchObject({ type: "done", degraded: false });
   });
 
   it("folds the user's own uploads in as upload citations after knowledge (M5.4)", async () => {

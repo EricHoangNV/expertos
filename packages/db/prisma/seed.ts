@@ -35,9 +35,15 @@ const PLANS = [
   },
 ];
 
-// plan key → feature key → entitlement. `limit: null` on a metered feature = unlimited
-// (Premium "high fair-use cap → degrade, don't block" is handled in the app layer).
-type Cell = { enabled: boolean; limit?: number | null; window?: "day" | "week" | "month" };
+// plan key → feature key → entitlement. `limit: null` on a metered feature = no hard cap;
+// `softLimit` is the fair-use threshold past which the answer degrades to a cheaper model
+// instead of blocking (Premium "high fair-use cap → degrade, don't block"). Both admin-tunable.
+type Cell = {
+  enabled: boolean;
+  limit?: number | null;
+  softLimit?: number | null;
+  window?: "day" | "week" | "month";
+};
 const MATRIX: Record<string, Record<string, Cell>> = {
   free: {
     ask_question: { enabled: true, limit: 5, window: "month" },
@@ -58,7 +64,7 @@ const MATRIX: Record<string, Record<string, Cell>> = {
     consultation_booking: { enabled: true },
   },
   premium: {
-    ask_question: { enabled: true, limit: null, window: "month" },
+    ask_question: { enabled: true, limit: null, softLimit: 1000, window: "month" },
     document_upload: { enabled: true },
     all_expert_voices: { enabled: true },
     cited_answers: { enabled: true },
@@ -105,12 +111,18 @@ async function main() {
       if (!featureId) throw new Error(`Unknown feature in matrix: ${featureKey}`);
       await prisma.planEntitlement.upsert({
         where: { planId_featureId: { planId: plan.id, featureId } },
-        update: { enabled: cell.enabled, limit: cell.limit ?? null, window: cell.window ?? null },
+        update: {
+          enabled: cell.enabled,
+          limit: cell.limit ?? null,
+          softLimit: cell.softLimit ?? null,
+          window: cell.window ?? null,
+        },
         create: {
           planId: plan.id,
           featureId,
           enabled: cell.enabled,
           limit: cell.limit ?? null,
+          softLimit: cell.softLimit ?? null,
           window: cell.window ?? null,
         },
       });

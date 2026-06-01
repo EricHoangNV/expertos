@@ -2,7 +2,10 @@ import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { RetrievalModule } from "../retrieval/retrieval.module";
 import { VoiceModule } from "../voice/voice.module";
-import { createDefaultLlmProvider } from "../ingestion/ingestion.defaults";
+import {
+  createDefaultLlmProvider,
+  createDegradedLlmProvider,
+} from "../ingestion/ingestion.defaults";
 import { ChatController } from "./chat.controller";
 import { ConversationsController } from "./conversations.controller";
 import { SavedAnswersController } from "./saved-answers.controller";
@@ -11,7 +14,7 @@ import { ChatService } from "./chat.service";
 import { ConversationService } from "./conversation.service";
 import { SavedAnswerService } from "./saved-answer.service";
 import { AnswerFeedbackService } from "./answer-feedback.service";
-import { CHAT_LLM_PROVIDER } from "./chat.tokens";
+import { CHAT_DEGRADED_LLM_PROVIDER, CHAT_LLM_PROVIDER } from "./chat.tokens";
 
 /**
  * Wires the M3.1 chat experience. It composes the M1 retrieval seam ({@link RetrievalModule})
@@ -36,6 +39,7 @@ import { CHAT_LLM_PROVIDER } from "./chat.tokens";
     SavedAnswerService,
     AnswerFeedbackService,
     { provide: CHAT_LLM_PROVIDER, useFactory: createDefaultLlmProvider },
+    { provide: CHAT_DEGRADED_LLM_PROVIDER, useFactory: createDegradedLlmProvider },
   ],
   exports: [ChatService],
 })

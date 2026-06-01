@@ -18,5 +18,7 @@ export { Stat } from "./Stat";
 export type { StatProps, StatTrend } from "./Stat";
 export { Bar } from "./Bar";
 export type { BarProps } from "./Bar";
+export { UsageMeter } from "./UsageMeter";
+export type { UsageMeterProps } from "./UsageMeter";
 export { Shell, Topbar, Content } from "./Shell";
 export type { ShellProps, ContentProps } from "./Shell";
