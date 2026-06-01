@@ -1818,3 +1818,34 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Remaining M11 (all unblocked, no product/legal gate):** M11.1 full E2E Playwright path matrix; M11.3 perf/caching tuning + load smoke test; M11.5 design-system conformance audit (`/design-review`: token usage, citation render-after-resolve, upload-vs-knowledge color distinction, badge tones, hit-target/size minimums).
 - **Gated work:** M9 (Concierge) by OD#5 (legal/brand), M10 (analytics) by OD#1, NT.1–NT.6 sign-offs — all need product/legal decisions, not engineering.
 - The `/security-review` skill aborts if `origin/HEAD` is unset; set it (`git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main`) before running, or the diff base can't resolve.
+
+## M11 (hardening) — Live-DB integration tests for PgVectorStore hybrid retrieval
+**Date:** 2026-06-01
+**Ref:** PRD M11 (§"Testing Strategy"); the deferred "M11 Testcontainers live-DB pass" referenced across the M1.2 / store seam notes — `PgVectorStore` is the keystone RAG path and the first store flagged.
+
+**What was done:**
+- Added `apps/api/src/retrieval/pgvector.store.integration.test.ts` — 6 opt-in live-Postgres tests that run the **real** `PgVectorStore` against pgvector (as the non-superuser `app_user` role on the `expertos-pg` container), closing the gaps the mocked-`$queryRawUnsafe` unit suite cannot:
+  1. cosine `<=>` ordering near→mid→far; `vectorScore` ≈ 1/0; finite numeric `score`s; pending chunk gated out by the published filter.
+  2. keyword full-text match lifts a vector-far Vietnamese chunk to rank 1 via RRF fusion; `ts_rank` `keywordScore` is a number > 0.
+  3. `scope = ANY($n::content_scope[])` binds a JS `string[]` (the explicitly-flagged item) — `global_expert`+`tenant_customer` returned, `shared_expert` excluded.
+  4. language filter (vi-only).
+  5. chunk-status filter (pending-only when asked).
+  6. RLS isolation — another tenant sees none of these tenant-scoped (`knowledge`-family) chunks.
+- Wired an opt-in integration runner into `apps/api` mirroring `@expertos/db`: new `apps/api/jest.integration.config.cjs` (testMatch `*.integration.test.ts`, no coverage gate, `--runInBand`, 30s timeout) + `test:integration` script; `apps/api/jest.config.cjs` now excludes `*.integration.test.ts` from the default `pnpm test`.
+
+**Key decisions:**
+- Colocated the test with the store in `apps/api` (packages/db can't import apps/api code) and added the integration runner there, rather than reimplementing the SQL in packages/db (avoids drift between the test and the real driver).
+- Synthetic 1536-dim leading-axis embeddings (`embed(1)`, `embed(1,1)`, `embed(0,1)`) give deterministic cosine ordering with no real embedder; the query vector points along axis 0.
+- Every assertion filters to my own seeded chunk IDs — the `knowledge`-family `chunks` table exposes GLOBAL-tenant rows via `global_read`, so the corpus is never assumed empty (the one seeded chunk has no embedding anyway).
+- NFC-normalized the Vietnamese content + query: the store's keyword path does NOT normalize (the upstream `retrievalQuerySchema` does), so a direct-driver test must pre-normalize (directive §1.2 / §36).
+
+**Files changed:**
+- `apps/api/src/retrieval/pgvector.store.integration.test.ts` — NEW, the 6-test live suite.
+- `apps/api/jest.integration.config.cjs` — NEW, the opt-in integration runner config.
+- `apps/api/jest.config.cjs` — added `testPathIgnorePatterns` to exclude `*.integration.test.ts` from the default coverage run.
+- `apps/api/package.json` — added the `test:integration` script.
+
+**Notes for next iteration:**
+- **Runbook (this aarch64/linuxkit sandbox):** the Prisma **library** engine SIGILLs at runtime, so the integration suite needs the **binary** engine. Regenerate first: `PRISMA_CLIENT_ENGINE_TYPE=binary pnpm --filter @expertos/db exec prisma generate`; run: `PRISMA_CLIENT_ENGINE_TYPE=binary RLS_TEST_DATABASE_URL="postgresql://app_user:app_user@localhost:5432/expertos?schema=public" pnpm --filter @expertos/api test:integration`; then regenerate the default (library) engine before the gates (`pnpm --filter @expertos/db exec prisma generate`) since typecheck/build also `prisma generate`.
+- **Remaining deferred raw-SQL stores** for this same harness (copy the test): conversation-search `ts_rank`/`ts_headline` (`ConversationService.search`), `PgExpertStore` `array_agg`, `PgSemanticCacheStore`, and the `FailedQueryService`/`ExpertPortalService` `LATERAL` joins. Watch LEARNINGS #7 (`$n::uuid` cast on raw uuid params).
+- Default suite unchanged: 849 pass / 0 fail / 0 skip; the 6 integration tests run only via `test:integration`.
