@@ -15,6 +15,11 @@ export default function HomePage() {
       ) : user ? (
         <>
           <Badge tone="green">Signed in as {user.email ?? user.uid}</Badge>
+          <nav className="row gap3 wrap">
+            <a href="/chat">Chat</a>
+            <a href="/history">History</a>
+            <a href="/account">Plan &amp; usage</a>
+          </nav>
           <Button variant="ghost" onClick={() => void signOutUser()}>
             Sign out
           </Button>

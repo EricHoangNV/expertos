@@ -1,10 +1,10 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Badge, Button, Card, Cite, Field, Input, Select, Textarea } from "@expertos/ui";
+import { useCallback, useEffect, useState } from "react";
+import { Badge, Button, Card, Field, Input, Select, Textarea } from "@expertos/ui";
 import type { ChatCitationDto, ConsultationRecommendationDto } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
+import { AnswerView } from "../../src/components/answer-view";
 import {
   fetchExperts,
   renditionLabel,
@@ -13,6 +13,7 @@ import {
   submitFeedback,
   type ExpertVoice,
 } from "../../src/lib/chat-client";
+import { createSavedAnswer } from "../../src/lib/history-client";
 
 interface UiMessage {
   role: "user" | "assistant";
@@ -38,57 +39,6 @@ function updateLast(messages: UiMessage[], fn: (m: UiMessage) => UiMessage): UiM
   const copy = messages.slice();
   copy[copy.length - 1] = fn(copy[copy.length - 1]);
   return copy;
-}
-
-/** Single `[n]` citation marker in answer prose. */
-const MARKER = /\[(\d+)\]/g;
-
-/**
- * Renders an assistant answer with its `[n]` markers turned into clickable `.cite` chips — but
- * only once the stream has completed and the marker resolves to a real citation (M4.2
- * render-after-resolve: a marker is never a live `.cite` mid-stream or when it points nowhere).
- * Clicking a marker invokes `onCite` for click-to-passage. An unresolvable bracketed number is
- * left as plain text so a hallucinated `[9]` can never masquerade as a verified source.
- */
-function renderAnswer(
-  content: string,
-  byOrdinal: Map<number, ChatCitationDto>,
-  onCite: (ordinal: number) => void,
-): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-  let key = 0;
-  for (const match of content.matchAll(MARKER)) {
-    const start = match.index ?? 0;
-    const ordinal = Number(match[1]);
-    const citation = byOrdinal.get(ordinal);
-    if (start > cursor) nodes.push(content.slice(cursor, start));
-    if (citation) {
-      nodes.push(
-        <Cite
-          key={`cite-${key++}`}
-          label={ordinal}
-          resolved
-          variant={citation.kind}
-          role="button"
-          tabIndex={0}
-          aria-label={`Source ${ordinal}`}
-          onClick={() => onCite(ordinal)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onCite(ordinal);
-            }
-          }}
-        />,
-      );
-    } else {
-      nodes.push(match[0]);
-    }
-    cursor = start + match[0].length;
-  }
-  if (cursor < content.length) nodes.push(content.slice(cursor));
-  return nodes;
 }
 
 /**
@@ -249,64 +199,59 @@ function AnswerFeedback({ messageId }: { messageId: string }) {
 }
 
 /**
- * One assistant turn: the answer prose with inline citation markers plus a sources drawer
- * (M4.2). The drawer lists each resolved source with its quote and `document_version_id`
- * provenance; clicking an inline marker (or the answer's `.cite`) highlights and scrolls to the
- * matching source row (click-to-passage). Markers are only interactive after the stream finishes.
+ * One assistant turn in the live chat: delegates to the shared {@link AnswerView} (M4.2 sources
+ * drawer + render-after-resolve) once any prose has arrived, showing a streaming placeholder until
+ * then. Markers stay non-interactive mid-stream (`interactive={message.done}`).
  */
 function AssistantAnswer({ message }: { message: UiMessage }) {
-  const [activeOrdinal, setActiveOrdinal] = useState<number | null>(null);
-  const rowRefs = useRef(new Map<number, HTMLDivElement>());
+  if (!message.content) {
+    return <p>{message.done ? "" : "…"}</p>;
+  }
+  return (
+    <AnswerView
+      content={message.content}
+      citations={message.citations}
+      interactive={message.done}
+    />
+  );
+}
 
-  const byOrdinal = useMemo(() => {
-    const map = new Map<number, ChatCitationDto>();
-    for (const citation of message.citations) map.set(citation.ordinal, citation);
-    return map;
-  }, [message.citations]);
+/**
+ * Bookmark a finished assistant answer (M3.2). Sends only the `messageId`; the owning conversation
+ * is derived + ownership re-checked server-side. A 409 (already saved) is surfaced as a benign
+ * "Saved" state rather than an error, so the toggle is idempotent from the user's view.
+ */
+function SaveAnswer({ messageId }: { messageId: string }) {
+  const { getIdToken } = useAuth();
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const focusSource = useCallback((ordinal: number) => {
-    setActiveOrdinal(ordinal);
-    rowRefs.current.get(ordinal)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, []);
+  const save = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        setError("Please sign in to save answers.");
+        return;
+      }
+      await createSavedAnswer(token, messageId);
+      setSaved(true);
+    } catch {
+      setError("Couldn't save — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }, [getIdToken, messageId]);
 
-  const resolved = message.done && message.citations.length > 0;
-
+  if (saved) return <Badge tone="green">Saved ★</Badge>;
   return (
     <>
-      <p>
-        {message.content
-          ? resolved
-            ? renderAnswer(message.content, byOrdinal, focusSource)
-            : message.content
-          : message.done
-            ? ""
-            : "…"}
-      </p>
-      {resolved && (
-        <div className="sources">
-          <span className="label">Sources</span>
-          {message.citations.map((citation) => (
-            <div
-              key={citation.ordinal}
-              ref={(el) => {
-                if (el) rowRefs.current.set(citation.ordinal, el);
-              }}
-              className={citation.ordinal === activeOrdinal ? "source active" : "source"}
-            >
-              <Cite label={citation.ordinal} resolved variant={citation.kind} />
-              <div className="source-body">
-                {citation.quote && <span className="source-quote">{citation.quote}</span>}
-                <span className="source-prov">
-                  source:{" "}
-                  {citation.kind === "upload"
-                    ? (citation.sourceLabel ?? "uploaded file")
-                    : citation.documentVersionId}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <Button variant="subtle" size="sm" onClick={() => void save()} disabled={busy}>
+        ☆ Save answer
+      </Button>
+      {error && <Badge tone="red">{error}</Badge>}
     </>
   );
 }
@@ -463,7 +408,12 @@ export default function ChatPage() {
               <ConsultationPrompt recommendation={m.recommendation} />
             )}
             {m.role === "assistant" && m.done && m.messageId && (
-              <AnswerFeedback messageId={m.messageId} />
+              <>
+                <AnswerFeedback messageId={m.messageId} />
+                <div className="row gap2 wrap">
+                  <SaveAnswer messageId={m.messageId} />
+                </div>
+              </>
             )}
           </Card>
         ))}

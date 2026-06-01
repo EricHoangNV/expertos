@@ -1635,3 +1635,33 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 **Notes for next iteration:**
 - Remaining deferred consumer-web UI: **conversation history sidebar + saved-answers list + full-text search** (M3.2/M3.3 are API-only — consume `GET /conversations`, `/conversations/:id`, `/saved-answers`, `/conversations/search`); and the **web upload UI** with the temp/persistent mode picker POSTing to `/uploads` (M5). The chat page now also has the `messageId` in hand if a "save answer" bookmark affordance (`POST /saved-answers`) is wanted alongside feedback.
 - No nav scaffold in `apps/web` yet; if a history sidebar lands it pairs with a small shared layout (out of scope here).
+
+## Consumer-web chat history + conversation search + saved-answers UI (deferred web-UI; M3.2 + M3.3)
+**Date:** 2026-06-01
+**Ref:** PRD §"Chat experience" / "History & retention" — M3.2 (conversation history + auto-titling + saved answers) and M3.3 (full-text conversation search). Both shipped API-only; the deferred consumer-web UI was tracked in progress-state "Next tasks" item 3.
+
+**What was done:**
+- New `apps/web/src/lib/history-client.ts` — typed fetch wrappers (Bearer + `NEXT_PUBLIC_API_URL`, mirroring `chat-client.ts`/`account-client.ts`): `listConversations`, `getConversation`, `searchConversations`, `renameConversation`, `listSavedAnswers`, `createSavedAnswer`, `removeSavedAnswer`. A 409 on bookmark maps to a benign `duplicate` rather than throwing (the API's idempotent-create contract).
+- New `apps/web/src/components/answer-view.tsx` — extracted the chat page's local `renderAnswer` (the `[n]`-marker→`.cite` renderer) + the M4.2 sources drawer (click-to-passage, `.source.active` highlight) into one shared `AnswerView` component taking `interactive` (render-after-resolve gate). Used by both the live chat turn and the history transcript so they can't drift.
+- New `apps/web/app/history/page.tsx` — single-column master/detail: search box (Enter-to-search; guillemet `«»` snippets rendered as text per directive §1), paginated "Recent conversations" list ("Load more"), conversation detail (full transcript via `AnswerView` + inline-edit rename + per-answer bookmark), and a "Saved answers" panel (list + remove + jump-into-conversation via `getConversation`).
+- `apps/web/app/chat/page.tsx` — refactored `AssistantAnswer` to delegate to the shared `AnswerView` (removed the duplicated `MARKER`/`renderAnswer` + drawer; kept the streaming-`…`-placeholder wrapper); added a `SaveAnswer` bookmark button under each finished answer (gives saved-answers a web producer; 409 → "Saved ★").
+- `apps/web/app/page.tsx` — added a signed-in nav (Chat / History / Plan & usage) so the standalone pages are discoverable.
+
+**Key decisions:**
+- Extracted `AnswerView` into a shared component rather than re-implementing the ~50-line marker renderer in the history page (directive §2.3 reuse / match patterns). Behavior preserved exactly: chat passes `interactive={message.done}` (markers non-interactive mid-stream), history passes `interactive` (a persisted answer is final). The chat page keeps its own streaming placeholder since that's chat-specific.
+- Single-column master/detail (view-state toggle) over a chat-embedded sidebar — matches the existing standalone-page web layout (`/account`, `/chat`) and avoids re-architecting the chat page. A future enhancement could let the user continue a past conversation (chat page would need to read a `conversationId`); left out of scope.
+- Reused DS primitives (`Button`/`Badge`/`Card`/`Field`/`Input`) + existing `.row/.gap/.col/.muted/.label/.source-quote` utilities — no new CSS, no new components beyond `AnswerView` (§2.2 no hardcoded colors trivially satisfied).
+- Purely additive frontend: no API/shared/backend code touched, so the 830-test suite is unaffected (no tested package changed).
+
+**Files changed:**
+- `apps/web/src/lib/history-client.ts` — NEW: conversation/saved-answer fetch wrappers.
+- `apps/web/src/components/answer-view.tsx` — NEW: shared answer + sources-drawer renderer.
+- `apps/web/app/history/page.tsx` — NEW: history list/search/detail + saved-answers UI.
+- `apps/web/app/chat/page.tsx` — refactored to use `AnswerView`; added `SaveAnswer` bookmark control.
+- `apps/web/app/page.tsx` — added signed-in nav links.
+
+**Notes for next iteration:**
+- The last remaining deferred consumer-web UI is the **web upload UI** (M5 — a file picker + temp/persistent mode toggle POSTing multipart to `/uploads`; the API is done end-to-end, no web consumer). When built, fold a new `uploads-client.ts` + a chat-attached file picker; uploads then surface as info-blue `.cite.upload` citations (`AnswerView` already renders the `upload` kind / `sourceLabel`).
+- `AnswerView` is now the single answer-rendering component — any future change to citation rendering (e.g. an M8 knowledge-passage deep link off `documentVersionId`+`chunkId`) belongs there, not in either page.
+- History is master/detail, not a chat-embedded sidebar; if "continue this conversation" is wanted, the chat page needs to accept an incoming `conversationId` (URL param or shared state) and pre-load its transcript before streaming the next turn.
+- Still no page tests in `apps/web` (repo-wide convention; gates are typecheck/lint/build/knip).
