@@ -3,10 +3,10 @@ import { signIn } from "../fixtures/auth";
 import { env, users } from "../fixtures/env";
 
 /**
- * Plan & usage transparency (M6.3). The free → quota-wall → upgrade → checkout path from
- * the matrix is partially represented: the consumer web exposes the plan + transparent
- * usage meter, but a self-serve checkout CTA is not yet built into `apps/web` (Stripe
- * checkout is wired in the API/admin), so the checkout leg is a documented fixme.
+ * Plan & usage transparency (M6.3) + self-serve upgrade (M6.2). The consumer web exposes the
+ * current plan, the transparent usage meter, and — now — a self-serve checkout CTA (`GET /me/plans`
+ * → `POST /billing/checkout`). The only leg that stays a documented fixme is completing the
+ * Stripe-hosted payment page itself (an external surface the suite shouldn't automate).
  */
 test.describe("plan & usage", () => {
   test.beforeEach(async ({ page }) => {
@@ -22,13 +22,22 @@ test.describe("plan & usage", () => {
     await expect(page.getByText("Usage this period").or(page.getByText("Features"))).toBeVisible();
   });
 
-  // Self-serve checkout CTA is not yet present in apps/web (Stripe checkout lives in the
-  // API + admin). When the upgrade CTA lands, drive: quota wall → Upgrade → Stripe test
-  // checkout → entitlement reflected on this page.
-  test.fixme("free user hits the quota wall and upgrades via checkout", async () => {
-    // 1. Exhaust the free metered allowance (loop ask until the quota meter is full).
-    // 2. Expect the over-limit / fair-use messaging.
-    // 3. Click Upgrade → complete Stripe test checkout.
-    // 4. Reload /account → plan reflects the new entitlement.
+  test("a free user is offered a self-serve upgrade CTA", async ({ page }) => {
+    await page.goto(`${env.webBaseUrl}/account`);
+    await expect(page.getByText(/Current plan:/i)).toBeVisible();
+
+    // `GET /me/plans` returns the priced higher tiers; each renders an "Upgrade to …" button
+    // that starts a hosted Stripe checkout (M6.2). Seed must publish at least one paid plan price.
+    await expect(page.getByRole("button", { name: /Upgrade to /i }).first()).toBeVisible();
+  });
+
+  // The button click hands off to Stripe's hosted checkout page — an external surface this suite
+  // shouldn't drive. When a Stripe test harness lands: click Upgrade → complete test checkout →
+  // webhook syncs the subscription → reload /account → plan reflects the new entitlement.
+  test.fixme("completing checkout reflects the new entitlement", async () => {
+    // 1. Click "Upgrade to …" → land on the Stripe-hosted checkout.
+    // 2. Complete the Stripe test checkout (test card).
+    // 3. Webhook syncs the subscription into `subscriptions`.
+    // 4. Reload /account → "Current plan" reflects the new entitlement.
   });
 });

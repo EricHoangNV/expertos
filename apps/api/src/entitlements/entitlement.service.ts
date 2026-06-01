@@ -1,9 +1,11 @@
 import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
 import type {
+  AvailablePlansDto,
   EntitlementDeniedPayload,
   EntitlementView,
   EntitlementsDto,
   FeatureKey,
+  UpgradePlanDto,
 } from "@expertos/shared";
 import type { Prisma, UsageWindow } from "@expertos/db";
 import { RlsService } from "../auth/rls.service";
@@ -112,6 +114,49 @@ export class EntitlementService {
       }
 
       return { plan: { key: plan.key, name: plan.name }, features };
+    });
+  }
+
+  /**
+   * The purchasable plans above the acting user's current tier (M6.2 self-serve upgrade), plus whether
+   * they already hold a paid plan (so the customer-portal action applies). Only plans with at least one
+   * price row are offered — an unpriced plan can't be checked out. Powers the consumer-web upgrade CTA;
+   * the actual checkout/portal hand-off stays in {@link BillingService}. Plans/prices are global
+   * reference data, but the read runs under the actor's RLS context for the current-plan resolution.
+   */
+  async listUpgradePlans(user: AuthUser): Promise<AvailablePlansDto> {
+    return this.rls.run(user, async (tx) => {
+      const plan = await this.resolvePlan(tx, user);
+      const rows = await tx.plan.findMany({
+        where: { active: true, sortOrder: { gt: plan.sortOrder } },
+        orderBy: { sortOrder: "asc" },
+        select: {
+          key: true,
+          name: true,
+          prices: {
+            orderBy: { amountCents: "asc" },
+            select: { interval: true, amountCents: true, currency: true },
+          },
+        },
+      });
+
+      const upgrades: UpgradePlanDto[] = rows
+        .filter((p) => p.prices.length > 0)
+        .map((p) => ({
+          key: p.key,
+          name: p.name,
+          prices: p.prices.map((price) => ({
+            interval: price.interval,
+            amountCents: price.amountCents,
+            currency: price.currency,
+          })),
+        }));
+
+      return {
+        currentPlanKey: plan.key,
+        hasActiveSubscription: plan.key !== FREE_PLAN_KEY,
+        upgrades,
+      };
     });
   }
 

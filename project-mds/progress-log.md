@@ -2450,3 +2450,28 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - NT.3 technical enforcement is now complete across all listed data classes; what remains is the **human gate** (PM approval + publication of the policy DRAFT).
 - Anonymization currently scrubs only `review_responses`. If `human_review_requests` ever gains free-text fields beyond `confidence_score`, extend `anonymizableReviewWhere`'s sibling there too.
 - Consultation-transcript deletion keys off the parent consultation date via a relation filter; at large scale consider an indexed denormalized date on `consultation_notes` if this `deleteMany` gets slow.
+
+## M6.2 (web) — Self-serve checkout CTA in the consumer app
+**Date:** 2026-06-01
+**Ref:** PRD §"Paywall, Entitlements & Feature Gating" (M6.2); closes the M11.1 `account-billing.spec.ts` consumer-checkout `test.fixme`
+
+**What was done:**
+- Added `GET /me/plans` (`EntitlementService.listUpgradePlans` + `EntitlementsController`) returning the priced upgrade tiers above the acting user's current plan (`AvailablePlansDto`: `currentPlanKey`, `hasActiveSubscription`, `upgrades[]` with per-interval prices), filtering out unpriced plans (can't be checked out).
+- Wired the consumer web `apps/web/app/account` page to the existing-but-previously-unreachable billing API: Upgrade buttons → `POST /billing/checkout` (hosted Stripe redirect), a Manage-billing button → `POST /billing/portal` (shown only when `hasActiveSubscription`). New `account-client.ts` helpers `fetchUpgradePlans`/`startCheckout`/`openBillingPortal`.
+- Replaced the M11.1 `test.fixme("free user … upgrades via checkout")` with a real `test` asserting the upgrade CTA renders; narrowed the remaining fixme to just completing the Stripe-hosted page (an external surface the suite shouldn't automate).
+
+**Key decisions:**
+- Plan listing lives in `EntitlementService` (not `BillingService`) because it already resolves the actor's current plan + tier ordering; checkout/portal hand-off stays in `BillingService`. The `/me/plans` read runs under the actor's RLS context for the current-plan resolution even though plans/prices are global reference data.
+- `hasActiveSubscription` is derived as `plan.key !== free` — a paid resolved plan implies a live subscription; avoids a second query. The portal route already 400s gracefully if no provider customer exists.
+- Checkout buttons use the `dark` Button variant (not crimson `primary`) to respect the M11.5 "one crimson primary per view" design rule with multiple upgrade options.
+- Redirect targets stay server-chosen (never sent from the client) — the existing open-redirect-safe contract is preserved; the client only sends `planKey`/`interval`.
+
+**Files changed:**
+- `packages/shared/src/billing.ts` (+ `index.ts`) — `PlanPriceDto`/`UpgradePlanDto`/`AvailablePlansDto`.
+- `apps/api/src/entitlements/entitlement.service.ts` — `listUpgradePlans`; `entitlements.controller.ts` — `GET /me/plans`.
+- `apps/api/src/entitlements/entitlement.service.test.ts` — +2 tests (free-user priced upgrades w/ unpriced filtered; top-plan no-upgrade + active flag).
+- `apps/web/src/lib/account-client.ts` — `fetchUpgradePlans`/`startCheckout`/`openBillingPortal`.
+- `apps/web/app/account/page.tsx` — upgrade CTA + manage-billing UI, price formatting, redirect orchestration.
+- `e2e/specs/account-billing.spec.ts` — real upgrade-CTA test; narrowed fixme.
+
+**Tests:** api 653 → 655; suite 1031 → 1033 pass / 0 fail. typecheck/lint/deadcode/build all green.

@@ -429,3 +429,57 @@ describe("EntitlementService.enforce", () => {
     });
   });
 });
+
+describe("EntitlementService.listUpgradePlans", () => {
+  it("returns priced higher tiers for a free user, cheapest interval first, and skips unpriced plans", async () => {
+    const tx = makeTx();
+    onFreePlan(tx);
+    tx.plan.findMany.mockResolvedValue([
+      {
+        key: "plus",
+        name: "Plus",
+        prices: [{ interval: "month", amountCents: 1500, currency: "usd" }],
+      },
+      {
+        key: "premium",
+        name: "Premium",
+        prices: [
+          { interval: "month", amountCents: 4900, currency: "usd" },
+          { interval: "year", amountCents: 49000, currency: "usd" },
+        ],
+      },
+      // A higher tier with no price row can't be checked out — it must be filtered out.
+      { key: "enterprise", name: "Enterprise", prices: [] },
+    ]);
+    const { service } = makeService(tx);
+
+    const result = await service.listUpgradePlans(USER);
+
+    expect(result.currentPlanKey).toBe("free");
+    expect(result.hasActiveSubscription).toBe(false);
+    expect(result.upgrades.map((p) => p.key)).toEqual(["plus", "premium"]);
+    expect(result.upgrades[1].prices).toEqual([
+      { interval: "month", amountCents: 4900, currency: "usd" },
+      { interval: "year", amountCents: 49000, currency: "usd" },
+    ]);
+    // Only plans strictly above the current tier are queried.
+    expect(tx.plan.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { active: true, sortOrder: { gt: 0 } } }),
+    );
+  });
+
+  it("offers no upgrades and flags an active subscription for a user on the top paid plan", async () => {
+    const tx = makeTx();
+    tx.subscription.findFirst.mockResolvedValue({ plan: PREMIUM_PLAN });
+    tx.plan.findMany.mockResolvedValue([]);
+    const { service } = makeService(tx);
+
+    const result = await service.listUpgradePlans(USER);
+
+    expect(result).toEqual({
+      currentPlanKey: "premium",
+      hasActiveSubscription: true,
+      upgrades: [],
+    });
+  });
+});

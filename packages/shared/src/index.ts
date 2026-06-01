@@ -114,6 +114,9 @@ export type {
   BillingCheckoutInput,
   CheckoutSessionDto,
   PortalSessionDto,
+  PlanPriceDto,
+  UpgradePlanDto,
+  AvailablePlansDto,
 } from "./billing";
 export { revenueReportQuerySchema } from "./revenue";
 export type {
