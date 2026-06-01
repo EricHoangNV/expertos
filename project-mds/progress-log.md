@@ -651,3 +651,35 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - `HISTORY_TOKEN_BUDGET` bounds only the *replayed history* portion of the prompt — the system message, freshly-retrieved facts, and the new user message are separate and not bounded by it. Re-tune in one place if cost/quality calibration needs it.
 - Windowing is seam-tested with a mocked tx (the message rows are fixtures); no DB-backed exercise of the actual `createdAt desc` ordering — joins the M11 Testcontainers list with the other raw/DB-coupled paths.
 - DB note unchanged: run api tests with `PRISMA_CLIENT_ENGINE_TYPE=binary` on this sandbox (LEARNINGS §2). (This run's gates all passed via `pnpm` without needing it for the mocked unit tests.)
+
+## M4.1 — Citation builder with chunk-resolvability guarantee
+**Date:** 2026-06-01
+**Ref:** PRD §"Citations" / Task Manifest M4.1 (starts M4)
+
+**What was done:**
+- New pure, deterministic `@expertos/ai` module `packages/ai/src/prompt/citations.ts` exporting `buildCitations({ answer, citations }) → { text, citations }` plus `CitationSource`/`ResolvedCitation`/`BuildCitationsInput`/`BuiltCitations`. It is the single enforcement point for the M4 contract "never emit an unresolvable citation": parses every `[n]` marker in the COMPLETE post-stream answer, drops any marker outside `1..N` from both the returned text and the citation list, returns only the referenced sources (de-duped, ascending by ordinal) without renumbering, and returns the answer text with unresolvable markers stripped + whitespace squeezed.
+- Co-located `citations.test.ts` (14 cases): adjacent/comma/space marker grammar, referenced-only + no-renumber (lone `[2]` stays ordinal 2), out-of-range `[0]`/`[99]` dropped + stripped, non-numeric `[abc]`/array-literal brackets left literal, `[1]-[3]` range as two markers, duplicate-source de-dup, mixed-group verbatim, empty source table, marker-free answer unchanged, `kind` default/preserve, NFC normalization, idempotence.
+- Wired into `ChatService.answerStream` (`apps/api/src/chat/chat.service.ts`): after the stream completes, `buildCitations({ answer, citations: prompt.citations })` → persist `built.text` + `built.citations`, derive `sourceVersionIds` from cited sources, emit referenced-only `ChatCitationDto[]` on the `done` event (via the new single-item `toCitationDto`, replacing `toCitationDtos`). Added a `chat citations filtered` observability log when cited < retrieved. `insufficientKnowledge` left as `facts.length === 0` (decoupled from citation filtering).
+- Exported `buildCitations` + its types from `packages/ai/src/index.ts`. Updated `chat.service.test.ts`: the streaming stub now emits `[1][2]` (parametrized `deltas`), main-test text/persisted-content updated to `"Answer [1][2]."`, plus a new test asserting an unresolvable `[9]` is dropped from citations and stripped from the persisted answer.
+- Approach was chosen via a design workflow (parallel seam-map of API/web/`@expertos/ai`/forward-compat → 2 independent design proposals → synthesis).
+
+**Key decisions:**
+- **Referenced-only over emit-all:** the prior `toCitationDtos(prompt.citations)` listed every retrieved chunk as a source even when the answer never cited it (overstating grounding). The builder now emits only what a surviving resolvable marker referenced. Cost: a one-fixture change to `chat.service.test.ts` (intended).
+- **Keep-ordinal over renumber:** the streamed delta prose already showed literal `[n]` tokens and the `done` event carries no text field, so renumbering would desync the list from the prose. Kept `ordinal === marker` (possibly non-contiguous); M4.2 owns gap-free 1..k *display*.
+- **No `done`-event text field; persist `built.text`:** honors "never emit an unresolvable citation" for the history read path without a wire-contract change (OD#7-consistent: stream raw prose, finalize at done).
+- **No change to `answer-prompt.ts` / `echo-llm-provider.ts`:** the builder parses the model ANSWER, not the SOURCES block, so the `[n]` grammar in SOURCES is untouched and the echo provider stays in lockstep (it emits all-in-range markers → referenced-only yields all N with natural ordinals).
+- **`kind` reserved internally, not on the wire:** `ResolvedCitation.kind` ("knowledge"|"upload", default knowledge) reserves the M5 upload-citation concept; the `ChatCitationDto` wire field is deferred to M4.2/M5 with its `.cite`-variant consumer (avoids an unconsumed optional field tripping knip).
+- **Whitespace squeeze kept minimal** (collapse runs of spaces, drop a space before sentence punctuation; never touches newlines) to limit surprising text diffs when a marker is removed.
+
+**Files changed:**
+- `packages/ai/src/prompt/citations.ts` — NEW pure builder + types.
+- `packages/ai/src/prompt/citations.test.ts` — NEW 14-case unit test.
+- `packages/ai/src/index.ts` — export `buildCitations` + the four citation types.
+- `apps/api/src/chat/chat.service.ts` — call `buildCitations`; persist sanitized text + referenced-only citations; `sourceVersionIds` from cited sources; referenced-only `done` citations; `toCitationDtos`→`toCitationDto`; filtered-count log.
+- `apps/api/src/chat/chat.service.test.ts` — parametrized `deltas`, marker-emitting stub, updated assertions, new unresolvable-marker test.
+
+**Notes for next iteration:**
+- **Next is M4.2/M4.3** (sources drawer + click-to-passage + provenance; resolve OD#7 Eng+Design sign-off). The `done` event already carries referenced-only citations with true marker ordinals; `apps/web/app/chat/page.tsx` already renders them post-stream via `<Cite>`.
+- **Persisted-ordinal caveat:** `ConversationService.persistTurn` stores each citation row's `ordinal` as its loop index `i+1`, which diverges from the true marker ordinal for a filtered non-contiguous list. Harmless today (no read path re-hydrates citation ordinals; the wire DTO carries the true ordinal). When M4.2 adds a citation read path, persist/carry the true marker ordinal (pass an explicit ordinal into `persistTurn` or store `ResolvedCitation.ordinal`).
+- **Mixed comma-group `[1,99]`** is kept verbatim when any member resolves (the out-of-range `99` stays visible in that rare form); the citation list never includes it. The echo provider emits separate `[n]` brackets so this is a real-LLM edge only.
+- All gates green via `pnpm` (typecheck/test/lint/build/knip); the mocked unit tests didn't need `PRISMA_CLIENT_ENGINE_TYPE=binary` (LEARNINGS §2 still applies to any Prisma-Client-backed run).

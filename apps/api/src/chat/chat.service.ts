@@ -1,9 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
 import {
   buildAnswerPrompt,
+  buildCitations,
   type ChatMessage,
   type LlmProvider,
   type PromptFact,
+  type ResolvedCitation,
 } from "@expertos/ai";
 import type {
   ChatCitationDto,
@@ -102,18 +104,33 @@ export class ChatService {
         yield { type: "delta", text: answer };
       }
 
-      const sourceVersionIds = [...new Set(facts.map((f) => f.documentVersionId))];
+      // Enforce the M4.1 chunk-resolvability guarantee: keep only the sources the answer actually
+      // cited with a resolvable marker, and strip any unresolvable marker from the persisted text.
+      // `prompt.citations` is the ordered resolution table (marker [i+1] → citations[i]).
+      const built = buildCitations({ answer, citations: prompt.citations });
+      if (built.citations.length < facts.length) {
+        this.logger.info("chat citations filtered", {
+          retrieved: facts.length,
+          cited: built.citations.length,
+        });
+      }
+
+      const sourceVersionIds = [...new Set(built.citations.map((c) => c.documentVersionId))];
       const persisted = await this.conversations.persistTurn(user, {
         conversationId: input.conversationId,
         expertId: input.expertId,
         language: input.language,
         userText: input.text,
         assistant: {
-          content: answer,
+          content: built.text,
           sourceVersionIds,
           model: this.llm.name,
           confidence: null,
-          citations: facts,
+          citations: built.citations.map((c) => ({
+            chunkId: c.chunkId,
+            documentVersionId: c.documentVersionId,
+            content: c.content,
+          })),
         },
       });
 
@@ -136,7 +153,7 @@ export class ChatService {
         type: "done",
         conversationId: persisted.conversationId,
         messageId: persisted.messageId,
-        citations: toCitationDtos(prompt.citations),
+        citations: built.citations.map(toCitationDto),
         // No grounding sources → the prompt builder's INSUFFICIENT-KNOWLEDGE rule governed the
         // answer (M3.4). Surface that to the client so it can offer a graceful next step rather
         // than present an ungrounded reply as a confident answer.
@@ -170,11 +187,11 @@ export class ChatService {
   }
 }
 
-function toCitationDtos(citations: PromptFact[]): ChatCitationDto[] {
-  return citations.map((c, i) => ({
-    ordinal: i + 1,
-    chunkId: c.chunkId,
-    documentVersionId: c.documentVersionId,
-    quote: c.content.slice(0, CITATION_PREVIEW_CHARS),
-  }));
+function toCitationDto(citation: ResolvedCitation): ChatCitationDto {
+  return {
+    ordinal: citation.ordinal,
+    chunkId: citation.chunkId,
+    documentVersionId: citation.documentVersionId,
+    quote: citation.content.slice(0, CITATION_PREVIEW_CHARS),
+  };
 }

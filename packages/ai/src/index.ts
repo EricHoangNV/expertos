@@ -31,6 +31,13 @@ export type {
 export { buildAnswerPrompt } from "./prompt/answer-prompt";
 export { buildAttribution } from "./prompt/attribution";
 export type { AttributionInfo } from "./prompt/attribution";
+export { buildCitations } from "./prompt/citations";
+export type {
+  CitationSource,
+  ResolvedCitation,
+  BuildCitationsInput,
+  BuiltCitations,
+} from "./prompt/citations";
 export type {
   PromptLanguage,
   PromptFact,

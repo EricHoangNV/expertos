@@ -33,8 +33,9 @@ function baseInput(over: Partial<ChatRequestInput> = {}): ChatRequestInput {
   return { text: "how do I file taxes", language: "en", topK: 8, ...over };
 }
 
-function makeService(opts: { streaming?: boolean } = {}) {
+function makeService(opts: { streaming?: boolean; deltas?: string[] } = {}) {
   const streaming = opts.streaming ?? true;
+  const deltas = opts.deltas ?? ["Answer [1]", "[2]."];
   const seenMessages: ChatMessage[][] = [];
 
   const retrieve = jest.fn().mockResolvedValue(CHUNKS);
@@ -56,8 +57,9 @@ function makeService(opts: { streaming?: boolean } = {}) {
         complete: jest.fn(),
         completeStream: async function* (messages: ChatMessage[]) {
           seenMessages.push(messages);
-          yield { delta: "Hello " };
-          yield { delta: "world" };
+          for (const delta of deltas) {
+            yield { delta };
+          }
           yield { usage: { promptTokens: 7, completionTokens: 3 } };
         },
       }
@@ -102,7 +104,7 @@ describe("ChatService.answerStream", () => {
       .filter((e): e is { type: "delta"; text: string } => e.type === "delta")
       .map((e) => e.text)
       .join("");
-    expect(text).toBe("Hello world");
+    expect(text).toBe("Answer [1][2].");
 
     // Voice + history were used; voice retrieval ran because an expert was chosen.
     expect(stubs.retrieveVoice).toHaveBeenCalledTimes(1);
@@ -124,7 +126,7 @@ describe("ChatService.answerStream", () => {
       expertId: "ex-1",
       userText: input.text,
       assistant: {
-        content: "Hello world",
+        content: "Answer [1][2].",
         model: "stub-llm",
         sourceVersionIds: ["dv1"],
         confidence: null,
@@ -172,6 +174,23 @@ describe("ChatService.answerStream", () => {
     // The turn is still persisted (the insufficient-knowledge answer is a real answer).
     expect(stubs.persistTurn).toHaveBeenCalledTimes(1);
     expect(stubs.persistTurn.mock.calls[0][1].assistant.sourceVersionIds).toEqual([]);
+  });
+
+  it("drops an unresolvable marker from the citations and the persisted answer (M4.1 guarantee)", async () => {
+    // Model cites a real source [1] and a hallucinated one [9] (only 2 sources retrieved).
+    const { service, stubs } = makeService({ deltas: ["Grounded [1]", " plus made up [9]."] });
+
+    const events = await drain(service.answerStream(USER, baseInput()));
+
+    const done = events.at(-1);
+    expect(done).toMatchObject({
+      type: "done",
+      insufficientKnowledge: false,
+      citations: [{ ordinal: 1, chunkId: "c1", documentVersionId: "dv1", quote: "fact one" }],
+    });
+    // The dangling [9] is stripped from the persisted answer; the resolvable [1] is kept.
+    expect(stubs.persistTurn.mock.calls[0][1].assistant.content).toBe("Grounded [1] plus made up.");
+    expect(stubs.persistTurn.mock.calls[0][1].assistant.sourceVersionIds).toEqual(["dv1"]);
   });
 
   it("uses a neutral voice and skips history for a new conversation without an expert", async () => {
