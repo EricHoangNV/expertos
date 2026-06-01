@@ -95,6 +95,13 @@ export type {
   CheckoutSessionDto,
   PortalSessionDto,
 } from "./billing";
+export { revenueReportQuerySchema } from "./revenue";
+export type {
+  RevenueReportQueryInput,
+  RevenueByPlanDto,
+  RevenuePeriodDto,
+  RevenueReportDto,
+} from "./revenue";
 export type {
   ChatRequestInput,
   ChatMessageDto,

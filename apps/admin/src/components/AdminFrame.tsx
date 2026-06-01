@@ -14,6 +14,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: "/knowledge", label: "Knowledge" },
   { href: "/knowledge-drafts", label: "Drafts" },
+  { href: "/revenue", label: "Revenue" },
 ];
 
 function Sidebar({ pathname }: { pathname: string }) {

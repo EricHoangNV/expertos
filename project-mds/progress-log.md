@@ -1295,3 +1295,32 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - The admin TidyCal **reconcile** (`POST /consultation-bookings/reconcile`) + unmatched `booking_webhook_events` (`matched=false`) want a surface here too; `admin-client.ts` is the place to add it.
 - Build artifact note: `apps/admin/.next/standalone` causes a harmless jest-haste "naming collision" warning (web has the same) — the artifact is gitignored.
 - Verify the portal end-to-end once Firebase creds + a live API/DB are available (this session has neither; build/typecheck/lint/knip all pass).
+
+## M8.3 (partial) — Admin revenue reports
+**Date:** 2026-06-01
+**Ref:** PRD §"Admin & Expert portals" → "Revenue: transaction ledger + basic revenue reports"; PRD M8.3
+
+**What was done:**
+- New `apps/api/src/revenue/` module (the module the PRD §"Paywall" key-files list names): `RevenueService` + `RevenueController` + `RevenueModule`, wired into `AppModule`.
+- `GET /admin/revenue/report?months=` (`@Roles("admin")`) → a platform-wide `RevenueReportDto`: current MRR, active subscribers, per-plan breakdown, trailing monthly ledger series, window gross/refunded/net, AI `cost_micros`, and a derived `marginCents`.
+- New shared `packages/shared/src/revenue.ts` (`revenueReportQuerySchema` + `RevenueReportDto`/`RevenueByPlanDto`/`RevenuePeriodDto`), exported from the shared index.
+- Admin UI: `apps/admin/app/revenue/page.tsx` (Stat KPI cards + by-plan + by-month tables, window selector), `getRevenueReport` in `admin-client.ts`, nav entry in `AdminFrame`, home card.
+- Tests: `revenue.service.test.ts` (5, 100% coverage) + `revenue.test.ts` shared schema (4).
+
+**Key decisions:**
+- Took the **revenue-reports** sub-task of M8.3 first (fail-fast: it's the new module + the riskiest aggregation/raw-SQL + BigInt work, and it's read-only so safe). The other three M8.3 sub-deliverables (plan-entitlement matrix editor, recommendation-rules editor, failed-query inspector) remain open — M8.3 stays `[~]`.
+- **Admin cross-tenant reads via the admin RLS context** (`RlsService.run` under an admin principal → `is_admin` GUC), reusing the conversation-search precedent — no `tenant_id` predicate. The `@Roles("admin")` route guard is what guarantees the caller is an admin.
+- **MRR via Prisma `groupBy` + `plan_prices`** (testable, no raw SQL); **raw `$queryRawUnsafe` only for the `date_trunc('month')` time-series** (Prisma can't express it — the M3.3 search precedent). Yearly prices normalized to monthly (÷12).
+- **`BigInt` → `Number()` coercion** on every raw `sum`/`count` (Postgres returns aggregates as BigInt; the existing `ts_rank` float path never hit this).
+- Refunds summed with `abs()` so a stored sign convention can't flip the net total. Money in integer cents; AI cost kept in `cost_micros` on the wire for precision.
+
+**Files changed:**
+- `packages/shared/src/revenue.ts` (new) + `packages/shared/src/index.ts` — DTOs + schema + exports.
+- `apps/api/src/revenue/{revenue.service,revenue.controller,revenue.module}.ts` (new) + `apps/api/src/app.module.ts` — module wiring.
+- `apps/admin/app/revenue/page.tsx` (new), `apps/admin/app/page.tsx`, `apps/admin/src/components/AdminFrame.tsx`, `apps/admin/src/lib/admin-client.ts` — admin UI + client + nav.
+- `apps/api/src/revenue/revenue.service.test.ts` (new), `packages/shared/src/revenue.test.ts` (new).
+
+**Notes for next iteration:**
+- **Seam-tested with a mocked tx** — the real `date_trunc`/`FILTER` aggregate, the BigInt round-trip, and the admin cross-tenant RLS visibility need the M11 Testcontainers pass (the standing raw-SQL caveat shared with `PgVectorStore`/conversation-search). No live DB this session.
+- Remaining M8.3: the **failed-query inspector** is the easiest next slice (read-only `answer_feedback`, copy the `RevenueService` admin-RLS pattern). The **matrix/rules editors** are the mutation surfaces — new write routes over `plan_entitlements`/`recommendation_rules` (RLS-exempt config) first, then the page + `admin-client.ts` `update*` fns (don't add a client fn before its page or knip fails).
+- Full `apps/api` parallel suite ran clean this session (53 suites / 446) — no SIGILL this run.

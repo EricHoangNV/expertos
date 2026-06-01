@@ -7,6 +7,7 @@ import type {
   KnowledgeDraftUpdateInput,
   KnowledgeVersionDto,
   PublishStatusValue,
+  RevenueReportDto,
 } from "@expertos/shared";
 
 /**
@@ -130,4 +131,13 @@ export function draftAction(
   return request<KnowledgeDraftDto>(`/knowledge-drafts/${id}/${action}`, token, {
     method: "POST",
   });
+}
+
+// M8.3 — Admin revenue reports
+export function getRevenueReport(
+  token: string,
+  months?: number,
+): Promise<RevenueReportDto> {
+  const query = months != null ? `?months=${months}` : "";
+  return request<RevenueReportDto>(`/admin/revenue/report${query}`, token);
 }

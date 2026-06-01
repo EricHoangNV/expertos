@@ -32,6 +32,15 @@ export default function AdminHomePage() {
             </p>
           </Card>
         </Link>
+        <Link href="/revenue">
+          <Card className="card-pad">
+            <h3 className="h3">Revenue</h3>
+            <p className="muted">
+              Track MRR, active subscribers, and monthly revenue against AI cost for a margin
+              signal.
+            </p>
+          </Card>
+        </Link>
       </div>
     </AdminFrame>
   );
