@@ -1,3 +1,4 @@
+import { NotFoundException } from "@nestjs/common";
 import { RecommendationService, type RecommendationInput } from "./recommendation.service";
 import type { RlsService } from "../auth/rls.service";
 import type { StructuredLogger } from "../observability/logger.service";
@@ -42,10 +43,11 @@ const INTRO_TYPE = {
 
 function makeTx() {
   return {
-    recommendationRule: { findMany: jest.fn() },
+    recommendationRule: { findMany: jest.fn(), findUnique: jest.fn() },
     message: { count: jest.fn() },
     consultationType: { findFirst: jest.fn() },
-    consultationRecommendation: { create: jest.fn() },
+    consultationRecommendation: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    consultation: { create: jest.fn(), findUnique: jest.fn() },
   };
 }
 
@@ -195,5 +197,191 @@ describe("RecommendationService.recommend", () => {
       "consultation recommendation failed",
       expect.objectContaining({ message: "boom" }),
     );
+  });
+});
+
+/** The booking-time consultation-type shape `resolveBookableType` selects (id + priceCents + link). */
+const BOOKABLE_TYPE = {
+  id: "type-1",
+  priceCents: 5000,
+  tidycalLink: "https://tidycal.com/x/intro",
+};
+
+describe("RecommendationService.respond", () => {
+  it("404s when the recommendation isn't the acting user's (RLS-invisible → null)", async () => {
+    const tx = makeTx();
+    tx.consultationRecommendation.findUnique.mockResolvedValue(null);
+    const { service } = makeService(tx);
+
+    await expect(service.respond(USER, "rec-x", { response: "book" })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(tx.consultationRecommendation.update).not.toHaveBeenCalled();
+  });
+
+  it("records 'maybe_later' without creating a consultation", async () => {
+    const tx = makeTx();
+    tx.consultationRecommendation.findUnique.mockResolvedValue({
+      id: "rec-1",
+      trigger: "depth",
+      consultationId: null,
+    });
+    const { service } = makeService(tx);
+
+    const result = await service.respond(USER, "rec-1", { response: "maybe_later" });
+
+    expect(result).toEqual({ id: "rec-1", response: "maybe_later", booking: null });
+    expect(tx.consultationRecommendation.update).toHaveBeenCalledWith({
+      where: { id: "rec-1" },
+      data: { response: "maybe_later" },
+    });
+    expect(tx.consultation.create).not.toHaveBeenCalled();
+  });
+
+  it("records 'ask_another' without creating a consultation", async () => {
+    const tx = makeTx();
+    tx.consultationRecommendation.findUnique.mockResolvedValue({
+      id: "rec-2",
+      trigger: "topic",
+      consultationId: null,
+    });
+    const { service } = makeService(tx);
+
+    const result = await service.respond(USER, "rec-2", { response: "ask_another" });
+
+    expect(result).toEqual({ id: "rec-2", response: "ask_another", booking: null });
+    expect(tx.consultation.create).not.toHaveBeenCalled();
+  });
+
+  it("on 'book' resolves the rule's type, creates + links a consultation, returns the link", async () => {
+    const tx = makeTx();
+    tx.consultationRecommendation.findUnique.mockResolvedValue({
+      id: "rec-3",
+      trigger: "high_intent",
+      consultationId: null,
+    });
+    tx.recommendationRule.findUnique.mockResolvedValue({ consultationTypeKey: "intro_call" });
+    tx.consultationType.findFirst.mockResolvedValue(BOOKABLE_TYPE);
+    tx.consultation.create.mockResolvedValue({ id: "cons-1" });
+    const { service, info } = makeService(tx);
+
+    const result = await service.respond(USER, "rec-3", { response: "book" });
+
+    expect(result).toEqual({
+      id: "rec-3",
+      response: "book",
+      booking: { consultationId: "cons-1", tidycalLink: "https://tidycal.com/x/intro" },
+    });
+    // Consultation is scoped to the acting user and stamped with the type + its price.
+    expect(tx.consultation.create.mock.calls[0][0].data).toMatchObject({
+      tenantId: USER.tenantId,
+      userId: USER.id,
+      typeId: "type-1",
+      status: "recommended",
+      amountCents: 5000,
+    });
+    // The recommendation is linked back to the consultation (the funnel-attribution join).
+    expect(tx.consultationRecommendation.update).toHaveBeenCalledWith({
+      where: { id: "rec-3" },
+      data: { consultationId: "cons-1" },
+    });
+    expect(info).toHaveBeenCalledWith("consultation booking opened", expect.any(Object));
+  });
+
+  it("is idempotent on 'book' — reuses an existing consultation instead of creating a duplicate", async () => {
+    const tx = makeTx();
+    tx.consultationRecommendation.findUnique.mockResolvedValue({
+      id: "rec-4",
+      trigger: "high_intent",
+      consultationId: "cons-existing",
+    });
+    tx.consultation.findUnique.mockResolvedValue({
+      id: "cons-existing",
+      type: { tidycalLink: "https://tidycal.com/x/intro" },
+    });
+    const { service } = makeService(tx);
+
+    const result = await service.respond(USER, "rec-4", { response: "book" });
+
+    expect(result.booking).toEqual({
+      consultationId: "cons-existing",
+      tidycalLink: "https://tidycal.com/x/intro",
+    });
+    expect(tx.consultation.create).not.toHaveBeenCalled();
+  });
+
+  it("reuses an existing consultation with no type → null booking link", async () => {
+    const tx = makeTx();
+    tx.consultationRecommendation.findUnique.mockResolvedValue({
+      id: "rec-4b",
+      trigger: "high_intent",
+      consultationId: "cons-typeless",
+    });
+    tx.consultation.findUnique.mockResolvedValue({ id: "cons-typeless", type: null });
+    const { service } = makeService(tx);
+
+    const result = await service.respond(USER, "rec-4b", { response: "book" });
+
+    expect(result.booking).toEqual({ consultationId: "cons-typeless", tidycalLink: null });
+    expect(tx.consultation.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a fresh consultation when the linked one is gone (SetNull'd) and recreates the link", async () => {
+    const tx = makeTx();
+    tx.consultationRecommendation.findUnique.mockResolvedValue({
+      id: "rec-5",
+      trigger: "high_intent",
+      consultationId: "cons-gone",
+    });
+    tx.consultation.findUnique.mockResolvedValue(null); // the linked consultation no longer exists
+    tx.recommendationRule.findUnique.mockResolvedValue({ consultationTypeKey: "intro_call" });
+    tx.consultationType.findFirst.mockResolvedValue(BOOKABLE_TYPE);
+    tx.consultation.create.mockResolvedValue({ id: "cons-2" });
+    const { service } = makeService(tx);
+
+    const result = await service.respond(USER, "rec-5", { response: "book" });
+
+    expect(tx.consultation.create).toHaveBeenCalled();
+    expect(result.booking?.consultationId).toBe("cons-2");
+  });
+
+  it("falls back to the active default type when the rule's key is missing", async () => {
+    const tx = makeTx();
+    tx.consultationRecommendation.findUnique.mockResolvedValue({
+      id: "rec-6",
+      trigger: "high_intent",
+      consultationId: null,
+    });
+    tx.recommendationRule.findUnique.mockResolvedValue({ consultationTypeKey: "gone" });
+    // First lookup (by key) misses, second (active default) hits.
+    tx.consultationType.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(BOOKABLE_TYPE);
+    tx.consultation.create.mockResolvedValue({ id: "cons-3" });
+    const { service } = makeService(tx);
+
+    const result = await service.respond(USER, "rec-6", { response: "book" });
+
+    expect(tx.consultationType.findFirst).toHaveBeenCalledTimes(2);
+    expect(result.booking?.consultationId).toBe("cons-3");
+  });
+
+  it("books with a null type + null link when no active consultation type exists", async () => {
+    const tx = makeTx();
+    tx.consultationRecommendation.findUnique.mockResolvedValue({
+      id: "rec-7",
+      trigger: "high_intent",
+      consultationId: null,
+    });
+    tx.recommendationRule.findUnique.mockResolvedValue(null); // no rule → fall through to default
+    tx.consultationType.findFirst.mockResolvedValue(null); // no active type at all
+    tx.consultation.create.mockResolvedValue({ id: "cons-4" });
+    const { service } = makeService(tx);
+
+    const result = await service.respond(USER, "rec-7", { response: "book" });
+
+    expect(tx.consultation.create.mock.calls[0][0].data).toMatchObject({
+      typeId: null,
+      amountCents: null,
+    });
+    expect(result.booking).toEqual({ consultationId: "cons-4", tidycalLink: null });
   });
 });

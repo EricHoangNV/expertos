@@ -1114,3 +1114,37 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - M7.2 extends `RecommendationService`: add a `respond(user, recId, response)` + `POST /consultation-recommendations/:id/respond` (the `recommendation_response` enum already exists — add the column), build TidyCal booking off `ConsultationType.tidycalLink` (null in seed, configured later), and surface the prompt in the web chat UI from `done.recommendation`.
 - Seam-tested with a mocked tx (the real `consultation_recommendations` write + `message.count` join the M11 Testcontainers list). Migration + seed were validated against a live Postgres this session — all 4 rules present with correct priority/threshold/keywords.
 - Sandbox: regenerating the Prisma client with `engineType=binary` (env `PRISMA_CLIENT_ENGINE_TYPE=binary`) produced an `index.js` jest can't parse (`SyntaxError` on the inline schema) — the default **library** engine generation parses fine for jest (all api tests mock the tx, no runtime SIGILL). The seed/CLI still need the binary engine at runtime. So: default library generation for tests, binary only when actually executing Prisma queries.
+
+## M7.2 — In-chat recommendation (Book / Maybe later / Ask another) + TidyCal booking + confirmation
+**Date:** 2026-06-01
+**Ref:** PRD §"Consultation funnel" / Task Manifest M7.2
+
+**What was done:**
+- **Shared (`packages/shared/src/consultation.ts`):** added `recommendationRespondSchema` (`z.enum(["book","maybe_later","ask_another"])` — excludes the un-chosen `pending` default) + `RecommendationResponseValue`, `RecommendationRespondInput`, `ConsultationBookingDto`, `RecommendationResponseResultDto`; exported from the package index. (The file now imports zod.)
+- **Service (`apps/api/src/consultation/recommendation.service.ts`):** new `respond(user, recommendationId, {response})` on the existing `RecommendationService` choke point — records the response enum, and on `book` resolves the bookable consultation type server-side from the recommendation's stored trigger, creates a `consultations` row (`status: recommended`, stamped `typeId`/`amountCents`), links it back via `consultationId`, and returns `{consultationId, tidycalLink}`. Idempotent on `book` (reuses the linked consultation). Added private `resolveBookableType(tx, trigger)`.
+- **Controller + module:** new thin `ConsultationRecommendationsController` (`POST /consultation-recommendations/:id/respond`, `@Roles("user")`, `ParseUUIDPipe` + `ZodValidationPipe`); registered in `ConsultationModule.controllers`.
+- **Web (`apps/web/app/chat/page.tsx` + `src/lib/chat-client.ts`):** new `ConsultationPrompt` component renders Book / Maybe later / Ask another from `done.recommendation` (carried onto `UiMessage`); Book opens `booking.tidycalLink` in a new tab + confirmation, the other two dismiss. New `respondToRecommendation` client fn.
+- **Tests:** +9 `recommendation.service.test.ts` (404 not-owned, maybe_later/ask_another no-consultation, book resolves+creates+links+returns link, book idempotent reuse, reuse-with-null-type, recreate-on-SetNull, fall-back-to-default-type, book-no-active-type), +5 `consultation.test.ts` (schema accept/reject). `recommendation.service.ts` 100% all metrics.
+- All gates green: typecheck ✅, test ✅ (598 pass), lint ✅, deadcode ✅, build ✅.
+
+**Key decisions:**
+- The consultation type to book is **re-resolved server-side from the recommendation's stored trigger** (directive §26 — never trust a client-supplied type). The recommendation row stores only `trigger`, so `resolveBookableType` re-reads the trigger's rule for its `consultationTypeKey`, then resolves the active type (falling back to the active default).
+- **Create the `consultations` row at Book-click** (status `recommended`) — it's the funnel-conversion datapoint (M10.2 attribution: question→conversation→recommendation→booking) and gives the M7.3 webhook something to flip to `booked`. Linked onto the recommendation via `consultationId`.
+- **Booking idempotent** via the existing `consultationId` link — a second Book reuses it (recreates only if SetNull'd).
+- **Route not entitlement-gated** — `consultation_booking` is enabled on every plan (PRD funnel table), and a route-level guard would also block `maybe_later`/`ask_another` dismissals.
+- `respond` surfaces failures as real HTTP errors (unlike `recommend`, which degrades to null after a streamed answer) — it runs on an explicit user action, not after delivery.
+
+**Files changed:**
+- `packages/shared/src/consultation.ts` — respond schema + result DTOs (+ zod import); `packages/shared/src/index.ts` — exports.
+- `apps/api/src/consultation/recommendation.service.ts` — `respond` + `resolveBookableType`; class JSDoc.
+- `apps/api/src/consultation/consultation-recommendations.controller.ts` — NEW (respond route).
+- `apps/api/src/consultation/consultation.module.ts` — register the controller.
+- `apps/web/app/chat/page.tsx` — `ConsultationPrompt`, recommendation on `UiMessage`, render under the answer.
+- `apps/web/src/lib/chat-client.ts` — `respondToRecommendation`.
+- `apps/api/src/consultation/recommendation.service.test.ts` + `packages/shared/src/consultation.test.ts` — tests.
+- `project-mds/PRD.md` — M7.2 → [x].
+
+**Notes for next iteration:**
+- **M7.3 (next): resolve OD#10 — TidyCal webhook reliability / missed-event recovery.** Wire the TidyCal webhook to flip the M7.2-created `consultations` row to `booked` (record `bookingRef`/`scheduledAt`) when the user completes booking, + missed-event recovery. **Mirror the M6.2 Stripe webhook discipline:** `@Public()` raw-body route, signature/secret verify, idempotent upsert keyed on the TidyCal booking id, sync in a system-RLS context (`applyRlsContext({isAdmin:true})` — the booking has no request principal). Correlation back to user/recommendation is the reliability crux (TidyCal links are static — match by booking email or a reference). `ConsultationType.tidycalLink` is still null in the seed (real link configured later, like the Stripe `provider_price_id`).
+- Seam-tested with a mocked tx — the real `consultations` write + the `consultationId` link join the M11 Testcontainers list (same caveat as the other stores).
+- Web chat UI now consumes `done.recommendation`; the deferred consumer-web pages (entitlements/usage, history/saved-answers/search/feedback, upload UI) remain open.

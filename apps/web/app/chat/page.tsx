@@ -3,11 +3,12 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button, Card, Cite, Field, Select, Textarea } from "@expertos/ui";
-import type { ChatCitationDto } from "@expertos/shared";
+import type { ChatCitationDto, ConsultationRecommendationDto } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
 import {
   fetchExperts,
   renditionLabel,
+  respondToRecommendation,
   streamChat,
   type ExpertVoice,
 } from "../../src/lib/chat-client";
@@ -20,6 +21,8 @@ interface UiMessage {
   done: boolean;
   /** Display name when the answer is rendered in an expert's voice. */
   expertName?: string;
+  /** In-chat consultation recommendation (M7.2), present only when a funnel rule fired. */
+  recommendation?: ConsultationRecommendationDto | null;
 }
 
 /** Replaces the last message in the list via `fn` (immutably). */
@@ -79,6 +82,79 @@ function renderAnswer(
   }
   if (cursor < content.length) nodes.push(content.slice(cursor));
   return nodes;
+}
+
+/**
+ * The in-chat consultation recommendation (M7.2): a Book / Maybe later / Ask another prompt shown
+ * under an answer when a funnel rule fired (M7.1). Book records the choice and opens the TidyCal
+ * link in a new tab (a generic confirmation when no link is configured yet); the other two dismiss
+ * the prompt — all three are recorded against the recommendation id for funnel attribution (M10.2).
+ */
+function ConsultationPrompt({ recommendation }: { recommendation: ConsultationRecommendationDto }) {
+  const { getIdToken } = useAuth();
+  const [status, setStatus] = useState<"open" | "busy" | "booked" | "dismissed">("open");
+  const [error, setError] = useState<string | null>(null);
+
+  const respond = useCallback(
+    async (choice: "book" | "maybe_later" | "ask_another") => {
+      setStatus("busy");
+      setError(null);
+      try {
+        const token = await getIdToken();
+        if (!token) {
+          setError("Please sign in to continue.");
+          setStatus("open");
+          return;
+        }
+        const result = await respondToRecommendation(recommendation.id, choice, token);
+        if (choice === "book") {
+          if (result.booking?.tidycalLink) {
+            window.open(result.booking.tidycalLink, "_blank", "noopener,noreferrer");
+          }
+          setStatus("booked");
+        } else {
+          setStatus("dismissed");
+        }
+      } catch {
+        setError("Couldn't record that — please try again.");
+        setStatus("open");
+      }
+    },
+    [getIdToken, recommendation.id],
+  );
+
+  if (status === "dismissed") return null;
+
+  if (status === "booked") {
+    const link = recommendation.consultationType?.tidycalLink;
+    return (
+      <Badge tone="green">
+        {link
+          ? "We've opened your booking page in a new tab."
+          : "Thanks — we'll be in touch to schedule your consultation."}
+      </Badge>
+    );
+  }
+
+  const busy = status === "busy";
+  return (
+    <Card className="card-pad">
+      <Badge tone="amber">Consultation</Badge>
+      <p>{recommendation.reason}</p>
+      <Button variant="primary" onClick={() => void respond("book")} disabled={busy}>
+        {recommendation.consultationType
+          ? `Book ${recommendation.consultationType.name}`
+          : "Book a consultation"}
+      </Button>
+      <Button variant="ghost" onClick={() => void respond("maybe_later")} disabled={busy}>
+        Maybe later
+      </Button>
+      <Button variant="ghost" onClick={() => void respond("ask_another")} disabled={busy}>
+        Ask another
+      </Button>
+      {error && <Badge tone="red">{error}</Badge>}
+    </Card>
+  );
 }
 
 /**
@@ -210,7 +286,12 @@ export default function ChatPage() {
           } else if (event.type === "done") {
             setConversationId(event.conversationId);
             setMessages((prev) =>
-              updateLast(prev, (m) => ({ ...m, citations: event.citations, done: true })),
+              updateLast(prev, (m) => ({
+                ...m,
+                citations: event.citations,
+                done: true,
+                recommendation: event.recommendation ?? null,
+              })),
             );
           } else {
             setError(event.message);
@@ -268,6 +349,9 @@ export default function ChatPage() {
               <AssistantAnswer message={m} />
             ) : (
               <p>{m.content}</p>
+            )}
+            {m.role === "assistant" && m.done && m.recommendation && (
+              <ConsultationPrompt recommendation={m.recommendation} />
             )}
           </Card>
         ))}

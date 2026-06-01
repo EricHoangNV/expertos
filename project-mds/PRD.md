@@ -56,7 +56,7 @@
 
 #### M7 — Consultation funnel
 - [x] M7.1 Rule-based recommendation hooks (admin-configurable: topic, depth, low confidence, high intent)
-- [ ] M7.2 In-chat recommendation (Book / Maybe later / Ask another) + TidyCal booking + confirmation
+- [x] M7.2 In-chat recommendation (Book / Maybe later / Ask another) + TidyCal booking + confirmation
 - [ ] M7.3 Resolve Open Decision #10 (TidyCal webhook reliability / missed-event recovery)
 
 #### M8 — Admin & Expert portals

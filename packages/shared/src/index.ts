@@ -57,10 +57,15 @@ export type {
   EntitlementsDto,
   EntitlementDeniedPayload,
 } from "./entitlements";
+export { recommendationRespondSchema } from "./consultation";
 export type {
   RecommendationTriggerValue,
   ConsultationTypeDto,
   ConsultationRecommendationDto,
+  RecommendationResponseValue,
+  RecommendationRespondInput,
+  ConsultationBookingDto,
+  RecommendationResponseResultDto,
 } from "./consultation";
 export { billingCheckoutSchema } from "./billing";
 export type {

@@ -1,4 +1,8 @@
-import type { ChatStreamEvent } from "@expertos/shared";
+import type {
+  ChatStreamEvent,
+  RecommendationResponseResultDto,
+  RecommendationResponseValue,
+} from "@expertos/shared";
 
 /** A selectable expert voice for the picker (mirrors the API's `ExpertVoiceMeta`). */
 export interface ExpertVoice {
@@ -74,6 +78,28 @@ export async function streamChat(
       boundary = buffer.indexOf("\n\n");
     }
   }
+}
+
+/**
+ * Records the user's response to an in-chat consultation recommendation (M7.2). On `book` the
+ * result carries a TidyCal `booking.tidycalLink` for the caller to open; `maybe_later`/`ask_another`
+ * simply dismiss the prompt. The recommendation is addressed by its persisted id and ownership is
+ * enforced server-side by RLS.
+ */
+export async function respondToRecommendation(
+  recommendationId: string,
+  response: RecommendationResponseValue,
+  token: string,
+): Promise<RecommendationResponseResultDto> {
+  const res = await fetch(`${API_URL}/consultation-recommendations/${recommendationId}/respond`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ response }),
+  });
+  if (!res.ok) {
+    throw new Error(`recommendation response failed (${res.status})`);
+  }
+  return (await res.json()) as RecommendationResponseResultDto;
 }
 
 /** Fetches the selectable expert voices for the picker (only published, active voices). */

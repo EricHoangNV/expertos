@@ -1,8 +1,10 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { evaluateRecommendation, type RecommendationRule } from "@expertos/ai";
 import type {
   ConsultationRecommendationDto,
   ConsultationTypeDto,
+  RecommendationRespondInput,
+  RecommendationResponseResultDto,
   RecommendationTriggerValue,
 } from "@expertos/shared";
 import type { Prisma } from "@expertos/db";
@@ -71,6 +73,10 @@ const CONSULTATION_TYPE_SELECT = {
  * logged, and degraded to "no recommendation" so the `done` event is always emitted. `rules` and
  * `consultation_types` are RLS-exempt config; `consultation_recommendations` is `user_scoped`, so
  * the whole evaluation runs inside one {@link RlsService.run} transaction (directive §4.21).
+ *
+ * The consumer-facing half (M7.2) is {@link respond}: it records the user's Book / Maybe later / Ask
+ * another choice against the persisted recommendation, and on `book` opens the TidyCal booking by
+ * creating a `consultations` row (the funnel-attribution join — M10.2) and returning its link.
  */
 @Injectable()
 export class RecommendationService {
@@ -146,6 +152,88 @@ export class RecommendationService {
     }
   }
 
+  /**
+   * Records the user's response to a recommendation (M7.2). `book` opens the TidyCal booking:
+   * it resolves the consultation type from the recommendation's stored trigger (server-derived,
+   * never client-trusted — directive §26), creates a `consultations` row linked back to the
+   * recommendation (the funnel-attribution join M10.2 reads), and returns the booking link for the
+   * client to open. `maybe_later`/`ask_another` only record the choice (still useful funnel signal).
+   *
+   * Ownership is enforced by RLS: `consultation_recommendations` is `user_scoped`, so a peer's row
+   * is invisible and the `findUnique` returns null → 404 (directive §4.21). Booking is idempotent —
+   * a second `book` reuses the already-created consultation rather than spawning a duplicate.
+   * Unlike {@link recommend}, this runs on an explicit user action (not after a streamed answer),
+   * so failures propagate as real HTTP errors instead of degrading silently.
+   */
+  async respond(
+    user: AuthUser,
+    recommendationId: string,
+    input: RecommendationRespondInput,
+  ): Promise<RecommendationResponseResultDto> {
+    return this.rls.run(user, async (tx) => {
+      // RLS scopes `consultation_recommendations` to the acting user — a peer's row reads as null.
+      const rec = await tx.consultationRecommendation.findUnique({
+        where: { id: recommendationId },
+        select: { id: true, trigger: true, consultationId: true },
+      });
+      if (!rec) {
+        throw new NotFoundException("recommendation not found");
+      }
+
+      await tx.consultationRecommendation.update({
+        where: { id: recommendationId },
+        data: { response: input.response },
+      });
+
+      if (input.response !== "book") {
+        return { id: rec.id, response: input.response, booking: null };
+      }
+
+      // Idempotent: if the user already clicked Book, reuse the existing consultation + its link.
+      if (rec.consultationId) {
+        const existing = await tx.consultation.findUnique({
+          where: { id: rec.consultationId },
+          select: { id: true, type: { select: { tidycalLink: true } } },
+        });
+        if (existing) {
+          return {
+            id: rec.id,
+            response: input.response,
+            booking: { consultationId: existing.id, tidycalLink: existing.type?.tidycalLink ?? null },
+          };
+        }
+      }
+
+      const type = await this.resolveBookableType(tx, rec.trigger);
+      const consultation = await tx.consultation.create({
+        data: {
+          tenantId: user.tenantId,
+          userId: user.id,
+          typeId: type?.id ?? null,
+          status: "recommended",
+          amountCents: type?.priceCents ?? null,
+        },
+        select: { id: true },
+      });
+      await tx.consultationRecommendation.update({
+        where: { id: recommendationId },
+        data: { consultationId: consultation.id },
+      });
+
+      this.logger.info("consultation booking opened", {
+        recommendationId: rec.id,
+        consultationId: consultation.id,
+        trigger: rec.trigger,
+      });
+
+      return {
+        id: rec.id,
+        response: input.response,
+        booking: { consultationId: consultation.id, tidycalLink: type?.tidycalLink ?? null },
+      };
+    });
+  }
+
   /** Loads the enabled admin-configured rules (RLS-exempt config). */
   private async loadRules(tx: Prisma.TransactionClient): Promise<RecommendationRule[]> {
     const rows = await tx.recommendationRule.findMany({
@@ -184,6 +272,36 @@ export class RecommendationService {
       where: { active: true },
       orderBy: { createdAt: "asc" },
       select: CONSULTATION_TYPE_SELECT,
+    });
+  }
+
+  /**
+   * Resolves the bookable consultation type for a `book` response (M7.2). The recommendation row
+   * stores only its trigger, so we re-read the trigger's rule to find the configured
+   * `consultationTypeKey`, then resolve that active type (falling back to the active default, like
+   * {@link resolveConsultationType}). Selects the booking-time fields (`id`/`priceCents` to stamp
+   * the `consultations` row, `tidycalLink` to return). Null when no active type exists at all.
+   */
+  private async resolveBookableType(
+    tx: Prisma.TransactionClient,
+    trigger: RecommendationTriggerValue,
+  ): Promise<{ id: string; priceCents: number | null; tidycalLink: string | null } | null> {
+    const select = { id: true, priceCents: true, tidycalLink: true } satisfies Prisma.ConsultationTypeSelect;
+    const rule = await tx.recommendationRule.findUnique({
+      where: { trigger },
+      select: { consultationTypeKey: true },
+    });
+    const key = rule?.consultationTypeKey ?? null;
+    if (key) {
+      const byKey = await tx.consultationType.findFirst({ where: { key, active: true }, select });
+      if (byKey) {
+        return byKey;
+      }
+    }
+    return tx.consultationType.findFirst({
+      where: { active: true },
+      orderBy: { createdAt: "asc" },
+      select,
     });
   }
 }
