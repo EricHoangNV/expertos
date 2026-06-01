@@ -61,7 +61,7 @@
 
 #### M8 — Admin & Expert portals
 - [~] M8.1 Admin: upload + versioned publish with expert-review gate (`Draft → AI Processing → Expert Review → Published`) — status as semantic `.badge` tones (§"Design System"); `.shell` shared with expert portal — **API DONE** (`KnowledgeService` publish state machine + chunk-visibility/supersede integration + `/knowledge` routes); **admin UI pending** (the `.shell` + badge-toned review queue on the new API)
-- [ ] M8.2 Admin: conversation-to-knowledge pipeline (Mark Valuable → Draft → Expert Review → Publish)
+- [~] M8.2 Admin: conversation-to-knowledge pipeline (Mark Valuable → Draft → Expert Review → Publish) — **API DONE** (`KnowledgeDraftService` draft lifecycle + publish-via-ingestion gate + `/knowledge-drafts` routes); **admin UI pending**
 - [ ] M8.3 Admin: plan-entitlement matrix editor + basic revenue reports (MRR, by plan/period) + failed/low-confidence query inspector
 - [ ] M8.4 Admin: manage users / subscriptions / experts / voice profiles; admin audit logs; user-data deletion
 - [ ] M8.5 Expert portal (first-class `expert` role): approve voice + knowledge, review AI answers, view consultation conversions

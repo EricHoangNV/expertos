@@ -26,12 +26,25 @@ export type {
 } from "./retrieval";
 export { PUBLISH_STATUSES, publishStatusSchema } from "./publish";
 export type { PublishStatusValue } from "./publish";
-export { knowledgeListQuerySchema } from "./knowledge";
+export {
+  knowledgeListQuerySchema,
+  KNOWLEDGE_DRAFT_STATUSES,
+  knowledgeDraftStatusSchema,
+  knowledgeDraftCreateSchema,
+  knowledgeDraftUpdateSchema,
+  knowledgeDraftListQuerySchema,
+} from "./knowledge";
 export type {
   KnowledgeListQueryInput,
   KnowledgeVersionDto,
   KnowledgeDocumentDto,
   KnowledgeDocumentDetailDto,
+  KnowledgeDraftStatusValue,
+  KnowledgeDraftCreateInput,
+  KnowledgeDraftUpdateInput,
+  KnowledgeDraftListQueryInput,
+  KnowledgeDraftSummaryDto,
+  KnowledgeDraftDto,
 } from "./knowledge";
 export {
   voiceQuerySchema,

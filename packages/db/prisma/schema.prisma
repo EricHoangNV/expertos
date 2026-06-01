@@ -743,6 +743,7 @@ model KnowledgeDraft {
   expertId       String?              @map("expert_id") @db.Uuid
   title          String
   content        String
+  language       Language             @default(en)
   status         KnowledgeDraftStatus @default(draft)
   createdAt      DateTime             @default(now()) @map("created_at")
   updatedAt      DateTime             @updatedAt @map("updated_at")

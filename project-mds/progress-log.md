@@ -1224,3 +1224,39 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M8.2 conversation-to-knowledge** (`knowledge_drafts`) reuses this publish gate — a promoted draft becomes a `document_version` that flows through the same `submit`/`approve`.
 - **Seam-tested with a mocked tx** — the real `document`/`document_version`/`chunk` writes + the chunk-visibility `updateMany` (and the retrieval-visibility behavior end-to-end) join the M11 Testcontainers list.
 - **Sandbox test caveat:** the full parallel `pnpm test` could not complete this session — the native Prisma engine SIGILLs ~1 random jest worker per process and ts-jest intermittently falls back to a babel transform that can't parse `type` imports (the documented aarch64/linuxkit quirk; restart the session for a clean parallel run). All counts were confirmed per-suite/per-file in isolated runs with zero assertion failures (api 423, shared 76); typecheck/lint/knip/build all pass.
+
+## M8.2 — Conversation-to-knowledge pipeline (API)
+**Date:** 2026-06-01
+**Ref:** PRD §"Admin & Expert portals" (Task Manifest M8.2)
+
+**What was done:**
+- New `KnowledgeDraftService` (`apps/api/src/knowledge/knowledge-draft.service.ts`) — the single choke point for the `knowledge_drafts` lifecycle: `create` ("Mark valuable"), `list`/`get`, `update` (edit only while `draft`), `submit`/`requestChanges`/`reject` (status moves over `KnowledgeDraftStatus`: `draft → expert_review → published`; `request-changes`→`draft`; `draft|expert_review → rejected`), and `publish` (the gate).
+- `publish` ingests the draft text into the knowledge base via `IngestionService.ingest({publish:true})` under a unique `draft://<id>` source URI → a fresh published `document` + retrieval-visible chunks. Idempotent: a `draft://<id>` document existence pre-check skips re-ingestion on a partial-failure retry (the only retrieval-drift risk). An `EmptyDocumentError` maps to `400` and leaves the draft unpublished.
+- `create` re-checks an optional source `conversationId` under RLS (404 if invisible/foreign) before storing; content is client-supplied (the admin UI assembles the Q&A) and stored verbatim.
+- New `KnowledgeDraftController` (`@Roles("expert")`): `POST /knowledge-drafts`, `GET /knowledge-drafts`, `GET/PATCH /knowledge-drafts/:id`, `POST /knowledge-drafts/:id/{submit,request-changes,reject,publish}`. Wired into `KnowledgeModule` (which now `imports: [IngestionModule]`).
+- New shared contracts in `packages/shared/src/knowledge.ts`: `knowledgeDraftStatusSchema`, `knowledgeDraftCreate/Update/ListQuerySchema`, `KnowledgeDraftSummaryDto` (content-free, list) / `KnowledgeDraftDto` (with content, detail). Exported from the shared index.
+- Schema: added a `language Language @default(en)` column to `KnowledgeDraft` + migration `20260601050000_knowledge_draft_language` so a VI draft publishes as VI knowledge; regenerated the Prisma client.
+- Tests: 18 service tests (`knowledge-draft.service.test.ts`) + 11 shared schema tests (`knowledge.test.ts`).
+
+**Key decisions:**
+- The knowledge_draft's **own** review is the expert-review gate (its dedicated status enum mirrors the publish lifecycle). On publish, ingest with `publish:true` (a fresh unique-URI document → no supersede needed; consistent with the seed/CLI publisher precedent), rather than routing through `KnowledgeService.approve` (which requires an `expert_review` *document version* — awkward to drive programmatically and would create a draft document version requiring a second review).
+- Idempotency via the `draft://<id>` existence pre-check is the minimal guard for the only drift window (a crash between ingest and the status flip) without refactoring `IngestionService` to share a transaction.
+- API + persistence only; the admin UI (draft review queue + "Mark valuable" from the conversation viewer) is the open follow-up — same precedent as M8.1/M3.2.
+- `expertId` on the table is left unused (documents have no expert link); reserved for future expert-authored attribution.
+
+**Files changed:**
+- `packages/db/prisma/schema.prisma` — added `language` to `KnowledgeDraft`.
+- `packages/db/prisma/migrations/20260601050000_knowledge_draft_language/migration.sql` — new (ADD COLUMN).
+- `packages/shared/src/knowledge.ts` — draft DTOs + schemas (imports `languageSchema`).
+- `packages/shared/src/index.ts` — export the new draft schemas/types.
+- `packages/shared/src/knowledge.test.ts` — +11 schema tests.
+- `apps/api/src/knowledge/knowledge-draft.service.ts` — new service.
+- `apps/api/src/knowledge/knowledge-draft.controller.ts` — new controller.
+- `apps/api/src/knowledge/knowledge-draft.service.test.ts` — new, 18 tests.
+- `apps/api/src/knowledge/knowledge.module.ts` — register the service/controller + import `IngestionModule`.
+
+**Notes for next iteration:**
+- **Admin UI is the open M8.2 follow-up** (with M8.1's): build the draft review queue + draft detail/edit + "Mark valuable" action on `apps/admin` (still bare) — needs Firebase admin auth + an admin API client (none yet; mirror `apps/web/src/lib`).
+- **Publish-time cache invalidation** (M6.4 follow-up) applies to `publish` too — clear in-process caches + `deleteMany` the tenant's `semantic_cache` rows after `ingest`.
+- **No live DB this session** — the migration SQL (a single additive enum column mirroring the init-schema pattern) was authored but not `migrate deploy`'d/validated against Postgres; do that when a DB is available. The service is seam-tested with a mocked tx (M11 Testcontainers list).
+- `Document` has no per-expert link, so a published draft is tenant/scope-scoped knowledge only; if expert attribution is ever needed, that's a schema change on `documents`.
