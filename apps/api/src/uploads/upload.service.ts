@@ -9,7 +9,7 @@ import {
   UnsupportedMediaTypeException,
 } from "@nestjs/common";
 import type { UploadCreateInput, UploadedFileDto, UploadMode } from "@expertos/shared";
-import { chunkText, type EmbeddingProvider } from "@expertos/ai";
+import { chunkText, estimateTokens, type EmbeddingProvider } from "@expertos/ai";
 import type { Prisma } from "@expertos/db";
 import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
@@ -42,12 +42,16 @@ export interface UploadFilePart {
   buffer: Buffer;
 }
 
-/** A processed upload chunk ready to persist (text + embedding). */
+/** A processed upload chunk ready to persist (text + embedding + optional spreadsheet provenance). */
 interface IndexedChunk {
   index: number;
   content: string;
   tokenCount: number;
   embedding: number[];
+  /** Sheet/tab name for a spreadsheet row (M5.3); null for prose chunks. */
+  sheetName: string | null;
+  /** A1 cell range a spreadsheet chunk covers (M5.3, e.g. `A2:C2`); null for prose chunks. */
+  cellRef: string | null;
 }
 
 /** The content scope an upload's chunks are stored under, derived from its {@link UploadMode}. */
@@ -221,8 +225,10 @@ export class UploadService {
 
   /**
    * Parse → chunk → embed the file into searchable chunks. Returns `[]` (stored, not indexed) when
-   * no parser is registered for the type yet (PDF/DOCX/XLSX — M5.3) or the file parses to no text.
-   * The embedder is the same factory ingestion/retrieval use, so the vectors are comparable.
+   * no parser is registered for the type yet (PDF/DOCX — M5.3 ships XLSX) or the file parses to no
+   * text. A spreadsheet parser emits pre-segmented `parsed.chunks` (one per row, carrying sheet/cell
+   * provenance) which are persisted verbatim; everything else is word-windowed via `chunkText`. The
+   * embedder is the same factory ingestion/retrieval use, so the vectors are comparable.
    */
   private async buildIndexedChunks(
     buffer: Buffer,
@@ -232,13 +238,40 @@ export class UploadService {
     if (!parser) {
       return [];
     }
-    const parsed = await parser.parse(buffer);
-    const textChunks = chunkText(parsed.text);
-    if (textChunks.length === 0) {
+    // Parsing runs on attacker-controlled bytes (PRD §"Security"): a corrupt or malformed file
+    // (e.g. a spoofed/truncated XLSX that passed the magic-byte sniff) must not 500 the request or
+    // block storage — it is stored unindexed (chunkCount 0), the same as an unsupported format.
+    let parsed: Awaited<ReturnType<typeof parser.parse>>;
+    try {
+      parsed = await parser.parse(buffer);
+    } catch (error) {
+      this.logger.warn("upload parse failed; storing without indexing", {
+        contentType,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+    const segments: Omit<IndexedChunk, "embedding">[] =
+      parsed.chunks && parsed.chunks.length > 0
+        ? parsed.chunks.map((chunk, i) => ({
+            index: i,
+            content: chunk.content,
+            tokenCount: estimateTokens(chunk.content),
+            sheetName: chunk.sheetName ?? null,
+            cellRef: chunk.cellRef ?? null,
+          }))
+        : chunkText(parsed.text).map((chunk) => ({
+            index: chunk.index,
+            content: chunk.content,
+            tokenCount: chunk.tokenCount,
+            sheetName: null,
+            cellRef: null,
+          }));
+    if (segments.length === 0) {
       return [];
     }
 
-    const contents = textChunks.map((chunk) => chunk.content);
+    const contents = segments.map((chunk) => chunk.content);
     const embeddings = await this.embeddings.embed(contents);
     // The EmbeddingProvider contract guarantees one vector per input, in order — assert it so a
     // misbehaving driver can't silently misalign a vector with the wrong chunk.
@@ -248,12 +281,7 @@ export class UploadService {
       );
     }
 
-    return textChunks.map((chunk, i) => ({
-      index: chunk.index,
-      content: chunk.content,
-      tokenCount: chunk.tokenCount,
-      embedding: embeddings[i],
-    }));
+    return segments.map((chunk, i) => ({ ...chunk, embedding: embeddings[i] }));
   }
 
   /**
@@ -275,6 +303,8 @@ export class UploadService {
           uploadedFileId,
           chunkIndex: chunk.index,
           content: chunk.content,
+          sheetName: chunk.sheetName,
+          cellRef: chunk.cellRef,
         },
         select: { id: true },
       });

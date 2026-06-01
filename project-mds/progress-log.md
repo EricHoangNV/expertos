@@ -814,3 +814,40 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M5.4 (upload citations + retrieval folding):** `upload_chunks` is now populated but unread — fold into retrieval, populate `Citation.uploadChunkId` (M4.2 read path already derives `kind: "upload"` → info-blue `.cite.upload`/`badge-info`), and isolate per-user via the `uploaded_files` join (`upload_chunks` is `tenant_only`, not `user_scoped`).
 - **Web upload UI** can now offer a temporary/persistent picker and surface `chunkCount`/`expiresAt` from the DTO (deferred with the rest of the consumer-web surface).
 - Real DB write path (file row + chunks + raw embedding) is seam-tested with a mocked tx — M11 Testcontainers caveat, same as the other raw-SQL stores.
+
+---
+
+## M5.3 — Spreadsheet handling (sheets/tables/headers, row/col refs, real numeric values, sheet/cell citations)
+**Date:** 2026-06-01
+**Ref:** PRD §"Document-assisted Q&A" / Task Manifest M5.3
+
+**What was done:**
+- **Core abstraction — provenance-carrying chunks.** Extended the `Parser` contract (`apps/api/src/ingestion/parser.ts`) with optional `ParsedDocument.chunks?: ParsedChunk[]` (`{content, sheetName?, cellRef?}`). When a parser pre-segments (spreadsheets), `UploadService.buildIndexedChunks` persists those chunks verbatim — one `upload_chunks` row each, carrying `sheet_name`/`cell_ref` — instead of running `chunkText` over a flattened blob (which destroyed row identity). Backward-compatible: the M1.1 text-only ingestion pipeline ignores `chunks` and always chunks `text`.
+- **Shared renderer** `apps/api/src/ingestion/parsers/spreadsheet.ts`: `SheetTable` model → `renderSheets()` (one chunk per data row, `header: value` lines, empty cells skipped, sheet name + A1 cell range `A2:C2`) + `renderText()` (flat-text for ingestion). `columnLetter()` (0→A, 26→AA). Blank rows skipped but row numbers stay source-aligned (header = row 1). `MAX_SPREADSHEET_ROWS = 5000` cap (untrusted-boundary cost guard — one embedding/row).
+- **CSV** parser (`csv-parser.ts`) enhanced to emit structured chunks (single unnamed sheet) while keeping its flat `text` output byte-stable (no ingestion regression; existing CSV tests unchanged).
+- **XLSX** support, dependency-free: `parsers/zip.ts` (read-only ZIP reader over `node:zlib` `inflateRawSync` — central-directory parse, stored + deflate methods, 32 MiB per-entry inflate cap as a zip-bomb guard, `InvalidZipError` on malformed) + `parsers/xlsx-parser.ts` (workbook sheet names, `workbook.xml.rels`, `sharedStrings.xml` incl. rich-text runs, each worksheet's cells). Extracts each cell's **real stored `<v>`** so `1200000` stays `1200000` (never a formatted display string) — the "real numeric values" guarantee; handles shared strings (`t="s"`), inline strings, booleans, and XML entity decoding. Registered in `createDefaultParserRegistry` (ingestion + upload share it).
+- `UploadService.buildIndexedChunks` now wraps `parser.parse` in try/catch — a malformed/spoofed-but-magic-valid file (e.g. a fake XLSX) is stored unindexed (`chunkCount 0`, warn-logged), NOT a 500. `IndexedChunk` + `persistChunks` carry `sheetName`/`cellRef`.
+- `normalizeText` exported from `@expertos/ai` (the renderer NFC-normalizes stored chunk content, matching `chunkText`, since it bypasses `chunkText` for pre-segmented chunks — load-bearing for VI).
+
+**Key decisions:**
+- **Dependency-free XLSX reader as the offline default** over adding a JS library (exceljs/sheetjs). Matches the codebase's offline-default + swap-real-driver-behind-a-seam philosophy (storage/scanner/embedding all follow it), and is safest for the untrusted-upload boundary — no CVE-bearing parser dependency in the attacker-controlled path. The `Parser` seam still permits swapping a sandboxed Python worker later (PRD hybrid-ready note). (User was asked to confirm the approach; question dismissed → proceeded with the recommended default.)
+- **Per-row chunks** (not row-groups) for citation precision (cite a specific row), capped at 5000 rows for cost.
+- **Graceful degradation on parse failure** — store-but-don't-index, consistent with the existing unsupported-format (PDF) path; an untrusted file must never crash the request or block storage.
+- **PDF/DOCX parsing left deferred** (still stored-but-0-chunks) — M5.3's line item is specifically spreadsheet handling.
+
+**Files changed:**
+- `apps/api/src/ingestion/parser.ts` — new `ParsedChunk` + optional `ParsedDocument.chunks`.
+- `apps/api/src/ingestion/parsers/spreadsheet.ts` (new) — `SheetTable`, `renderSheets`, `renderText`, `columnLetter`, `MAX_SPREADSHEET_ROWS`.
+- `apps/api/src/ingestion/parsers/zip.ts` (new) — minimal read-only ZIP reader + `InvalidZipError`.
+- `apps/api/src/ingestion/parsers/xlsx-parser.ts` (new) — `XlsxParser`.
+- `apps/api/src/ingestion/parsers/csv-parser.ts` — emit structured chunks (text byte-stable).
+- `apps/api/src/ingestion/ingestion.defaults.ts` — register `XlsxParser`.
+- `apps/api/src/uploads/upload.service.ts` — `chunks`-or-`chunkText` indexing, try/catch parse, `sheetName`/`cellRef` persistence.
+- `packages/ai/src/index.ts` — export `normalizeText`.
+- Tests: `spreadsheet.test.ts`, `xlsx-parser.test.ts` (inline `makeZip` via `deflateRawSync`), `csv-parser.test.ts` (+chunk assertions), `upload.service.test.ts` (+prose-fallback / CSV provenance / malformed-XLSX). +20 api tests → 429 total.
+
+**Notes for next iteration:**
+- **M5.4** reads these chunks: `upload_chunks.sheet_name`/`cell_ref` are now populated — surface a sheet/cell label (e.g. `Q1 KPIs!A2:B2`) on the upload `Citation` when folding upload chunks into retrieval + setting `Citation.uploadChunkId`; isolate per-user via the `uploaded_files` join (`upload_chunks` is `tenant_only`). The M4.2 read path already derives `kind: "upload"` → info-blue `.cite.upload`/`badge-info`.
+- **PDF/DOCX parsers** still unbuilt (stored-but-0-chunks); register in `createDefaultParserRegistry` when added. PDF → flat `text`; DOCX tables could emit `chunks` too.
+- XLSX extracts stored values, not formatted display — would need `styles.xml`/number-format parsing if the formatted string is ever wanted.
+- Parser/zip files aren't coverage-gated (only `*.service.ts` is) but have unit tests; the raw DB write path stays seam-tested (mocked tx) — M11 Testcontainers caveat.

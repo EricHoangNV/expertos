@@ -44,7 +44,7 @@
 #### M5 — Document uploads
 - [x] M5.1 Query-time upload (PDF, XLSX, CSV, DOCX, MD, txt) with file-type/size validation + malware scan
 - [x] M5.2 Temporary vs persistent modes (retention + indexing strategy per mode)
-- [ ] M5.3 Spreadsheet handling (sheets/tables/headers, row/col refs, real numeric values, sheet/table citations)
+- [x] M5.3 Spreadsheet handling (sheets/tables/headers, row/col refs, real numeric values, sheet/table citations)
 - [ ] M5.4 Distinct upload citations (info-blue `.cite.upload` / `badge-info`, per §"Design System"); tenant/user upload isolation
 
 #### M6 — Subscription system

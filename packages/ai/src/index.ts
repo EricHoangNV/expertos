@@ -1,6 +1,7 @@
 export { cosineSimilarity } from "./similarity";
 export { chunkText, estimateTokens } from "./ingestion/chunk";
 export type { TextChunk, ChunkOptions } from "./ingestion/chunk";
+export { normalizeText } from "./text";
 export {
   extractiveSummary,
   ExtractiveSummarizer,

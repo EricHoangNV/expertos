@@ -29,6 +29,8 @@ const USER: AuthUser = {
 
 const PDF_BYTES = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31]); // %PDF-1
 const XLSX_BYTES = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00]); // PK..
+const XLSX_TYPE =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 function row(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -188,6 +190,41 @@ describe("UploadService", () => {
     );
   });
 
+  it("indexes a prose (text) upload via word-window chunking with null provenance", async () => {
+    const h = makeHarness({ createRow: row({ filename: "notes.txt", contentType: "text/plain" }) });
+    await h.service.upload(
+      USER,
+      part({
+        filename: "notes.txt",
+        contentType: "text/plain",
+        buffer: Buffer.from("the quarterly report shows steady revenue growth across regions"),
+      }),
+      meta(),
+    );
+    // A non-spreadsheet file has no sheet/cell provenance — the fallback chunkText path runs.
+    expect(h.chunkCreate.mock.calls[0][0].data).toMatchObject({
+      sheetName: null,
+      cellRef: null,
+    });
+    expect(h.chunkCreate.mock.calls[0][0].data.content).toContain("quarterly report");
+  });
+
+  it("persists spreadsheet row provenance (cell_ref) on a CSV upload", async () => {
+    const h = makeHarness();
+    await h.service.upload(
+      USER,
+      part({ buffer: Buffer.from("region,revenue\nAPAC,1200000") }),
+      meta(),
+    );
+    // The single data row is stored as one chunk tagged with its A1 cell range; a flat CSV has
+    // no named sheet (M5.3 → M5.4 will surface this as a sheet/cell citation).
+    expect(h.chunkCreate.mock.calls[0][0].data).toMatchObject({
+      content: "region: APAC\nrevenue: 1200000",
+      sheetName: null,
+      cellRef: "A2:B2",
+    });
+  });
+
   it("indexes a persistent upload into user_private chunks with no expiry", async () => {
     const h = makeHarness({
       createRow: row({ mode: "persistent", expiresAt: null }),
@@ -261,19 +298,23 @@ describe("UploadService", () => {
     expect(h.create).toHaveBeenCalled();
   });
 
-  it("accepts an XLSX (ZIP container) by its PK magic", async () => {
-    const h = makeHarness();
-    await h.service.upload(
+  it("accepts an XLSX by its PK magic but stores a malformed one without indexing", async () => {
+    const h = makeHarness({
+      createRow: row({ filename: "sheet.xlsx", contentType: XLSX_TYPE }),
+    });
+    const dto = await h.service.upload(
       USER,
-      part({
-        filename: "sheet.xlsx",
-        contentType:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        buffer: XLSX_BYTES,
-      }),
+      part({ filename: "sheet.xlsx", contentType: XLSX_TYPE, buffer: XLSX_BYTES }),
       meta(),
     );
+    // The 5-byte "PK.." passes the magic sniff but isn't a real ZIP → stored, not indexed (no 500).
     expect(h.create).toHaveBeenCalled();
+    expect(h.chunkCreate).not.toHaveBeenCalled();
+    expect(dto.chunkCount).toBe(0);
+    expect(h.warn).toHaveBeenCalledWith(
+      "upload parse failed; storing without indexing",
+      expect.objectContaining({ contentType: XLSX_TYPE }),
+    );
   });
 
   it("normalizes the content type (strips MIME parameters)", async () => {

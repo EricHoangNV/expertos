@@ -18,9 +18,10 @@ import {
 import { ParserRegistry } from "./parser-registry";
 import { TextParser } from "./parsers/text-parser";
 import { CsvParser } from "./parsers/csv-parser";
+import { XlsxParser } from "./parsers/xlsx-parser";
 
 export function createDefaultParserRegistry(): ParserRegistry {
-  return new ParserRegistry([new TextParser(), new CsvParser()]);
+  return new ParserRegistry([new TextParser(), new CsvParser(), new XlsxParser()]);
 }
 
 export function createDefaultEmbeddingProvider(): EmbeddingProvider {

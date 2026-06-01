@@ -1,13 +1,16 @@
 import { type Parser, type ParsedDocument, toText } from "../parser";
+import { renderSheets, type SheetTable } from "./spreadsheet";
 
 /**
- * CSV parser. Each data row is rendered as `header: value` lines and rows are separated
- * by blank lines, so the chunker keeps a record together and the embedding sees the
- * column context (not bare cell values). Handles RFC-4180 quoting (quoted fields,
- * embedded commas/newlines, `""` escapes).
+ * CSV parser. A CSV is a single, unnamed sheet: each data row becomes one structured
+ * {@link ParsedDocument.chunks} entry (via {@link renderSheets}) carrying its A1 cell range
+ * (e.g. `A2:C2`) so an upload citation can point at the row (M5.3). The flat `text` field renders
+ * the same rows as `header: value` records separated by blank lines, for the text-only ingestion
+ * pipeline (M1.1) which keeps the column context in each chunk. Handles RFC-4180 quoting (quoted
+ * fields, embedded commas/newlines, `""` escapes).
  *
- * This is the lightweight text-CSV path. Rich spreadsheet handling — multiple sheets,
- * numeric typing, sheet/cell-level citations — is M5 and slots in as its own `Parser`.
+ * Rich binary spreadsheets — multiple sheets, real (stored) numeric values, sheet-level
+ * citations — are the XLSX parser; both share the {@link renderSheets} chunking.
  */
 export class CsvParser implements Parser {
   readonly contentTypes = ["text/csv", "csv"] as const;
@@ -18,21 +21,27 @@ export class CsvParser implements Parser {
       return Promise.resolve({ text: "" });
     }
 
-    const [headers, ...dataRows] = rows;
+    const [headerRow, ...dataRows] = rows;
+    const headers = headerRow.map((h) => h.trim());
+    const sheet: SheetTable = { headers, rows: dataRows };
+    const chunks = renderSheets([sheet]);
+
+    // Keep the flat-text record rendering byte-stable for the M1.1 ingestion path.
     const records = dataRows
       .filter((row) => row.some((cell) => cell.trim() !== ""))
       .map((row) =>
         headers
           .map((header, i) => {
             const value = (row[i] ?? "").trim();
-            return value === "" ? `${header.trim()}:` : `${header.trim()}: ${value}`;
+            return value === "" ? `${header}:` : `${header}: ${value}`;
           })
           .join("\n"),
       );
 
     return Promise.resolve({
       text: records.join("\n\n"),
-      metadata: { headers: headers.map((h) => h.trim()), rowCount: records.length },
+      ...(chunks.length > 0 ? { chunks } : {}),
+      metadata: { headers, rowCount: records.length },
     });
   }
 }

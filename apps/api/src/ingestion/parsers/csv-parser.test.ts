@@ -32,6 +32,21 @@ describe("CsvParser", () => {
     expect(out.text).toBe("a: 1\nb: 2\nc:");
   });
 
+  it("emits one structured chunk per data row with an A1 cell range (no sheet name)", async () => {
+    const out = await parser.parse("name,role\nAda,engineer\nGrace,admiral");
+    expect(out.chunks).toEqual([
+      { content: "name: Ada\nrole: engineer", cellRef: "A2:B2" },
+      { content: "name: Grace\nrole: admiral", cellRef: "A3:B3" },
+    ]);
+    // CSV has no named sheets.
+    expect(out.chunks?.every((c) => c.sheetName === undefined)).toBe(true);
+  });
+
+  it("omits chunks for a header-only file", async () => {
+    const out = await parser.parse("a,b\n");
+    expect(out.chunks).toBeUndefined();
+  });
+
   it("returns empty text for empty input", async () => {
     const out = await parser.parse("");
     expect(out.text).toBe("");
