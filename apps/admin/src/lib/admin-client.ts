@@ -41,6 +41,11 @@ import type {
   UnmatchedBookingEventDto,
   ReviewConfigDto,
   ReviewConfigUpdateInput,
+  ReviewRequestStatusValue,
+  ReviewQueueItemDto,
+  ReviewQueueDetailDto,
+  ReviewResponseDto,
+  ReviewResponseCreateInput,
 } from "@expertos/shared";
 
 /**
@@ -546,4 +551,48 @@ export function getExpertAnswers(
   if (params?.offset != null) search.set("offset", String(params.offset));
   const query = search.toString();
   return request<ExpertAnswerReviewDto[]>(`/expert/answers${query ? `?${query}` : ""}`, token);
+}
+
+// ── M9.2 — concierge review queue ──────────────────────────────────────────
+
+/**
+ * The concierge review queue (`GET /concierge-reviews`), scoped to the reviewer's voice — answers
+ * flagged for human review, most-actionable first. A non-admin reviewer sees their own voice; an
+ * admin targets a specific expert by id. Optionally narrowed to one request status.
+ */
+export function getConciergeReviews(
+  token: string,
+  params?: { expertId?: string; status?: ReviewRequestStatusValue; limit?: number; offset?: number },
+): Promise<ReviewQueueItemDto[]> {
+  const search = new URLSearchParams();
+  if (params?.expertId != null && params.expertId !== "") search.set("expertId", params.expertId);
+  if (params?.status != null) search.set("status", params.status);
+  if (params?.limit != null) search.set("limit", String(params.limit));
+  if (params?.offset != null) search.set("offset", String(params.offset));
+  const query = search.toString();
+  return request<ReviewQueueItemDto[]>(`/concierge-reviews${query ? `?${query}` : ""}`, token);
+}
+
+/** Full detail for one queued review (answer + prompting question + recorded responses). */
+export function getConciergeReview(
+  token: string,
+  id: string,
+  expertId?: string,
+): Promise<ReviewQueueDetailDto> {
+  const query = expertId != null && expertId !== "" ? `?expertId=${expertId}` : "";
+  return request<ReviewQueueDetailDto>(`/concierge-reviews/${id}${query}`, token);
+}
+
+/** Record a reviewer verdict (Good / Bad / Great) + optional edit on a queued answer. */
+export function respondConciergeReview(
+  token: string,
+  id: string,
+  body: ReviewResponseCreateInput,
+  expertId?: string,
+): Promise<ReviewResponseDto> {
+  const query = expertId != null && expertId !== "" ? `?expertId=${expertId}` : "";
+  return request<ReviewResponseDto>(`/concierge-reviews/${id}/respond${query}`, token, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }

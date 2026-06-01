@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { CacheModule } from "../cache/cache.module";
+import { ConciergeModule } from "../concierge/concierge.module";
 import { ConsultationModule } from "../consultation/consultation.module";
 import { RetrievalModule } from "../retrieval/retrieval.module";
 import { VoiceModule } from "../voice/voice.module";
@@ -28,7 +29,7 @@ import { CHAT_DEGRADED_LLM_PROVIDER, CHAT_LLM_PROVIDER } from "./chat.tokens";
  * / `StructuredLogger` come from the global `ObservabilityModule`.
  */
 @Module({
-  imports: [AuthModule, CacheModule, ConsultationModule, RetrievalModule, VoiceModule],
+  imports: [AuthModule, CacheModule, ConciergeModule, ConsultationModule, RetrievalModule, VoiceModule],
   controllers: [
     ChatController,
     ConversationsController,

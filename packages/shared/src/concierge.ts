@@ -61,3 +61,126 @@ export interface ReviewConfigDto {
   /** ISO-8601 last-updated timestamp, or null if the config has never been saved. */
   updatedAt: string | null;
 }
+
+// ── concierge review queue (M9.2) ───────────────────────────────────────────
+
+/**
+ * Lifecycle of a queued human-review request (mirrors the `review_request_status` DB enum):
+ * `requested` (enqueued by the trigger) → `answered` (a reviewer recorded a verdict). `in_review`,
+ * `escalated`, and `dismissed` are reserved for the richer reviewer workflow (claim / escalate-to-
+ * consultation in M9.4); M9.2's `respond` moves a request straight to `answered`.
+ */
+export const REVIEW_REQUEST_STATUSES = [
+  "requested",
+  "in_review",
+  "answered",
+  "escalated",
+  "dismissed",
+] as const;
+export type ReviewRequestStatusValue = (typeof REVIEW_REQUEST_STATUSES)[number];
+export const reviewRequestStatusSchema = z.enum(REVIEW_REQUEST_STATUSES);
+
+/** Whether the review is surfaced to the user (Mode A) or runs as a silent shadow review (Mode B). */
+export type ReviewVisibilityValue = "visible" | "silent";
+
+/**
+ * A reviewer's quality verdict on an AI answer (mirrors the `review_verdict` DB enum). `great`/edited
+ * answers feed the global flywheel (voice examples + knowledge drafts); `bad` flags the source chunks
+ * (M9.4). Kept a leaf string union so the DB enum never leaks into the shared wire contract.
+ */
+export const REVIEW_VERDICTS = ["good", "bad", "great"] as const;
+export type ReviewVerdictValue = (typeof REVIEW_VERDICTS)[number];
+export const reviewVerdictSchema = z.enum(REVIEW_VERDICTS);
+
+/** Accidental-absurd-value guard, not a product limit. */
+const MAX_REVIEW_PAGE = 200;
+
+/**
+ * Page query for the concierge review queue (`GET /concierge-reviews`). `expertId` lets an admin
+ * target a specific expert; a non-admin reviewer is scoped to their own voice regardless of it. An
+ * optional `status` narrows the feed (e.g. only `requested` items still awaiting a reviewer).
+ */
+export const conciergeQueueListQuerySchema = z.object({
+  status: reviewRequestStatusSchema.optional(),
+  limit: z.coerce.number().int().positive().max(MAX_REVIEW_PAGE).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export type ConciergeQueueListQueryInput = z.infer<typeof conciergeQueueListQuerySchema>;
+
+/** One reviewer's recorded response to a queued review (`review_responses` row). */
+export interface ReviewResponseDto {
+  id: string;
+  /** The reviewer (expert/admin) who recorded the verdict. */
+  reviewerId: string;
+  verdict: ReviewVerdictValue;
+  /** The AI answer as it stood when the reviewer responded. */
+  originalAnswer: string;
+  /** The reviewer's edited answer, or null when they left a verdict without editing. */
+  revisedAnswer: string | null;
+  /** True when `revisedAnswer` is a real change to `originalAnswer`. */
+  edited: boolean;
+  /** Free-text reviewer notes, or null. */
+  notes: string | null;
+  /** Whether the revised answer has been pushed back to the user yet (async delivery is M9.3). */
+  deliveredToUser: boolean;
+  createdAt: string;
+}
+
+/**
+ * One item in the concierge review queue (`GET /concierge-reviews`), newest-actionable first. Carries
+ * a preview of the AI answer awaiting review plus its SLA/status so the reviewer can triage; the full
+ * answer + prompting question + recorded responses come from the detail view ({@link ReviewQueueDetailDto}).
+ */
+export interface ReviewQueueItemDto {
+  /** The `human_review_requests` row id. */
+  id: string;
+  /** The assistant message under review. */
+  messageId: string;
+  conversationId: string;
+  triggerMode: ReviewTriggerModeValue;
+  visibility: ReviewVisibilityValue;
+  /** The answer's confidence (0–1), or null when no score was recorded (the deterministic proxy fired). */
+  confidenceScore: number | null;
+  status: ReviewRequestStatusValue;
+  /** ISO SLA deadline shown to triage by urgency, or null when no SLA applied. */
+  slaDueAt: string | null;
+  /** ISO timestamp the request was claimed, or null. */
+  claimedAt: string | null;
+  /** ISO timestamp a reviewer answered, or null. */
+  answeredAt: string | null;
+  createdAt: string;
+  /** A short preview of the AI answer awaiting review. */
+  answerPreview: string;
+  /** The most-recent reviewer verdict, or null when not yet reviewed. */
+  latestVerdict: ReviewVerdictValue | null;
+  /** How many reviewer responses have been recorded. */
+  responseCount: number;
+}
+
+/**
+ * The full concierge review detail (`GET /concierge-reviews/:id`): the queue item fields plus the
+ * complete AI answer, the prompting question, and every recorded reviewer response.
+ */
+export interface ReviewQueueDetailDto
+  extends Omit<ReviewQueueItemDto, "answerPreview" | "latestVerdict" | "responseCount"> {
+  /** The full AI answer under review. */
+  answer: string;
+  /** The prompting question (the most-recent user message at/before the answer), or null. */
+  question: string | null;
+  /** All recorded reviewer responses, newest first (subsumes the list view's latest-verdict/count). */
+  responses: ReviewResponseDto[];
+}
+
+/**
+ * A reviewer's verdict + optional edit on a queued answer (`POST /concierge-reviews/:id/respond`,
+ * M9.2). `revisedAnswer` is the reviewer's improved text (null = verdict only, no edit); the service
+ * derives `edited` by comparing it to the original. `notes` is optional reviewer commentary.
+ */
+export const reviewResponseCreateSchema = z.object({
+  verdict: reviewVerdictSchema,
+  revisedAnswer: z.string().trim().min(1).max(50_000).nullable().default(null),
+  notes: z.string().trim().min(1).max(2_000).nullable().default(null),
+});
+
+export type ReviewResponseCreateInput = z.infer<typeof reviewResponseCreateSchema>;

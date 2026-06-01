@@ -8,6 +8,7 @@ import type { AuthUser } from "../auth/auth.types";
 import type { ResponseCacheService } from "../cache/response-cache.service";
 import type { CachedAnswer } from "../cache/cache.types";
 import type { RecommendationService } from "../consultation/recommendation.service";
+import type { ConciergeQueueService } from "../concierge/concierge-queue.service";
 import type { ChatMessage, LlmProvider, RetrievedChunk } from "@expertos/ai";
 import type { ChatRequestInput, ChatStreamEvent } from "@expertos/shared";
 
@@ -103,6 +104,9 @@ function makeService(
   const recommend = jest.fn().mockResolvedValue(opts.recommendation ?? null);
   const recommendation = { recommend } as unknown as RecommendationService;
 
+  const enqueueIfTriggered = jest.fn().mockResolvedValue(undefined);
+  const concierge = { enqueueIfTriggered } as unknown as ConciergeQueueService;
+
   const service = new ChatService(
     { retrieve, retrieveUploads } as unknown as RetrievalService,
     { retrieveVoice } as unknown as VoiceService,
@@ -113,6 +117,7 @@ function makeService(
     { info, error } as unknown as StructuredLogger,
     cache,
     recommendation,
+    concierge,
   );
 
   return {
@@ -131,6 +136,7 @@ function makeService(
       lookupAnswer,
       storeAnswer,
       recommend,
+      enqueueIfTriggered,
     },
   };
 }
@@ -386,6 +392,32 @@ describe("ChatService.answerStream", () => {
     // The turn is still persisted (the insufficient-knowledge answer is a real answer).
     expect(stubs.persistTurn).toHaveBeenCalledTimes(1);
     expect(stubs.persistTurn.mock.calls[0][1].assistant.sourceVersionIds).toEqual([]);
+  });
+
+  it("offers the persisted turn to the concierge enqueue with the insufficient-knowledge signal (M9.2)", async () => {
+    const { service, stubs } = makeService();
+
+    await drain(service.answerStream(USER, baseInput()));
+
+    // Grounded answer (2 chunks retrieved) → enqueue is offered, but not flagged low-confidence.
+    expect(stubs.enqueueIfTriggered).toHaveBeenCalledWith(USER, {
+      messageId: "m-1",
+      conversationId: "conv-1",
+      insufficientKnowledge: false,
+      confidence: null,
+    });
+  });
+
+  it("flags the concierge enqueue insufficient when retrieval finds nothing (M9.2)", async () => {
+    const { service, stubs } = makeService();
+    stubs.retrieve.mockResolvedValue([]);
+
+    await drain(service.answerStream(USER, baseInput()));
+
+    expect(stubs.enqueueIfTriggered).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ insufficientKnowledge: true }),
+    );
   });
 
   it("drops an unresolvable marker from the citations and the persisted answer (M4.1 guarantee)", async () => {

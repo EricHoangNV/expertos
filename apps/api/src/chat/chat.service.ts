@@ -22,6 +22,7 @@ import { StructuredLogger } from "../observability/logger.service";
 import { ResponseCacheService } from "../cache/response-cache.service";
 import type { CachedAnswer } from "../cache/cache.types";
 import { RecommendationService } from "../consultation/recommendation.service";
+import { ConciergeQueueService } from "../concierge/concierge-queue.service";
 import { CHAT_DEGRADED_LLM_PROVIDER, CHAT_LLM_PROVIDER } from "./chat.tokens";
 import { ConversationService } from "./conversation.service";
 
@@ -56,6 +57,7 @@ export class ChatService {
     private readonly logger: StructuredLogger,
     private readonly cache: ResponseCacheService,
     private readonly recommendation: RecommendationService,
+    private readonly concierge: ConciergeQueueService,
   ) {}
 
   /**
@@ -232,6 +234,16 @@ export class ChatService {
         sources: facts.length,
         voiced: voice?.profile != null,
         degraded,
+      });
+
+      // M9.2 concierge: when Mode B (auto-silent) is enabled and the answer is low-confidence, quietly
+      // queue it for human review behind the scenes (the user still sees this normal answer). Non-fatal
+      // by design — the service swallows its own errors so a queueing hiccup can't break the answer.
+      await this.concierge.enqueueIfTriggered(user, {
+        messageId: persisted.messageId,
+        conversationId: persisted.conversationId,
+        insufficientKnowledge: facts.length === 0,
+        confidence: null,
       });
 
       // M7.1 consultation funnel: evaluate the admin-configured rules against this turn and, if one

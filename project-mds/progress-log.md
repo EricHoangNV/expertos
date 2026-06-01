@@ -2036,3 +2036,41 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **`ConciergeModule` is the M9 host.** A future M9 "should this answer trigger a review?" check (used by `ChatService` on a low-confidence `done` event) reads this config — wire it through the service (don't re-read `review_configs` elsewhere). It must respect `enabled` + `triggerMode` + `confidenceThreshold` + the daily `volumeCapPerDay` (count today's `human_review_requests`).
 - **M9.3 (async delivery) is the genuinely OD#5-gated piece** + needs an email provider (swap-seam like `PaymentProvider`/`TidyCalProvider`) — a live-stack dep. Don't build silent push until OD#5/NT.1 sign-off flips `CONCIERGE_ALLOW_SILENT`.
 - Sandbox quirk unchanged: full parallel `pnpm test` SIGBUS/SIGILLs random workers (0 assertion failures; 469/414 passed across runs, the rest are "suite failed to run"); per-suite isolated runs are green. Live-DB runbook: binary engine for real queries, regenerate library engine before gates.
+
+## M9.2 — Concierge review queue + reviewer verdict/edit
+**Date:** 2026-06-01
+**Ref:** PRD §"Concierge Mode" + §"Expert portal" → "Concierge review queue"; PRD Task Manifest M9.2
+
+**What was done:**
+- **Enqueue seam** — `apps/api/src/concierge/concierge-queue.service.ts` `ConciergeQueueService.enqueueIfTriggered(user, {messageId, conversationId, insufficientKnowledge, confidence})`, consumed by `ChatService.answerStream` after `persistTurn` (non-fatal hook, the M7.1 recommendation precedent). When the admin config is Mode B (`auto_silent`) enabled and the answer trips the low-confidence trigger (the `insufficientKnowledge` empty-sources proxy, or `confidence ≤ threshold` once a model emits one), it creates a `silent` `HumanReviewRequest` (status `requested`, SLA from config). Runs in an elevated (`is_admin`) context re-bounded to the caller's tenant so the **tenant-wide daily volume cap** count is correct + the insert passes WITH-CHECK; idempotent; over-cap degrades-don't-block.
+- **Reviewer seam** — `concierge-review.service.ts` `ConciergeReviewService` (`list`/`get`/`respond`) + `ConciergeReviewController` (`@Roles("expert")` `/concierge-reviews`). Voice-scoped via the M8.5 elevated-but-bounded pattern (resolve expert first → short-circuit empty/404 → every query carries `tenant_id` + `message.conversation.expertId`). `respond` writes a `ReviewResponse` (verdict + optional edit, `edited` derived, `originalAnswer` stamped) and moves the request → `answered` (409 if closed). The `ReviewResponse` row is the audit (no separate `admin_audit_logs`).
+- **Admin UI** — `apps/admin/app/concierge-reviews/page.tsx` ("Review queue", Expert nav group): queue + open-to-review inline verdict/edit form; admin picks an expert. New `getConciergeReviews`/`getConciergeReview`/`respondConciergeReview` admin-client fns.
+- **OD#5 gate flipped** — `CONCIERGE_ALLOW_SILENT` now defaults allowed (`resolveSilentReviewAllowed` returns `process.env.CONCIERGE_ALLOW_SILENT !== "false"`), reflecting the resolved OD#5/NT.1.
+- New shared types in `packages/shared/src/concierge.ts`: `REVIEW_REQUEST_STATUSES`/`reviewRequestStatusSchema`, `REVIEW_VERDICTS`/`reviewVerdictSchema`, `conciergeQueueListQuerySchema`, `reviewResponseCreateSchema`, `ReviewQueueItemDto`/`ReviewQueueDetailDto`/`ReviewResponseDto`/`ReviewVisibilityValue`.
+
+**Key decisions:**
+- **Mode-B-only auto-enqueue** — Mode A (`user_prompted`) requires the user to opt in to a review, so its enqueue belongs to the M9.3 user-facing prompt, not this post-answer hook. Keeps the hook unambiguous and avoids queuing reviews the user never asked for.
+- **Elevated-tenant-bounded enqueue** — chose this over a per-user RLS insert so the daily volume cap is genuinely tenant-wide ("so the expert team isn't swamped"), matching the PRD intent; `human_review_requests` being `user_scoped` makes a tenant-wide count impossible under the asker's own context.
+- **Low-confidence = the existing `insufficientKnowledge` proxy** (no real confidence score exists yet — the echo provider has none), forward-compatible via a `confidence` arg compared against `confidenceThreshold` when a model later emits one. Consistent with M3.4/M7.1's `low_confidence` signal.
+- **Prisma Client throughout** (no raw SQL) — `list` is lightweight (answer preview + latest verdict + count), `get` adds one `findFirst` for the prompting question; avoids the raw-SQL/M11-Testcontainers caveat and N+1.
+- **No separate audit row** — the `ReviewResponse` (reviewer id + verdict + ts + edit) is the durable record, same stance as the M8.5 expert portal.
+
+**Files changed:**
+- `apps/api/src/concierge/concierge-queue.service.ts` — NEW enqueue choke point (+ test).
+- `apps/api/src/concierge/concierge-review.service.ts` — NEW reviewer queue/verdict (+ test).
+- `apps/api/src/concierge/concierge-review.controller.ts` — NEW `@Roles("expert")` routes.
+- `apps/api/src/concierge/concierge.module.ts` — wire both services + controller; export `ConciergeQueueService`.
+- `apps/api/src/concierge/concierge.tokens.ts` — flip `resolveSilentReviewAllowed` default to allowed (OD#5 resolved).
+- `apps/api/src/chat/chat.service.ts` + `chat.module.ts` — inject `ConciergeQueueService`, call `enqueueIfTriggered` after persist; import `ConciergeModule`.
+- `apps/api/src/chat/chat.service.test.ts` — concierge stub + 2 enqueue assertions.
+- `packages/shared/src/concierge.ts` + `index.ts` — new review-queue wire types (+ `concierge.test.ts` schema tests).
+- `apps/admin/src/lib/admin-client.ts` — `getConciergeReviews`/`getConciergeReview`/`respondConciergeReview`.
+- `apps/admin/src/components/AdminFrame.tsx` — "Review queue" Expert nav item.
+- `apps/admin/app/concierge-reviews/page.tsx` — NEW reviewer queue page.
+- `project-mds/PRD.md` — M9.2 → `[x]`.
+
+**Notes for next iteration:**
+- **M9.4 (flywheel) is the natural next slice on this data** — Great/edited `ReviewResponse` → mint a `voice_example` + a `knowledge_draft` (M8.2 `KnowledgeDraftService.create`); Bad → flag the answer's source chunks; inject the correction into conversation context (M3.5's window already keeps the latest turn, so it's M9-safe). Escalate-to-consultation reuses `RecommendationService`/`consultations`.
+- **M9.3 (async delivery)** still needs an email-provider abstraction (the `PaymentProvider`/`TidyCalProvider` seam) + the conversation push-back; silent delivery is the OD#5-gated piece (now allowed). A live dep.
+- **M10.3 (concierge metrics)** now has `human_review_requests`/`review_responses` to aggregate — the `AnalyticsService` follow-on.
+- **Seam-tested with a mocked tx** — the real elevated cross-user enqueue/read + the volume-cap count join the M11 Testcontainers live-DB list (the standing raw-elevated-RLS caveat). `human_review_requests` is `user_scoped`, `review_responses` is `tenant_only`.

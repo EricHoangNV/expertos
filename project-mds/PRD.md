@@ -66,10 +66,10 @@
 - [x] M8.4 Admin: manage users / subscriptions / experts / voice profiles; admin audit logs; user-data deletion — **DONE.** users/subscriptions/fair-use + admin audit logs + user-data deletion (`apps/api/src/admin/` `AdminAuditService` immutable audit backbone [`record` in-tx + `GET /admin/audit-logs`] + `AdminUserService` [`GET /admin/users`, `GET /admin/users/:id`, `PATCH .../role`, fair-use raise/resolve, `POST .../deletion-request`, `DELETE /admin/users/:id` GDPR cascade] all `@Roles("admin")` cross-tenant admin-RLS; subscriptions read-only — provider stays billing source of truth; `apps/admin/app/users` list+detail + `apps/admin/app/audit` feed); **expert CRUD** (`AdminExpertService` on the `AdminUserService` template — `GET/POST /admin/experts`, `GET/PATCH /admin/experts/:id`, `PATCH .../active`; audit-in-tx; slug frozen; operator link/unlink; P2002→409 + `apps/admin/app/experts` list+detail) + **voice-profile admin UI** over the existing M2.3 `/voice-profiles` routes (`apps/admin/app/voice-profiles` sign-off queue + inline draft edit + create)
 - [x] M8.5 Expert portal (first-class `expert` role): approve voice + knowledge, review AI answers, view consultation conversions — **DONE.** Voice + knowledge approval reuse the existing expert-scoped `/voice-profiles` (M2.3) + `/knowledge` (M8.1) routes; new `apps/api/src/expert/` `ExpertPortalService` adds `GET /expert/conversions` (funnel by trigger/response/status + booked revenue + recent feed) + `GET /expert/answers` (AI-answer review feed) — **voice-scoped** via an elevated-but-bounded RLS read (`is_admin` context + explicit `tenant_id` + `conversation.expert_id` predicates; resolve-expert-first, short-circuit-empty-when-none); the admin portal is now **role-aware** (`/me` → `AdminFrame` Expert/Admin nav groups) + `apps/admin/app/conversions` + `apps/admin/app/answers` pages
 
-#### M9 — Concierge Mode (human-in-the-loop) — GATED by Open Decision #5
-- [ ] M9.0 **GATE:** Open Decision #5 (Mode B legal/brand ruling) resolved — or fall back to Mode-A-only
-- [x] M9.1 Admin trigger config (off / user-prompted / auto-silent) + confidence threshold + SLA + volume cap — **DONE** (`apps/api/src/concierge/` `ConciergeConfigService` over the `review_configs` global singleton + `GET/PATCH /admin/concierge-config` admin-RLS editor + audit-in-tx + `apps/admin/app/concierge` page). **OD#5-respecting:** enabling Mode B (`auto_silent`) is blocked until the legal/brand sign-off flips the injected `CONCIERGE_ALLOW_SILENT` flag (surfaced on the DTO as `silentReviewAllowed` so the UI disables the option). Mode-agnostic config infra; the risky silent-delivery path (M9.3) stays unbuilt pending OD#5.
-- [ ] M9.2 Concierge review queue in Expert portal; reviewer verdict (Good/Bad/Great) + edit
+#### M9 — Concierge Mode (human-in-the-loop) — OD#5 RESOLVED
+- [x] M9.0 **GATE:** Open Decision #5 (Mode B legal/brand ruling) resolved — **RESOLVED:** Mode B approved as default; AI-reviewed/edited answers must show a visual indicator (asterisk or info icon with tooltip: "This response includes AI-reviewed/edited content"). ToS already covers this; no Mode-A-only fallback needed.
+- [x] M9.1 Admin trigger config (off / user-prompted / auto-silent) + confidence threshold + SLA + volume cap — **DONE** (`apps/api/src/concierge/` `ConciergeConfigService` over the `review_configs` global singleton + `GET/PATCH /admin/concierge-config` admin-RLS editor + audit-in-tx + `apps/admin/app/concierge` page). **OD#5 RESOLVED:** Mode B (`auto_silent`) is now the default; `CONCIERGE_ALLOW_SILENT` should default to `true`. The admin UI should enable Mode B by default. AI-reviewed/edited answers must display a visual indicator (asterisk or info icon with tooltip).
+- [x] M9.2 Concierge review queue in Expert portal; reviewer verdict (Good/Bad/Great) + edit — **DONE.** Enqueue: `apps/api/src/concierge/concierge-queue.service.ts` `ConciergeQueueService.enqueueIfTriggered` (consumed by `ChatService` after a turn — Mode B `auto_silent` + low-confidence proxy → silent `HumanReviewRequest`; elevated-tenant-bounded for the tenant-wide daily volume cap; idempotent; non-fatal). Reviewer: `concierge-review.service.ts` `ConciergeReviewService` (`list`/`get`/`respond`, `@Roles("expert")` `/concierge-reviews` routes) — voice-scoped via the M8.5 elevated-but-bounded RLS pattern (resolve-expert-first, `tenant_id`+`message.conversation.expertId` predicates); `respond` writes a `ReviewResponse` (verdict + `edited`-derived edit) and moves the request to `answered`. Admin UI: `apps/admin/app/concierge-reviews` (queue + open-to-review verdict/edit form, Expert nav group). OD#5 gate flipped: `CONCIERGE_ALLOW_SILENT` now defaults allowed. Escalate-to-consultation + the global flywheel are M9.4; async delivery (push-back + email) is M9.3.
 - [ ] M9.3 Async delivery (visible update vs silent) + transactional email notification
 - [ ] M9.4 Reviewer-feedback flywheel: conversation-context injection (immediate) + `voice_examples`/`knowledge_drafts`/chunk-flagging (global); escalate-to-consultation
 
@@ -77,7 +77,7 @@
 - [x] M10.1 Usage & cost analytics — **DONE** (`apps/api/src/analytics/` `AnalyticsService` admin cross-tenant RLS read over `usage_logs` → `GET /admin/analytics/usage`: window totals [events/tokens/`cost_micros`/distinct active users] + per-feature + per-model rollups [Prisma `groupBy`] + trailing **daily** series [raw `date_trunc('day')` + `count(DISTINCT user_id)`, BigInt-coerced]; `apps/admin/app/analytics` dashboard. OD#1-independent instrumentation — the kill-line M10.4 is the OD#1-gated piece.)
 - [x] M10.2 Consultation funnel + attribution (question→conversation→recommendation→booking→revenue) — **DONE** (`apps/api/src/analytics/` `AnalyticsService.funnel` → `GET /admin/analytics/funnel`: admin cross-tenant RLS read tracing conversations → recommendations (`groupBy` trigger/response) → funnel-attributed consultations (`groupBy` status, scoped to `recommendations:{some:{}}`) → booked revenue (`_sum.amountCents`); the `ExpertPortalService.conversions` shape but platform-wide; `apps/admin/app/funnel` dashboard. OD#1-independent instrumentation.)
 - [ ] M10.3 Concierge volume/SLA/verdict metrics + knowledge-quality signals
-- [ ] M10.4 Instrument validation success criteria / kill line (Open Decision #1)
+- [ ] M10.4 Instrument all validation metrics (activation, engagement, willingness-to-pay, funnel conversion, revenue/user) — thresholds set post-launch with real data (OD#1 resolved)
 
 #### M11 — Hardening
 - [ ] M11.1 Full E2E path matrix (Playwright) — see §"Testing Strategy"
@@ -87,24 +87,24 @@
 - [x] M11.5 Design-system conformance audit (`/design-review`): token usage (no hardcoded colors/px), citation render-after-resolve, upload-vs-knowledge color distinction, badge tones, hit-target/size minimums (§"Design System") — **DONE.** Conformance rules mechanized as unit tests (`packages/ui/src/primitives.test.ts`, +26: Cite render-after-resolve + upload/knowledge color, Badge tones, Button one-crimson-primary, Bar/UsageMeter quota meter; all 12 ds.css components 100% coverage, `jest.config.cjs` collectCoverageFrom flipped to `*.{ts,tsx}`); rendered emoji removed (anti-slop "no emoji": chat 👍/👎→Yes/No, ☆/★ save toggle, admin answer badges, failed-queries copy); token-usage audit clean (no hardcoded hex/px in either app — lint guards effective). **Audit note (design sign-off needed, not changed unilaterally):** ds.css interactive heights are below the 44px hit-target line (`.btn` ~39px, `.btn-icon` 36px, `.chip` ~33px) — flagged for the design owner since ds.css is the visual source-of-truth.
 
 ### Open Decisions (§"Open Decisions") — resolve before the milestone each blocks
-- [ ] OD#1 Validation success criteria & kill line — blocks M10 / go-no-go (PM, Phase 0)
-- [ ] OD#2 Voice-fidelity acceptance bar — blocks M2 (PM + Expert, Phase 0)
-- [ ] OD#3 Voice profile cold-start workflow — blocks M2 (Eng + Expert, Phase 0)
+- [x] OD#1 Validation success criteria & kill line — ✅ RESOLVED: log all metrics now, review thresholds post-launch with real data (1 confirmed expert voice at launch; users pre-validated willingness to pay)
+- [x] OD#2 Voice-fidelity acceptance bar — ✅ RESOLVED: expert reviews sample answers in portal, confirms via backend sign-off (no numeric rubric; satisfies NT.2)
+- [x] OD#3 Voice profile cold-start workflow — ✅ RESOLVED: bulk upload (article/video/txt) → ingest → expert review → approve flow
 - [x] OD#4 Unit economics: cost per answer vs price — blocks M6 seed matrix (PM + Eng, Phase 0) — RESOLVED in M6.5 (per-token cost model in `observability/model-pricing.ts` → real `cost_micros` on every usage row; calibrated seed quota matrix: Free 10/mo, Plus 200/mo hard cap, Premium softLimit 500/mo→degrade so worst-case ≈ break-even; see §"Open Decisions" #4)
-- [ ] OD#5 Concierge Mode B legal/brand ruling — blocks M9 (Legal + PM, **before M9**)
-- [ ] OD#6 Eval golden-set ownership, size, refresh — blocks M2 / M4 (Eng lead, Phase 0)
+- [x] OD#5 Concierge Mode B legal/brand ruling — ✅ RESOLVED: Mode B approved as default (ToS covers AI-reviewed content); visual indicator required on AI-reviewed/edited answers
+- [ ] OD#6 Eval golden-set ownership, size, refresh — DEFERRED (not blocking launch; revisit post-launch when scaling to multiple experts)
 - [x] OD#7 Streaming vs citation-resolvability UX — blocks M3 / M4 (Eng + Design, early M3) — RESOLVED in M4.3 (stream prose, defer markers; render-after-resolve, server-side resolvability, click-to-passage; see §"Open Decisions" #7)
 - [x] OD#8 Conversation context-window / cost ceiling policy — blocks M3 (Eng, early M3) — RESOLVED in M3.5 (token-budget window, deterministic/offline; LLM summarization deferred; see §"Open Decisions" #8)
 - [x] OD#9 Vietnamese retrieval quality — blocks M1 (Eng, M1) — RESOLVED in M1.3 (cross-lingual default + mandatory NFC normalization; see §"Open Decisions" #9)
 - [x] OD#10 TidyCal webhook reliability / missed-event recovery — blocks M7 (Eng, M7) — RESOLVED in M7.3 (raw-body HMAC verify → idempotent `booking_webhook_events` ledger keyed `[provider, eventId]`; correlate by `bookingRef` then booking email → user's pending `recommended` consultation; admin `reconcile` poll for missed-event recovery; unmatched bookings kept `matched=false` so nothing vanishes; see §"Open Decisions" #10)
 
 ### Non-Technical Requirements (§"Non-Technical Requirements") — pre-launch sign-offs, blocking
-- [ ] NT.1 Legal/brand sign-off on Concierge Mode B disclosure (or confirm Mode-A-only launch)
-- [ ] NT.2 Per-expert written sign-off on voice profile + first/third-person rendition policy
+- [x] NT.1 Legal/brand sign-off on Concierge Mode B disclosure — ✅ RESOLVED (OD#5): Mode B approved as default with visual indicator
+- [x] NT.2 Per-expert written sign-off — ✅ RESOLVED (OD#2): backend approval record as sign-off
 - [ ] NT.3 Data-retention + deletion policy reviewed and published
 - [ ] NT.4 High-stakes-topic disclaimers + consultation-routing reviewed
-- [ ] NT.5 Plan pricing & fair-use limits finalized with PM, stated in plain language at purchase
-- [ ] NT.6 Payment/billing terms (refunds, cancellation, proration) approved + reflected in Stripe config + UI copy
+- [ ] NT.5 Plan pricing & fair-use limits finalized with PM, stated in plain language at purchase — DEFERRED (post-launch)
+- [ ] NT.6 Payment/billing terms (refunds, cancellation, proration) approved + reflected in Stripe config + UI copy — DEFERRED (post-launch)
 
 ### Phase 2 — Retention & Engagement (§"Phase 2 — Retention & Engagement") — not started
 - [ ] Deferred: CI/CD pipeline, mobile (React Native), notifications, voice/TTS, folders/export, follow-up suggestions, confidence indicator, personalized memory, persistent user/customer knowledge, consultation depth, reconciliation dashboard
@@ -448,7 +448,7 @@ Key files: `apps/api/src/entitlements/` (catalog + guard + decorator + `/me/enti
 - **M6 Subscription system:** entitlement catalog + `plan_entitlements` matrix + `@RequiresEntitlement` guard + `/me/entitlements`; `PaymentProvider` abstraction (Stripe driver) — checkout/portal/idempotent webhooks → entitlement sync + **transaction ledger**; transparent usage indicator; fair-use thresholds + degradation; caching layers.
 - **M7 Consultation funnel:** rule-based recommendation hooks (admin-configurable) + in-chat recommendation + TidyCal booking + confirmation.
 - **M8 Admin & Expert portals:** full admin UI (upload, **versioned publish with expert-review gate**, **conversation-to-knowledge** pipeline, entitlement-matrix editor, **basic revenue reports**, failed/low-confidence query inspector, manage users/subs/experts/voice); first-class **Expert portal** (approve voice/knowledge, review answers, view conversions); audit logs; user-data deletion.
-- **M9 Concierge Mode (human-in-the-loop):** **gated at start by Open Decision #5** (Mode B legal/brand ruling — with Mode-A-only as the clean fallback). admin trigger config (off / user-prompted / auto-silent) + confidence threshold + SLA + volume cap; concierge review queue in the Expert portal; reviewer verdict (Good/Bad/Great) + edit; async delivery (visible update vs silent) + email notification; **reviewer-feedback flywheel** → conversation-context injection (immediate) + `voice_examples`/`knowledge_drafts`/chunk-flagging (global); escalate-to-consultation.
+- **M9 Concierge Mode (human-in-the-loop):** OD#5 resolved — Mode B approved as default with visual indicator on AI-reviewed answers. Admin trigger config (off / user-prompted / auto-silent) + confidence threshold + SLA + volume cap; concierge review queue in the Expert portal; reviewer verdict (Good/Bad/Great) + edit; async delivery (visible update vs silent) + email notification; **reviewer-feedback flywheel** → conversation-context injection (immediate) + `voice_examples`/`knowledge_drafts`/chunk-flagging (global); escalate-to-consultation.
 - **M10 Analytics:** usage & cost; consultation funnel + **attribution** (question→conversation→recommendation→booking→revenue); concierge volume/SLA/verdict metrics; knowledge-quality signals.
 - **M11 Hardening:** full E2E path matrix, security tests, `/cso` audit, performance/caching tuning, load smoke test. Plus the blocking **Non-Technical Requirements** sign-offs (see section below) before launch.
 
@@ -493,12 +493,12 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 
 | # | Decision | Why it matters now | Blocks | Owner | Due |
 |---|----------|--------------------|--------|-------|-----|
-| 1 | **Validation success criteria & kill line** | The #1 risk ("will users pay to talk to a digital Expert X") has no number; without a target no one can say if the loop worked. | M10 / go-no-go | PM | Phase 0 |
-| 2 | **Voice-fidelity acceptance bar** | Voice is *the product*; current tests only protect facts (voice-on ≈ voice-off), not "does this sound like the expert." | M2 | PM + Expert | Phase 0 |
-| 3 | **Voice profile cold-start workflow** | ~50 seeded examples is referenced but not how they're produced or how many are "enough." On the critical path for every expert. | M2 | Eng + Expert | Phase 0 |
+| 1 | **Validation success criteria & kill line** | The #1 risk ("will users pay to talk to a digital Expert X") has no number; without a target no one can say if the loop worked. | M10 / go-no-go | PM | ✅ RESOLVED |
+| 2 | **Voice-fidelity acceptance bar** | Voice is *the product*; current tests only protect facts (voice-on ≈ voice-off), not "does this sound like the expert." | M2 | PM + Expert | ✅ RESOLVED |
+| 3 | **Voice profile cold-start workflow** | ~50 seeded examples is referenced but not how they're produced or how many are "enough." On the critical path for every expert. | M2 | Eng + Expert | ✅ RESOLVED |
 | 4 | **Unit economics: cost per answer vs. price** | Cost is logged, not modeled. Multi-call RAG on premium models + "high fair-use cap → degrade" can cost more per heavy user than the plan supports. | M6 seed matrix | PM + Eng | ✅ RESOLVED (M6.5) |
-| 5 | **Concierge Mode B (silent review) legal/brand ruling** | A human silently editing an answer attributed to a named expert is the highest-liability mechanism in the app; rules differ by jurisdiction (VN + EU/US). | M9 | Legal + PM | **before M9** |
-| 6 | **Eval golden-set ownership, size, refresh** | The harness is specified; the dataset isn't. A thin/stale golden set gives false confidence. | M2 / M4 | Eng lead | Phase 0 |
+| 5 | **Concierge Mode B (silent review) legal/brand ruling** | A human silently editing an answer attributed to a named expert is the highest-liability mechanism in the app; rules differ by jurisdiction (VN + EU/US). | M9 | Legal + PM | ✅ RESOLVED |
+| 6 | **Eval golden-set ownership, size, refresh** | The harness is specified; the dataset isn't. A thin/stale golden set gives false confidence. | M2 / M4 | Eng lead | DEFERRED |
 | 7 | **Streaming vs. citation-resolvability UX** | Verifying every citation before display conflicts with token streaming — citations could flash then vanish, or buffering kills the streaming feel. | M3 / M4 | Eng + Design | ✅ RESOLVED (M4.3) |
 | 8 | **Conversation context-window / cost ceiling policy** | Long multi-turn chats grow the prompt unbounded — a correctness and cost risk. | M3 | Eng | ✅ RESOLVED (M3.5) |
 | 9 | **Vietnamese retrieval quality (not just voice tone)** | i18n affects embeddings, chunking, and retrieval — deeper than answer styling. | M1 | Eng | ✅ RESOLVED (M1.3) |
@@ -506,9 +506,26 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 
 **1. Validation success criteria & kill line** — the quantitative bar that means the hypothesis is validated, falsified, or needs a pivot (numbers PM-set): activation (% of new users reaching ≥1 cited answer in session 1); engagement (% returning within 7 days; median questions/active user/week); **willingness-to-pay** (free→paid %, trial→paid if any); funnel (recommendation→booking %, revenue per paying user); **explicit kill/pivot line** (e.g. *"if free→paid < X% and booking < Y% by [date], revisit pricing/positioning before scaling"*). Instrument in **M10** from day one; add chosen targets to §"Strategic risk & validation focus."
 
+> **RESOLVED.** Reframed from "set thresholds before launch" to "log everything, review with real data." Decisions:
+> 1. **Log all candidate metrics from day one** — activation, engagement, willingness-to-pay, funnel conversion, revenue per user. M10.1 and M10.2 already instrument usage and funnel data. M10.4 should ensure all the metrics listed above are captured in `usage_logs` / analytics, not gate on specific numeric thresholds.
+> 2. **No pre-set kill line.** With 1 expert voice at launch and pre-validated user willingness to pay (users confirmed they would buy), there is insufficient baseline data to set meaningful thresholds. Thresholds will be defined post-launch once real usage patterns emerge (target: ~30–90 days of data).
+> 3. **M10.4 is now: "instrument all validation metrics"** — not "instrument against specific targets." The dashboard should surface the raw numbers; the PM reviews them periodically and sets targets when the data supports it.
+
 **2. Voice-fidelity acceptance bar** — what "sounds like the expert" means, measured, with a launch-blocking score: hold out the expert's **real** answers (not used in profile/examples); blind-rate expert-authored vs. app-rendered on a fidelity rubric (tone, structure, framing, terminology), ideally by the expert; set a per-expert **launch gate** (e.g. "expert can't distinguish > Z%" or "rubric ≥ N/5"). Add as a **third assertion** alongside voice-on ≈ voice-off in the RAG/voice eval harness.
 
+> **RESOLVED.** Expert reviews AI-generated answers directly and confirms in the backend. Decisions:
+> 1. **Expert review flow:** Generate a batch of sample answers (10–20), present them to the expert in the admin/expert portal, expert marks each as Approved / Needs Work with optional notes.
+> 2. **Backend confirmation:** Store the expert's sign-off as a `voice_profile_status` field (e.g. `pending_review` → `approved`) on the expert/tenant record. The voice profile is not live until status = `approved`.
+> 3. **No numeric rubric.** With 1 expert at launch, formal blind scoring is overhead. The expert's subjective "this sounds like me" is the acceptance bar. Revisit with a structured rubric when scaling to multiple experts.
+> 4. **This also satisfies NT.2** (per-expert written sign-off on voice profile) — the backend approval record serves as the sign-off.
+
 **3. Voice profile cold-start workflow** — the repeatable process to stand up a new expert's voice from zero: source of examples (structured interview / past transcripts / published writing / mix); **minimum viable example count** to pass the §2 bar and how that's verified; **effort estimate per expert** (this is the unit of scaling the business); whether the Conversation-to-Knowledge + concierge flywheel is expected to improve the profile post-launch and how that's reviewed.
+
+> **RESOLVED.** Build an admin upload mechanism for expert voice materials. Decisions:
+> 1. **Bulk upload of voice source materials.** Admin/expert portal provides a bulk upload flow accepting: articles (PDF, DOCX, HTML), video (MP4, WEBM — transcribed server-side), and plain text (TXT, MD). These are ingested into `voice_examples` / `knowledge_drafts` via the existing document pipeline (parse → chunk → embed).
+> 2. **Supported formats:** PDF, DOCX, HTML, TXT, MD (direct text extraction); MP4, WEBM (transcription via Whisper/Gemini then text extraction). CSV for structured Q&A pairs.
+> 3. **No minimum count enforced by the system.** The expert reviews the output (OD#2) and decides if more material is needed. The concierge flywheel (M9.4) improves the profile post-launch as reviewers flag good/bad answers.
+> 4. **Workflow:** Upload materials → system ingests + builds/updates voice profile → expert reviews sample answers (OD#2) → expert approves → voice goes live.
 
 **4. Unit economics: cost per answer vs. price** — model an answer's cost (embedding, retrieval, optional rerank, generation in+out tokens, any concierge human time) and the **worst-case premium user/month** under "high fair-use cap → degrade": at what volume does a premium user go cost-negative, and does the degrade threshold protect margin? Feed into the **Phase-1 seed matrix** (the "Questions/month" cells are still placeholders) and the degrade trigger; cross-check the assumed cache-hit rate against realistic low early volume.
 
@@ -520,6 +537,12 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 > 5. **Cache-hit rate is NOT assumed for margin.** Early volume is low, so the cache hit-rate is low; the margin math above holds at a **0% hit rate**. Caching (M6.4) is pure upside — any hit costs $0 and improves the blended number, but the plan is solvent without it. When real volume + the real LLM/embedding driver land, update the rates + the modeled answer size in `model-pricing.ts` (the single source) and re-tune the soft threshold via the M8.3 matrix editor — no deploy needed for the threshold itself.
 
 **5. Concierge Mode B legal/brand ruling — hard gate at start of M9** — obtain the legal + brand ruling on silently reviewing/editing answers attributed to a named expert **before M9 is built**: disclosure obligations across jurisdictions (VN + EU/US); accountability for a human-edited answer presented as the expert's; confirm ToS/privacy wording (PRD §Security) covers Mode B specifically; **fallback plan** — can the product launch with **Mode A only**, and is M9 sequenced so that's a clean fallback, not a rebuild? (Promoted from the M11 checklist to an M9-start gate.)
+
+> **RESOLVED.** Mode B is **approved as the default** concierge mode. This is a "2nd brain" app — users have agreed in the ToS that responses may include AI-reviewed/edited content. Decisions:
+> 1. **Mode B (`auto_silent`) is the default configuration.** `CONCIERGE_ALLOW_SILENT` defaults to `true`; the admin UI enables Mode B out of the box. No Mode-A-only fallback needed.
+> 2. **Visual disclosure required on every AI-reviewed/edited answer.** Whenever concierge review has touched an answer (reviewer edit, quality pass, or content injection), the answer must display a visual indicator — an **asterisk (\*)** or **info icon (ℹ)** next to the answer, with a **mouse-over/tap tooltip** reading: *"This response includes AI-reviewed/edited content."* This satisfies disclosure obligations without interrupting the UX.
+> 3. **ToS/privacy coverage confirmed.** The existing ToS framing ("AI rendition of [Expert]" + "answers may be reviewed/edited by the expert team for quality") already covers Mode B. No additional legal wording needed — the visual indicator is the user-facing layer on top of the contractual disclosure.
+> 4. **No jurisdiction-specific concern.** As a 2nd brain / AI-assistant product with explicit ToS consent, the silent-review mechanism does not trigger the attribution/liability issues originally flagged for VN + EU/US — the user understands they are interacting with an AI system, not directly with the named expert.
 
 **6. Eval golden-set ownership, size, refresh** — make the golden set a real, owned dataset: a **named** owner (not "the team"); size target per expert and per topic; refresh cadence (especially when knowledge is re-published — versions change → expected answers may change); how **failed/low-confidence queries** (admin inspector) and concierge **"Bad"** flags feed back into it.
 
@@ -563,10 +586,42 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 
 These are not code; they are legal / brand / policy gates that must be cleared before launch. Tracked here for later verification (the M11 hardening gate references this section).
 
-- [ ] **Legal/brand sign-off on Concierge Mode B (silent review) disclosure** — final confirmation of the ruling made at the M9-start gate (Open Decision #5): ToS + privacy policy wording approved; "AI rendition of [Expert]" framing confirmed; accountability for human-edited answers attributed to a named expert defined. (If Mode B was disallowed, confirm launch is Mode-A-only.)
-- [ ] **Per-expert written sign-off** on voice profile + first-person-vs-third-person rendition policy (their reputation rides on every answer).
-- [ ] **Data-retention + deletion policy reviewed and published** — uploads by mode (temporary vs persistent), consultation transcripts, concierge review records, conversation history.
-- [ ] **High-stakes-topic disclaimers + consultation-routing reviewed** (financial/legal/medical-adjacent advice liability).
+- [x] **Legal/brand sign-off on Concierge Mode B (silent review) disclosure** — **RESOLVED (OD#5):** Mode B approved as default. ToS already covers AI-reviewed content. Visual indicator (asterisk/info icon + tooltip) required on AI-reviewed/edited answers. No Mode-A-only fallback needed.
+- [x] **Per-expert written sign-off** — **RESOLVED (OD#2):** expert reviews sample answers in-app + backend approval record serves as sign-off. Rendition policy confirmed per-expert at approval time.
+- [ ] **Data-retention + deletion policy reviewed and published** — uploads by mode (temporary vs persistent), consultation transcripts, concierge review records, conversation history. **DRAFT (pending PM approval):**
+
+> **Data Retention & Deletion Policy — DRAFT**
+>
+> | Data type | Retention | Auto-delete | User-deletable |
+> |-----------|-----------|-------------|----------------|
+> | Conversation history | 2 years from last activity | Yes, after retention period | Yes, immediate on request |
+> | Expert knowledge docs (published) | Indefinite (core product data) | No | Expert/admin can unpublish |
+> | User-uploaded files (temporary) | 90 days from upload | Yes | Yes |
+> | User-uploaded files (persistent/saved) | Until user deletes or account closes | No | Yes |
+> | Consultation transcripts | 1 year from consultation date | Yes | Yes, on request |
+> | Concierge review records | 1 year (used for flywheel training) | Yes | No (anonymized after retention) |
+> | Usage logs / analytics | 2 years | Yes | No (aggregated, not PII) |
+> | Account data (profile, auth) | Until account closure + 30 days | Yes, 30 days post-closure | Yes, account deletion |
+>
+> **Deletion workflow:** User requests deletion via account settings or support → soft-delete immediate → hard-delete within 30 days → confirmation email. Admin can trigger bulk deletion for compliance. All deletions are logged in the immutable audit trail.
+>
+> **Backups:** Database backups follow the same retention schedule — backups older than the retention window are purged. No PII persists in backups beyond the stated retention.
+- [ ] **High-stakes-topic disclaimers + consultation-routing reviewed** (financial/legal/medical-adjacent advice liability). **DRAFT (pending PM approval):**
+
+> **High-Stakes Topic Disclaimers — DRAFT**
+>
+> **In-app disclaimer (shown on every answer touching flagged topics):**
+> *"This response is AI-generated for informational purposes only. It does not constitute professional financial, legal, medical, or tax advice. For decisions with significant financial or legal consequences, we recommend booking a consultation with [Expert Name] for personalized guidance."*
+>
+> **Topic detection:** The AI system prompt includes instructions to detect high-stakes topics (investment decisions, legal disputes, medical symptoms, tax strategy) and automatically append the disclaimer + a consultation CTA when triggered.
+>
+> **Routing behavior:** For questions that are clearly high-stakes (e.g., "should I sue my landlord?", "what medication should I take?"), the AI should:
+> 1. Provide general educational context (not specific advice)
+> 2. Append the disclaimer
+> 3. Surface a "Book a consultation" CTA with the relevant expert
+> 4. Log the interaction as `high_stakes = true` in usage_logs for monitoring
+>
+> **ToS/legal coverage:** The Terms of Service must include a general disclaimer that all AI-generated content is informational, not professional advice, and that the platform is not liable for decisions made based on AI responses.
 - [ ] **Plan pricing & fair-use limits finalized with PM** and stated in plain language at point of purchase (free-tier question allowance, premium fair-use thresholds).
 - [ ] **Payment/billing terms** (refunds, cancellation, proration) approved and reflected in the Stripe configuration + UI copy.
 

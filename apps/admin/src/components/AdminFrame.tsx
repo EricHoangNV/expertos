@@ -25,6 +25,7 @@ const NAV: NavItem[] = [
   { href: "/knowledge-drafts", label: "Drafts", group: "Expert" },
   { href: "/voice-profiles", label: "Voice profiles", group: "Expert" },
   { href: "/answers", label: "AI answers", group: "Expert" },
+  { href: "/concierge-reviews", label: "Review queue", group: "Expert" },
   { href: "/conversions", label: "Conversions", group: "Expert" },
   { href: "/revenue", label: "Revenue", group: "Admin" },
   { href: "/analytics", label: "Usage & cost", group: "Admin" },

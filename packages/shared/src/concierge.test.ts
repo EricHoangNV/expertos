@@ -1,4 +1,10 @@
-import { reviewConfigUpdateSchema, reviewTriggerModeSchema } from "./concierge";
+import {
+  conciergeQueueListQuerySchema,
+  reviewConfigUpdateSchema,
+  reviewResponseCreateSchema,
+  reviewTriggerModeSchema,
+  reviewVerdictSchema,
+} from "./concierge";
 
 describe("reviewTriggerModeSchema", () => {
   it("accepts the two on-modes", () => {
@@ -53,5 +59,64 @@ describe("reviewConfigUpdateSchema", () => {
 
   it("requires every field (no partial save — the whole config is posted)", () => {
     expect(reviewConfigUpdateSchema.safeParse({ enabled: true }).success).toBe(false);
+  });
+});
+
+describe("reviewVerdictSchema", () => {
+  it("accepts the three verdicts", () => {
+    expect(reviewVerdictSchema.parse("good")).toBe("good");
+    expect(reviewVerdictSchema.parse("bad")).toBe("bad");
+    expect(reviewVerdictSchema.parse("great")).toBe("great");
+  });
+
+  it("rejects an unknown verdict", () => {
+    expect(reviewVerdictSchema.safeParse("ok").success).toBe(false);
+  });
+});
+
+describe("conciergeQueueListQuerySchema", () => {
+  it("defaults limit to 50 and offset to 0", () => {
+    expect(conciergeQueueListQuerySchema.parse({})).toEqual({ limit: 50, offset: 0 });
+  });
+
+  it("coerces query-string numbers and keeps a valid status filter", () => {
+    expect(conciergeQueueListQuerySchema.parse({ status: "requested", limit: "10", offset: "20" })).toEqual({
+      status: "requested",
+      limit: 10,
+      offset: 20,
+    });
+  });
+
+  it("rejects a non-positive / over-cap limit", () => {
+    expect(conciergeQueueListQuerySchema.safeParse({ limit: 0 }).success).toBe(false);
+    expect(conciergeQueueListQuerySchema.safeParse({ limit: 201 }).success).toBe(false);
+  });
+
+  it("rejects a negative offset and an unknown status", () => {
+    expect(conciergeQueueListQuerySchema.safeParse({ offset: -1 }).success).toBe(false);
+    expect(conciergeQueueListQuerySchema.safeParse({ status: "bogus" }).success).toBe(false);
+  });
+});
+
+describe("reviewResponseCreateSchema", () => {
+  it("defaults revisedAnswer and notes to null (verdict-only response)", () => {
+    expect(reviewResponseCreateSchema.parse({ verdict: "good" })).toEqual({
+      verdict: "good",
+      revisedAnswer: null,
+      notes: null,
+    });
+  });
+
+  it("trims a revision + notes and keeps them", () => {
+    expect(
+      reviewResponseCreateSchema.parse({ verdict: "great", revisedAnswer: "  better  ", notes: "  ok  " }),
+    ).toEqual({ verdict: "great", revisedAnswer: "better", notes: "ok" });
+  });
+
+  it("requires a verdict and rejects an empty revision", () => {
+    expect(reviewResponseCreateSchema.safeParse({}).success).toBe(false);
+    expect(reviewResponseCreateSchema.safeParse({ verdict: "good", revisedAnswer: "   " }).success).toBe(
+      false,
+    );
   });
 });
