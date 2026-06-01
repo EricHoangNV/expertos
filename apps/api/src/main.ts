@@ -10,8 +10,13 @@ async function bootstrap(): Promise<void> {
   initSentry();
 
   // Buffer framework logs until the structured logger is wired so nothing is dropped
-  // or printed in Nest's default (unstructured) format.
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // or printed in Nest's default (unstructured) format. `rawBody` preserves the unparsed
+  // request bytes on `req.rawBody` so the billing webhook can verify the provider signature
+  // over exactly what was sent (a JSON re-encode would invalidate the HMAC).
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
   app.useLogger(app.get(StructuredLogger));
   app.enableShutdownHooks();
 

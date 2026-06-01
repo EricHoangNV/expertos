@@ -10,6 +10,7 @@ import { RetrievalModule } from "./retrieval/retrieval.module";
 import { VoiceModule } from "./voice/voice.module";
 import { ChatModule } from "./chat/chat.module";
 import { UploadModule } from "./uploads/upload.module";
+import { BillingModule } from "./billing/billing.module";
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { UploadModule } from "./uploads/upload.module";
     VoiceModule,
     ChatModule,
     UploadModule,
+    BillingModule,
   ],
   controllers: [HealthController],
   providers: [HealthService],

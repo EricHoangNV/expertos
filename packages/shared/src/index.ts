@@ -57,6 +57,12 @@ export type {
   EntitlementsDto,
   EntitlementDeniedPayload,
 } from "./entitlements";
+export { billingCheckoutSchema } from "./billing";
+export type {
+  BillingCheckoutInput,
+  CheckoutSessionDto,
+  PortalSessionDto,
+} from "./billing";
 export type {
   ChatRequestInput,
   ChatMessageDto,

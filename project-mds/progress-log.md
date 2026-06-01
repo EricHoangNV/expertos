@@ -940,3 +940,37 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Seam-tested with a mocked tx** — the upsert-increment-rollback race-safety + the real `usage_counters` unique join the M11 Testcontainers list with the raw-SQL stores.
 - **Keep `FeatureKey` (shared) in lockstep with the seed's `FEATURES` list** — drift fail-closes an unknown key. M8.3's matrix editor must not introduce a key the code doesn't know.
 - **The `EntitlementGuard` is a global `APP_GUARD`** — its ordering after the auth guards relies on `EntitlementsModule` importing `AuthModule`; keep that import.
+
+## M6.2 — PaymentProvider abstraction (Stripe driver) + idempotent webhooks → subscription/ledger sync
+**Date:** 2026-06-01
+**Ref:** PRD Task Manifest M6.2; §"Paywall, Entitlements & Feature Gating" (payment-provider abstraction + paywall flow)
+
+**What was done:**
+- New `apps/api/src/billing/` module — the integration point that finally **writes** the `subscriptions` rows `EntitlementService.resolvePlan` already reads (until now everyone resolved to Free).
+- **`PaymentProvider` interface** (`payment-provider.ts`): `createCheckoutSession`/`openCustomerPortal`/`verifyWebhook`/`parseEvent`/`cancelSubscription` + the normalized **`BillingEvent`** union (`SubscriptionChange` | `LedgerEntry`) + `WebhookVerificationError`. No app code imports the Stripe SDK directly.
+- **`OfflinePaymentProvider`** (default): `offline://` checkout/portal URLs; webhook = trusted JSON `BillingEvent` envelope (parsed by exported `parseOfflineEvent`) so local/test drives the same DB-sync path Stripe would.
+- **`StripePaymentProvider`**: real `node:crypto` HMAC-SHA256 webhook **signature verification** (Stripe `t=…,v1=…` scheme, replay-tolerance window, constant-time compare) + **event parsing** (`customer.subscription.{created,updated,deleted}`, `invoice.payment_{succeeded,failed}`, `charge.refunded`); checkout/portal/cancel build Stripe REST params through an injected `StripeHttpClient` seam (`FetchStripeHttpClient` default transport).
+- **`BillingService`** (coverage-gated, 100%): `createCheckout`/`createPortal` under the user's RLS; `handleWebhook` verifies (→400 on bad sig) then idempotently syncs in a system RLS context — subscriptions upsert by `providerSubId`, transactions insert keyed by `[provider, providerRef]` (= event id).
+- **`BillingController`**: `POST /billing/checkout` + `/portal` (`@Roles("user")`), `POST /billing/webhook` (`@Public()`, reads `req.rawBody`). `main.ts` now `NestFactory.create(.., { rawBody: true })`. Wired `BillingModule` into `AppModule`.
+- Shared `billingCheckoutSchema` + `CheckoutSessionDto`/`PortalSessionDto` (`packages/shared/src/billing.ts`, exported from index).
+- 55 new api tests (billing.service ×27, offline provider ×13, stripe provider ×15). Suite 458 → 513.
+
+**Key decisions:**
+- **Offline default + Stripe-behind-a-token** mirrors `STORAGE_PROVIDER`/`EMBEDDING_PROVIDER` (`billing.defaults.ts` resolves Stripe only when both env secrets present). Keeps the whole flow runnable in CI/local without Stripe or network.
+- **Idempotency key = provider event id** (`providerRef`), not invoice id — a failed-then-paid invoice would otherwise collide; event ids are unique per delivery and stable across retries.
+- **Webhook uses the raw body** (signature is HMAC over the unparsed bytes) — `rawBody:true` + `req.rawBody`; the route is `@Public()` (signature-verified, not Firebase).
+- **Redirect URLs server-chosen** from `WEB_APP_URL` — never client-supplied (open-redirect guard).
+- **Stripe driver REST transport (fetch) deferred to deploy-time** (live network, not CI) — same caveat as the GCS storage driver; the verify/parse/param-build logic is fully unit-tested. Implemented the security-critical signature verification myself (node:crypto) rather than depend on the Stripe SDK, consistent with the repo's structural-typing / no-heavy-deps philosophy.
+- **Seed `provider_price_id` left null** — real Stripe ids come from the dashboard / M8.3 admin editor; `createCheckout` correctly 400s until a price is configured. The webhook→DB-sync path is the offline-demoable part.
+
+**Files changed:**
+- `apps/api/src/billing/{payment-provider,offline-payment-provider,stripe-payment-provider,billing.tokens,billing.defaults,billing.service,billing.controller,billing.module}.ts` — new module + 3 test files.
+- `apps/api/src/app.module.ts` — import `BillingModule`.
+- `apps/api/src/main.ts` — `rawBody: true` for webhook signature verification.
+- `packages/shared/src/billing.ts` (new) + `packages/shared/src/index.ts` — billing DTOs/schema export.
+
+**Notes for next iteration:**
+- **M6.3 (usage indicator + fair-use degrade-don't-block)** is next: a live subscription now resolves a real Plus/Premium plan, so `/me/entitlements` shows a non-Free quota. The metered-unlimited "degrade to a cheaper model instead of blocking" still belongs in M6.3 (`enforce` allows unlimited outright today).
+- The Stripe REST transport (`FetchStripeHttpClient`) joins the M11 integration list (needs live Stripe). The webhook signature/parse logic does NOT (fully unit-tested with computed signatures).
+- `cancelSubscription` is implemented on both drivers + the interface but **has no caller yet** — wire it into the M8.4 admin "manage subscriptions" action or a user-initiated cancel.
+- `subscriptions.tenant_id` on a mirrored row is set to the resolved user's tenant (not GLOBAL) — correct for B2B later.

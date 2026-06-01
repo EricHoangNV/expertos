@@ -49,7 +49,7 @@
 
 #### M6 — Subscription system
 - [x] M6.1 Entitlement catalog + `plan_entitlements` matrix + `@RequiresEntitlement` guard + `/me/entitlements` (§"Paywall, Entitlements & Feature Gating")
-- [ ] M6.2 `PaymentProvider` abstraction (Stripe driver): checkout / customer portal / idempotent webhooks → entitlement sync + transaction ledger
+- [x] M6.2 `PaymentProvider` abstraction (Stripe driver): checkout / customer portal / idempotent webhooks → entitlement sync + transaction ledger
 - [ ] M6.3 Transparent usage indicator (`.bar` quota meter; `.bar.warn` amber); fair-use thresholds + degrade-don't-block
 - [ ] M6.4 Caching layers (semantic → retrieval → answer)
 - [ ] M6.5 Resolve Open Decision #4 (unit economics → seed quota matrix)
