@@ -1874,3 +1874,33 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Runbook (this aarch64/linuxkit sandbox):** the Prisma **library** engine SIGILLs at runtime, so the integration suite needs the **binary** engine. Regenerate first (`PRISMA_CLIENT_ENGINE_TYPE=binary pnpm --filter @expertos/db exec prisma generate`), run with `PRISMA_CLIENT_ENGINE_TYPE=binary RLS_TEST_DATABASE_URL="postgresql://app_user:app_user@localhost:5432/expertos?schema=public" pnpm --filter @expertos/api test:integration`, then regenerate the default (library) engine before the gates.
 - **Remaining deferred raw-SQL stores** for this same harness (copy the test): `PgExpertStore` `array_agg`, `PgSemanticCacheStore`, and the `FailedQueryService`/`ExpertPortalService` `LATERAL` joins. Watch LEARNINGS #7 (`$n::uuid` cast on raw uuid params).
 - Default suite unchanged: 849 pass / 0 fail / 0 skip; the integration tests run only via `test:integration`.
+
+## M11 — Live-DB integration tests for the remaining four raw-SQL stores/services
+**Date:** 2026-06-01
+**Ref:** PRD M11 (Hardening; §"Testing Strategy") — the deferred "Testcontainers live-DB pass" backlog flagged across the seam notes, after `PgVectorStore` + conversation-search.
+
+**What was done:**
+- Added 4 new opt-in live-Postgres integration suites (as `app_user` against `expertos-pg`, +21 tests; full `apps/api` integration suite now 35 across 6 suites). All pass live.
+- `apps/api/src/voice/expert.store.integration.test.ts` (`PgExpertStore`, 5): `array_agg(DISTINCT … ORDER BY …)` language fold + de-dupe → JS `string[]`; active/published join filters (retired expert + draft-only profile excluded); language narrowing; LIMIT bind; `display_name ASC`; cross-tenant RLS on `tenant_only` `experts`/`voice_profiles`.
+- `apps/api/src/feedback-inspector/failed-query.service.integration.test.ts` (`FailedQueryService`, 5, through the real service + `RlsService`): `LATERAL` most-recent-question lookup; `cardinality(source_version_ids)=0` insufficient proxy; `helpful=false`-only; cross-tenant read under the admin `is_admin` GUC with null question/model/confidence preserved; newest-first + limit/offset.
+- `apps/api/src/expert/expert-portal.service.integration.test.ts` (`ExpertPortalService`, 5): the voice-scope isolation crux (a non-admin expert sees only their own `conversation.expert_id` funnel, never a peer's in the same tenant); `groupBy` conversions aggregate (trigger/response/status + `_sum(amount_cents)` booked revenue); dual-`LATERAL` answer feed (question + latest feedback + insufficient flag); admin targets an expert via `requestedExpertId`; short-circuit-to-empty when no expert resolves.
+- `apps/api/src/cache/semantic-cache.store.integration.test.ts` (`PgSemanticCacheStore`, 6): `citations` jsonb round-trip + `sourceVersionIds` derivation; hit-counter increment; `notOlderThan` TTL cutoff; model-tier-in-key miss; `store` replaces-prior (one live row, hits reset); cross-tenant RLS on `tenant_only` `semantic_cache`.
+
+**Key decisions:**
+- Drove the elevated-RLS services (`FailedQueryService`, `ExpertPortalService`) through the real service so the production RLS-context derivation is pinned, not just the SQL; drove the two stores (`PgExpertStore`, `PgSemanticCacheStore`) directly with a manually-applied non-admin context to exercise tenant RLS (the `PgVectorStore` precedent).
+- Every test scopes to its own random-UUID tenant(s), so the cross-tenant admin reads (failed-query, expert-portal-as-admin) can't be polluted by a concurrent suite; the integration runner is `--runInBand` regardless.
+- Explicit `created_at`/`updated_at` intervals instead of `now()` (constant within a transaction) make newest-first ordering deterministic; the failed-query ordering assertion filters to my own rows (the admin read is platform-wide) and checks relative order.
+- NFC-normalized any VI fixture content (the keyword paths don't normalize — the schema does upstream).
+- Cast every uuid bind `$n::uuid` (LEARNINGS #7), including the nullable `consultation_id`.
+
+**Files changed:**
+- `apps/api/src/voice/expert.store.integration.test.ts` — new (5 tests).
+- `apps/api/src/feedback-inspector/failed-query.service.integration.test.ts` — new (5 tests).
+- `apps/api/src/expert/expert-portal.service.integration.test.ts` — new (5 tests).
+- `apps/api/src/cache/semantic-cache.store.integration.test.ts` — new (6 tests).
+- (No production code changed — pure test additions; all four files match the `*.integration.test.ts` pattern already excluded from the default `pnpm test`.)
+
+**Notes for next iteration:**
+- The deferred raw-SQL store live-DB backlog is now CLOSED — all six paths (`PgVectorStore`, conversation-search, `PgExpertStore`, `PgSemanticCacheStore`, `FailedQueryService`, `ExpertPortalService`) have live integration suites. The only remaining live-DB gap is the *approximate* pgvector cosine match (`PgVoiceExampleStore`, `semantic_cache.embedding`), which awaits the real embedder.
+- Runbook unchanged: `PRISMA_CLIENT_ENGINE_TYPE=binary pnpm --filter @expertos/db exec prisma generate` → run with `PRISMA_CLIENT_ENGINE_TYPE=binary RLS_TEST_DATABASE_URL="postgresql://app_user:app_user@localhost:5432/expertos?schema=public" pnpm --filter @expertos/api test:integration` → regenerate the default library engine before the gates.
+- Remaining M11 engineering: E2E Playwright matrix (M11.1), perf/caching tuning + load smoke (M11.3), design-system conformance audit `/design-review` (M11.5). M11.4 (NT sign-offs) + M9/M10 gates (OD#5/OD#1) need product/legal decisions.
