@@ -81,3 +81,27 @@ export interface RecommendationResponseResultDto {
   response: RecommendationResponseValue;
   booking: ConsultationBookingDto | null;
 }
+
+/**
+ * Admin-triggered missed-event recovery for TidyCal bookings (M7.3, resolves Open Decision #10).
+ * Booking confirmation normally arrives by webhook; this polls TidyCal for bookings since `since`
+ * (default: a recent lookback window) and idempotently applies any the webhook missed, so a
+ * booked-but-unconfirmed consultation never silently vanishes. `since` is an ISO timestamp.
+ */
+export const bookingReconcileSchema = z.object({
+  since: z.coerce.date().optional(),
+});
+
+export type BookingReconcileInput = z.infer<typeof bookingReconcileSchema>;
+
+/**
+ * Summary of a reconcile run (M7.3). `polled` bookings were fetched from TidyCal; `applied` were newly
+ * recorded (`matched` of those correlated to a user/consultation); `skipped` were already in the
+ * idempotency ledger. A non-zero `applied` means the webhook had missed events that recovery caught.
+ */
+export interface BookingReconcileResultDto {
+  polled: number;
+  applied: number;
+  matched: number;
+  skipped: number;
+}

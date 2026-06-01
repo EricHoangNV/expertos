@@ -951,6 +951,42 @@ model RecommendationRule {
   @@map("recommendation_rules")
 }
 
+/// TidyCal booking-webhook ledger (M7.3, resolves Open Decision #10). Every verified booking event —
+/// whether delivered by webhook or recovered by the reconcile poll — is recorded here, mirroring the
+/// M6.2 Stripe `transactions` idempotency discipline. Two jobs:
+///   1. **Idempotency** — `@@unique([provider, eventId])` makes a redelivered event a no-op (a
+///      reconcile-sourced entry uses a deterministic synthetic `eventId` so re-polling is idempotent too).
+///   2. **Missed-event / no-vanish recovery** — `matched=false` rows are bookings we couldn't correlate
+///      to a user/consultation (e.g. a booking made outside the funnel); they are kept (never dropped)
+///      so an admin can reconcile them manually instead of the booking silently vanishing.
+/// Reference/system data like `recommendation_rules` (no tenant RLS): written only in the system RLS
+/// context of the `@Public()` webhook / admin reconcile, read only by admins.
+model BookingWebhookEvent {
+  id             String    @id @default(uuid()) @db.Uuid
+  /// Booking provider (e.g. `tidycal`, `offline`) — namespaces the idempotency key.
+  provider       String
+  /// Provider event id (webhook) or a synthetic `reconcile:<bookingRef>` key (poll) — idempotency key.
+  eventId        String    @map("event_id")
+  /// The normalized event kind (`booking.created` / `booking.cancelled` / `booking.rescheduled`).
+  eventType      String    @map("event_type")
+  /// TidyCal booking id — the correlation key back to a `consultations` row (links may be static).
+  bookingRef     String?   @map("booking_ref")
+  /// Booking contact email — how an inbound booking is matched to a user when no consultation exists.
+  email          String?
+  scheduledAt    DateTime? @map("scheduled_at")
+  /// The `consultations` row this event resolved to (soft pointer; null when unmatched).
+  consultationId String?   @map("consultation_id") @db.Uuid
+  /// True once the event was correlated to a user/consultation; false rows await manual reconciliation.
+  matched        Boolean   @default(false)
+  /// The raw verified event, kept for audit / manual recovery.
+  payload        Json
+  receivedAt     DateTime  @default(now()) @map("received_at")
+
+  @@unique([provider, eventId])
+  @@index([bookingRef])
+  @@map("booking_webhook_events")
+}
+
 // ──────────────────────────── Cache ────────────────────────────
 
 /// Semantic question cache (normalized question → cached answer + citations).

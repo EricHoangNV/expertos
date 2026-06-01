@@ -54,10 +54,10 @@
 - [x] M6.4 Caching layers (semantic → retrieval → answer)
 - [x] M6.5 Resolve Open Decision #4 (unit economics → seed quota matrix)
 
-#### M7 — Consultation funnel
+#### M7 — Consultation funnel — COMPLETE
 - [x] M7.1 Rule-based recommendation hooks (admin-configurable: topic, depth, low confidence, high intent)
 - [x] M7.2 In-chat recommendation (Book / Maybe later / Ask another) + TidyCal booking + confirmation
-- [ ] M7.3 Resolve Open Decision #10 (TidyCal webhook reliability / missed-event recovery)
+- [x] M7.3 Resolve Open Decision #10 (TidyCal webhook reliability / missed-event recovery)
 
 #### M8 — Admin & Expert portals
 - [ ] M8.1 Admin: upload + versioned publish with expert-review gate (`Draft → AI Processing → Expert Review → Published`) — status as semantic `.badge` tones (§"Design System"); `.shell` shared with expert portal
@@ -96,7 +96,7 @@
 - [x] OD#7 Streaming vs citation-resolvability UX — blocks M3 / M4 (Eng + Design, early M3) — RESOLVED in M4.3 (stream prose, defer markers; render-after-resolve, server-side resolvability, click-to-passage; see §"Open Decisions" #7)
 - [x] OD#8 Conversation context-window / cost ceiling policy — blocks M3 (Eng, early M3) — RESOLVED in M3.5 (token-budget window, deterministic/offline; LLM summarization deferred; see §"Open Decisions" #8)
 - [x] OD#9 Vietnamese retrieval quality — blocks M1 (Eng, M1) — RESOLVED in M1.3 (cross-lingual default + mandatory NFC normalization; see §"Open Decisions" #9)
-- [ ] OD#10 TidyCal webhook reliability / missed-event recovery — blocks M7 (Eng, M7)
+- [x] OD#10 TidyCal webhook reliability / missed-event recovery — blocks M7 (Eng, M7) — RESOLVED in M7.3 (raw-body HMAC verify → idempotent `booking_webhook_events` ledger keyed `[provider, eventId]`; correlate by `bookingRef` then booking email → user's pending `recommended` consultation; admin `reconcile` poll for missed-event recovery; unmatched bookings kept `matched=false` so nothing vanishes; see §"Open Decisions" #10)
 
 ### Non-Technical Requirements (§"Non-Technical Requirements") — pre-launch sign-offs, blocking
 - [ ] NT.1 Legal/brand sign-off on Concierge Mode B disclosure (or confirm Mode-A-only launch)
@@ -502,7 +502,7 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 | 7 | **Streaming vs. citation-resolvability UX** | Verifying every citation before display conflicts with token streaming — citations could flash then vanish, or buffering kills the streaming feel. | M3 / M4 | Eng + Design | ✅ RESOLVED (M4.3) |
 | 8 | **Conversation context-window / cost ceiling policy** | Long multi-turn chats grow the prompt unbounded — a correctness and cost risk. | M3 | Eng | ✅ RESOLVED (M3.5) |
 | 9 | **Vietnamese retrieval quality (not just voice tone)** | i18n affects embeddings, chunking, and retrieval — deeper than answer styling. | M1 | Eng | ✅ RESOLVED (M1.3) |
-| 10 | **TidyCal webhook reliability / missed-event recovery** | Booking confirmation depends on the webhook; a missed event leaves a booking in limbo. | M7 | Eng | M7 |
+| 10 | **TidyCal webhook reliability / missed-event recovery** | Booking confirmation depends on the webhook; a missed event leaves a booking in limbo. | M7 | Eng | **RESOLVED (M7.3)** |
 
 **1. Validation success criteria & kill line** — the quantitative bar that means the hypothesis is validated, falsified, or needs a pivot (numbers PM-set): activation (% of new users reaching ≥1 cited answer in session 1); engagement (% returning within 7 days; median questions/active user/week); **willingness-to-pay** (free→paid %, trial→paid if any); funnel (recommendation→booking %, revenue per paying user); **explicit kill/pivot line** (e.g. *"if free→paid < X% and booking < Y% by [date], revisit pricing/positioning before scaling"*). Instrument in **M10** from day one; add chosen targets to §"Strategic risk & validation focus."
 
@@ -549,6 +549,13 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 > 4. **Eval golden set:** a deterministic, offline RAG eval harness now lives in `@expertos/ai` (`evaluateRetrieval` + `RETRIEVAL_GOLDEN_SET`) reusing the production primitives (chunk → embed → cosine + keyword → RRF fuse). It ships EN, VI (NFC), mixed EN-VI, and the NFD-normalization regression case, and runs in CI with the offline hashing embedder to guard tokenization / normalization / fusion. The *semantic* VI quality number (true cross-lingual recall, which a lexical offline model cannot produce) is measured **out-of-band** against the real multilingual model using the same fixture format. Golden-set ownership / size / refresh cadence remains **Open Decision #6**.
 
 **10. TidyCal webhook reliability / missed-event recovery** — how a booking reconciles if the confirmation webhook is missed: retry/idempotency (mirror the Stripe webhook discipline already in the PRD); a reconciliation path (poll TidyCal or manual admin link) so a booked-but-unconfirmed consultation doesn't silently vanish; user-facing state while confirmation is pending.
+
+> **RESOLVED (M7.3).** The booking-confirmation path is the booking analog of the M6.2 Stripe webhook, mirroring its discipline exactly. Decisions:
+> 1. **Swappable provider seam.** `TidyCalProvider` (the booking analog of `PaymentProvider`) — no app code talks to TidyCal directly. Offline default (`OfflineTidyCalProvider`, trusted-JSON envelope) keeps the whole book→webhook→consultation-sync + reconcile path runnable without TidyCal/network; the real `HttpTidyCalProvider` (HMAC-SHA256 raw-body verify + event parse + REST poll) swaps in behind the `TIDYCAL_PROVIDER` token when `TIDYCAL_WEBHOOK_SECRET` is set.
+> 2. **Idempotency = a `booking_webhook_events` ledger** keyed `@@unique([provider, eventId])` (pre-check + P2002 catch, exactly the M6.2 `transactions` pattern). A redelivered webhook or a re-poll is a no-op. The webhook route is `@Public()` (verified by signature, not Firebase) and syncs in a **system RLS context** (`runAsSystem`, admin GUC) because there is no request principal.
+> 3. **Correlation (the OD#10 concern — TidyCal links are static, so the event doesn't know which consultation it is):** match first by `bookingRef` (a follow-up reschedule/cancel for a booking we already linked), then by the booking **email** → the user's most-recent pending `recommended` consultation (the row M7.2 created at Book-click). A booking made outside the funnel still creates a `booked` consultation so it never vanishes.
+> 4. **Missed-event recovery + no-vanish.** An admin-triggered `reconcile` (`POST /consultation-bookings/reconcile`, `@Roles('admin')`) polls TidyCal for recent bookings and replays each through the same idempotent apply — a dropped webhook is recovered. An event whose email matches no user is recorded `matched=false` (kept, never dropped) so an admin can reconcile it manually rather than the booking silently vanishing. The `consultations.status` itself is the user-facing pending state (`recommended` = booking opened/pending → `booked` = webhook-confirmed → `canceled`).
+> 5. **M11 caveat:** seam-tested with a mocked tx (the real `booking_webhook_events`/`consultations` writes join the Testcontainers list); the `HttpTidyCalProvider` REST poll needs live network (deploy-time, like the Stripe `FetchStripeHttpClient`). The signature-verify + event-parse + param-construction logic IS fully unit-tested. The migration was validated against the live Postgres this session.
 
 ---
 

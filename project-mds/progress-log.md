@@ -1148,3 +1148,43 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M7.3 (next): resolve OD#10 — TidyCal webhook reliability / missed-event recovery.** Wire the TidyCal webhook to flip the M7.2-created `consultations` row to `booked` (record `bookingRef`/`scheduledAt`) when the user completes booking, + missed-event recovery. **Mirror the M6.2 Stripe webhook discipline:** `@Public()` raw-body route, signature/secret verify, idempotent upsert keyed on the TidyCal booking id, sync in a system-RLS context (`applyRlsContext({isAdmin:true})` — the booking has no request principal). Correlation back to user/recommendation is the reliability crux (TidyCal links are static — match by booking email or a reference). `ConsultationType.tidycalLink` is still null in the seed (real link configured later, like the Stripe `provider_price_id`).
 - Seam-tested with a mocked tx — the real `consultations` write + the `consultationId` link join the M11 Testcontainers list (same caveat as the other stores).
 - Web chat UI now consumes `done.recommendation`; the deferred consumer-web pages (entitlements/usage, history/saved-answers/search/feedback, upload UI) remain open.
+
+## M7.3 — Resolve Open Decision #10: TidyCal webhook reliability / missed-event recovery
+**Date:** 2026-06-01
+**Ref:** PRD §"Consultation funnel" (M7.3) + §"Open Decisions" #10
+
+**What was done:**
+- Closed M7 (consultation funnel). Wired the booking-confirmation path that flips the M7.2-created `consultations` row from `recommended` → `booked` (records `bookingRef`/`scheduledAt`) when the user completes the TidyCal booking — the booking analog of the M6.2 Stripe webhook, mirroring its discipline.
+- **Provider seam** (`apps/api/src/consultation/`): `TidyCalProvider` interface + `BookingEvent`/`BookingWebhookVerificationError`/`statusForBookingEvent` (`tidycal-provider.ts`); `OfflineTidyCalProvider` (trusted-JSON envelope, no signing); `HttpTidyCalProvider` (HMAC-SHA256 raw-body verify via `node:crypto`, event parse with a TidyCal event-name map, `listBookings` REST poll through an injectable `TidyCalHttpClient`); `TIDYCAL_PROVIDER` token + `createDefaultTidyCalProvider` factory (swaps the real driver when `TIDYCAL_WEBHOOK_SECRET` is set; `TIDYCAL_API_TOKEN` enables the poll).
+- **`BookingService`** (`booking.service.ts`): `handleWebhook(req)` verifies (→400 on bad sig), parses (unmodeled type → no-op), idempotently syncs in a system RLS context (`runAsSystem` = `applyRlsContext({tenantId:GLOBAL, isAdmin:true})`); `reconcile({since?})` polls TidyCal (default 24h lookback) and replays each booking through the same idempotent apply = missed-event recovery, returning `{polled, applied, matched, skipped}`.
+- **`ConsultationBookingsController`**: `POST /consultation-bookings/webhook` (`@Public()`, reads `req.rawBody` + `tidycal-signature`) + `POST /consultation-bookings/reconcile` (`@Roles("admin")`). Wired both + the provider into `ConsultationModule`.
+- **Schema:** new `booking_webhook_events` table (migration `20260601040000`) — RLS-exempt config/system table, unique `[provider, event_id]` (idempotency), index on `booking_ref` (correlation). Validated against live Postgres (table + unique + indexes present, RLS disabled, app_user grants). Regenerated the Prisma client.
+- **Shared:** `bookingReconcileSchema` + `BookingReconcileInput`/`BookingReconcileResultDto` (`packages/shared/src/consultation.ts`, exported from index).
+- **Tests (+36):** `booking.service.test.ts` ×16 (verify→400, rethrow, no-op, link-by-bookingRef, cancellation-keeps-scheduledAt, flip-pending, flip-pending-keeps-scheduledAt, create-outside-funnel, unmatched-warns, no-email-skips-lookup, idempotent-redelivery, P2002-race, non-unique-rethrow + reconcile ×3), `offline-tidycal-provider.test.ts` ×7, `http-tidycal-provider.test.ts` ×10, `consultation.test.ts` (shared) ×3. `booking.service.ts` 100% all metrics.
+
+**Key decisions:**
+- **Idempotency via a dedicated `booking_webhook_events` ledger, not a column on `consultations`.** Billing reused the natural `transactions` unique, but a booking that matches no user can't create a consultation row — yet it must still be recorded so it doesn't silently vanish (the OD#10 no-vanish requirement). The ledger doubles as the recovery audit trail (`matched=false` rows await admin reconcile).
+- **Correlation order `bookingRef` → email → create.** TidyCal links are static so the event doesn't identify the consultation. Match a follow-up by `bookingRef`, else the booking email → the user's most-recent pending `recommended` consultation (the M7.2 row), else create a `booked` consultation for an out-of-funnel booking. An email matching no user is kept `matched=false`.
+- **Reconcile uses a synthetic `reconcile:<bookingRef>:<type>` eventId** so re-polling is idempotent against the same ledger, without colliding with real webhook event ids (a created-then-cancelled booking would collide if keyed on the bare booking id).
+- **Offline-default + real-driver-behind-a-token** mirrors `PAYMENT_PROVIDER`/`STORAGE_PROVIDER`/`EMBEDDING_PROVIDER` — keeps the whole path runnable in CI/local without TidyCal.
+- **`consultations.status` is the user-facing pending state** (`recommended`→`booked`→`canceled`); no separate confirmation flag.
+
+**Files changed:**
+- `packages/db/prisma/schema.prisma` — new `BookingWebhookEvent` model.
+- `packages/db/prisma/migrations/20260601040000_booking_webhook_events/migration.sql` — new table + unique + index + grant.
+- `apps/api/src/consultation/tidycal-provider.ts` — provider interface, `BookingEvent`, error, status map (new).
+- `apps/api/src/consultation/offline-tidycal-provider.ts` + `.test.ts` — offline default (new).
+- `apps/api/src/consultation/http-tidycal-provider.ts` + `.test.ts` — real TidyCal driver (new).
+- `apps/api/src/consultation/tidycal.tokens.ts` + `tidycal.defaults.ts` — DI token + composition root (new).
+- `apps/api/src/consultation/booking.service.ts` + `.test.ts` — webhook/reconcile sync (new).
+- `apps/api/src/consultation/consultation-bookings.controller.ts` — webhook + reconcile routes (new).
+- `apps/api/src/consultation/consultation.module.ts` — wired controller + service + provider.
+- `packages/shared/src/consultation.ts` + `index.ts` — reconcile schema + DTOs.
+- `packages/shared/src/consultation.test.ts` — schema tests.
+- `project-mds/PRD.md` — M7/M7.3 + OD#10 marked resolved (manifest, table, RESOLVED block).
+
+**Notes for next iteration:**
+- **M7 is COMPLETE.** Next major milestone is **M8 — Admin & Expert portals** (apps/admin is bare): plan-entitlement matrix editor (M8.3 — tunes M6.5 quotas + soft thresholds + M7.1 `recommendation_rules`), revenue reports over `transactions` + `cost_micros`, failed/low-confidence inspector over `answer_feedback`, versioned-publish + conversation-to-knowledge pipelines (M8.1/M8.2), expert portal (M8.5). The **manual TidyCal reconcile** + unmatched `booking_webhook_events` (`matched=false`) want an admin surface there too.
+- **Verify the TidyCal payload shapes against real docs when wiring the live account** — `EVENT_NAME_MAP` + `toBookingEvent` + the `/bookings` poll response are best-effort structural guesses (adjust only those). The `HttpTidyCalProvider` REST poll needs live network (deploy-time, like the Stripe `FetchStripeHttpClient`).
+- Seam-tested with a mocked tx — the real `booking_webhook_events`/`consultations` writes join the M11 Testcontainers list; the migration was validated against live Postgres this session.
+- The deferred consumer-web pages (entitlements/usage, history/saved-answers/search/feedback, upload UI) remain open in parallel.

@@ -57,7 +57,7 @@ export type {
   EntitlementsDto,
   EntitlementDeniedPayload,
 } from "./entitlements";
-export { recommendationRespondSchema } from "./consultation";
+export { recommendationRespondSchema, bookingReconcileSchema } from "./consultation";
 export type {
   RecommendationTriggerValue,
   ConsultationTypeDto,
@@ -66,6 +66,8 @@ export type {
   RecommendationRespondInput,
   ConsultationBookingDto,
   RecommendationResponseResultDto,
+  BookingReconcileInput,
+  BookingReconcileResultDto,
 } from "./consultation";
 export { billingCheckoutSchema } from "./billing";
 export type {
