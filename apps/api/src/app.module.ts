@@ -16,9 +16,12 @@ import { RevenueModule } from "./revenue/revenue.module";
 import { FeedbackInspectorModule } from "./feedback-inspector/feedback-inspector.module";
 import { AdminModule } from "./admin/admin.module";
 import { ExpertModule } from "./expert/expert.module";
+import { RateLimitModule } from "./rate-limit/rate-limit.module";
 
 @Module({
   imports: [
+    // First so its global guard throttles a burst before the auth guards verify a token (M11.2).
+    RateLimitModule,
     DatabaseModule,
     AuthModule,
     EntitlementsModule,

@@ -1715,3 +1715,41 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Remaining M11.2:** authz/RLS negative tests (user can't read another user's uploads/conversations; non-admin can't hit admin routes) — these need the deferred M11 Testcontainers live-DB pass for real RLS enforcement; rate-limit tests (note: no per-request rate limiter is built yet — only M6.1 entitlement metering / fair-use quotas; true rate limiting is a Redis/Memorystore add per the PRD architecture); `/cso` audit.
 - **Latent fix:** the echo provider previously miscounted a `[7]` buried in source text as an extra numbered source; now neutralized.
 - **When the real OpenAI/Anthropic LLM driver lands:** keep both defences in any new prompt path — the system-prompt instruction hierarchy AND marker neutralization on untrusted interpolated text. Consider adding output-schema validation (the third leg the PRD names) once a structured-output model is wired.
+
+## M11.2 (partial) — Per-IP HTTP rate limiter + tests
+**Date:** 2026-06-01
+**Ref:** PRD M11.2 (Security tests → rate-limit); §"Security & Compliance" ("Abuse/fair-use: per-user rate limiting, automated throttling"); §"Testing Strategy" (rate-limit tests); architecture §"No full infra Day 1" (in-process LRU now, Memorystore Redis later)
+
+**What was done:**
+- Added the first request-rate limiting to the API. Until now the only volume control was the per-user *metered quota* (M6.1 entitlements), which bounds a signed-in user's answer consumption but leaves raw request volume — including unauthenticated traffic to the `@Public()` billing/TidyCal webhook + auth routes — unbounded. A burst could therefore exhaust token-verification / HMAC work (a DoS / brute-force vector). The new limiter is the orthogonal coarse per-IP layer.
+- New `apps/api/src/rate-limit/` module:
+  - `rate-limit.service.ts` — `RateLimitService`, the coverage-gated choke point: a deterministic, clock-injectable **fixed-window** counter keyed by client IP, backed by the existing `LruCache` (bounded to `maxTrackedKeys` so an IP-spray evicts cold buckets rather than growing memory unbounded). `hit(key)` returns `{allowed, limit, remaining, resetAt, retryAfterMs}`; the window start is preserved across hits (stable `resetAt`), a fully-elapsed window reopens fresh.
+  - `rate-limit.guard.ts` — `RateLimitGuard` (thin), registered as the **first** global `APP_GUARD`. Extracts the IP from the leftmost `X-Forwarded-For` hop (→ `req.ip` → socket → shared `"unknown"`), sets `X-RateLimit-Limit/Remaining/Reset` on every response, and on a block sets `Retry-After` + throws `429` with a `{reason:"rate_limited", retryAfterSeconds}` body. `clientIp` is exported + unit-tested directly.
+  - `skip-rate-limit.decorator.ts` — `@SkipRateLimit()`, applied to the `@Public()` health check so Cloud Run's tight-interval polling doesn't consume a client IP budget.
+  - `rate-limit.config.ts` — env-tunable `RateLimitOptions` (`RATE_LIMIT_WINDOW_MS`/`RATE_LIMIT_MAX`/`RATE_LIMIT_MAX_KEYS`; defaults 300 req / 60 s / 50k IPs). A non-positive/unparseable override falls back to the default so a typo can never disable the limiter or set a zero window.
+  - `rate-limit.module.ts` — wires the `RATE_LIMIT_OPTIONS` factory + service + the `APP_GUARD`. Imported **first** in `AppModule.imports`.
+- `health.controller.ts` gains `@SkipRateLimit()`. `app.module.ts` imports `RateLimitModule` first (comment explains the ordering intent).
+- Tests: `rate-limit.service.test.ts` (×6) + `rate-limit.guard.test.ts` (×7) = +13 `apps/api`.
+
+**Key decisions:**
+- **Hand-rolled over `@nestjs/throttler`** — matches the repo's dependency-light, swappable-abstraction philosophy (the `LruCache`/`PaymentProvider`/`StorageProvider` precedent) and the "in-process now, Redis later" architecture. The `LruCache` is the documented Memorystore Redis swap point; nothing else in the limiter changes when that lands.
+- **Keyed by IP, not user** — it must protect *unauthenticated* routes and run before auth (so no `authUser` exists yet). The per-user quota already covers signed-in answer consumption; this is the complementary coarse layer.
+- **Registered as the first global guard** so a burst is throttled before the auth guards spend token-verification work on it. Functional correctness (IP keying) does not depend on the order, but the DoS-protection benefit does. Relies on the same APP_GUARD module-import ordering the repo already depends on (EntitlementsModule-after-AuthModule).
+- **The guard does not log the IP** — `AllExceptionsFilter` already logs the 4xx rejection at WARN, and an IP is arguably PII (directive: keep PII out of log fields). So the guard injects no logger.
+- **XFF trust caveat documented** — the leftmost `X-Forwarded-For` hop is the real client behind Cloud Run / a trusted LB, but a hostile client on an untrusted edge can spoof it. Documented in the guard as defense-in-depth beneath a platform edge limiter (Cloud Armor), not the sole control.
+
+**Files changed:**
+- `apps/api/src/rate-limit/rate-limit.config.ts` — new: env-tunable options + `RATE_LIMIT_OPTIONS` token.
+- `apps/api/src/rate-limit/rate-limit.service.ts` — new: the fixed-window counter over `LruCache` (coverage-gated, 100%).
+- `apps/api/src/rate-limit/rate-limit.guard.ts` — new: thin global guard + exported `clientIp`.
+- `apps/api/src/rate-limit/skip-rate-limit.decorator.ts` — new: `@SkipRateLimit()`.
+- `apps/api/src/rate-limit/rate-limit.module.ts` — new: wires the token/service/guard.
+- `apps/api/src/rate-limit/rate-limit.service.test.ts` / `rate-limit.guard.test.ts` — new: +13 tests.
+- `apps/api/src/app.module.ts` — import `RateLimitModule` first.
+- `apps/api/src/health/health.controller.ts` — add `@SkipRateLimit()` to the health check.
+
+**Notes for next iteration:**
+- **Extend this for real per-user/abuse throttling** — `RateLimitService.hit(key)` is key-agnostic; a future tier could key authenticated routes by `user.id` (run a second guard *after* auth) for fairer limits when many users share a NAT IP. The PRD §"Abuse/fair-use" also lists bot/automation + account-sharing detection — separate, larger work.
+- **Cross-instance limiting needs Redis** — the in-process counter is per-instance, so on Cloud Run with N instances the effective ceiling is ~N×max. Acceptable as a coarse safety net at launch; swap the `LruCache` in `RateLimitService` for a Memorystore-backed store when volume justifies it (the PRD architecture's stated trigger).
+- **DI-bootstrap smoke could not run** on this box — the documented Prisma-engine SIGILL quirk (the generated client rejects `binary`; the library engine SIGILLs) blocks `NestFactory.create`. The wiring mirrors the existing `EntitlementGuard` APP_GUARD pattern exactly, so DI risk is minimal; a clean parallel run / live DB validates it (joins the M11 list).
+- **Remaining M11.2:** authz/RLS negative tests (needs the M11 Testcontainers live-DB pass for real RLS enforcement), `/cso` audit.
