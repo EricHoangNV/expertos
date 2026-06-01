@@ -138,11 +138,11 @@ function ConversationDetail({
               <>
                 <AnswerView content={m.content} citations={m.citations} interactive />
                 {savedIds.has(m.id) ? (
-                  <Badge tone="green">Saved ★</Badge>
+                  <Badge tone="green">Saved</Badge>
                 ) : (
                   <div className="row gap2 wrap">
                     <Button variant="subtle" size="sm" onClick={() => void save(m.id)}>
-                      ☆ Save answer
+                      Save answer
                     </Button>
                   </div>
                 )}

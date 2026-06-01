@@ -1904,3 +1904,42 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - The deferred raw-SQL store live-DB backlog is now CLOSED — all six paths (`PgVectorStore`, conversation-search, `PgExpertStore`, `PgSemanticCacheStore`, `FailedQueryService`, `ExpertPortalService`) have live integration suites. The only remaining live-DB gap is the *approximate* pgvector cosine match (`PgVoiceExampleStore`, `semantic_cache.embedding`), which awaits the real embedder.
 - Runbook unchanged: `PRISMA_CLIENT_ENGINE_TYPE=binary pnpm --filter @expertos/db exec prisma generate` → run with `PRISMA_CLIENT_ENGINE_TYPE=binary RLS_TEST_DATABASE_URL="postgresql://app_user:app_user@localhost:5432/expertos?schema=public" pnpm --filter @expertos/api test:integration` → regenerate the default library engine before the gates.
 - Remaining M11 engineering: E2E Playwright matrix (M11.1), perf/caching tuning + load smoke (M11.3), design-system conformance audit `/design-review` (M11.5). M11.4 (NT sign-offs) + M9/M10 gates (OD#5/OD#1) need product/legal decisions.
+
+---
+
+## M11.5 — Design-system conformance audit
+**Date:** 2026-06-01
+**Ref:** PRD §"Design System" + §"Testing Strategy" (Task Manifest M11.5)
+
+**What was done:**
+- Mechanized the non-negotiable design-system UI rules as unit tests so a regression fails the build. New `packages/ui/src/primitives.test.ts` (+26 tests) invokes every ds.css primitive directly (the components are pure functions — no DOM renderer or new dependency needed) and asserts:
+  - **Cite render-after-resolve** — returns `null` until `resolved` (the front-end half of the citation-resolvability guarantee; never flashed-then-removed).
+  - **Source provenance by color** — `.cite` crimson for published knowledge vs `.cite.upload` info-blue for uploaded sources.
+  - **Badge** maps every semantic tone to `.badge-<tone>` (status is always a tone-matched badge).
+  - **Button** one-crimson-primary default + all variant/size class combos; **Bar/UsageMeter** quota meter (0–100 clamp, NaN/Infinity guard, amber `.bar.warn`, fair-use soft-threshold text "Unlimited"/"x / y"/"x used · fair-use y").
+  - Card/Chip/Field/Input/Select/Textarea/Table/Stat/Shell/Topbar/Content.
+- Flipped `packages/ui/jest.config.cjs` `collectCoverageFrom` from `*.ts`-only to `*.{ts,tsx}` → all 12 design-system components now report **100% statements/branches/functions/lines**, closing the "component rendering covered by E2E later" gap (E2E M11.1 isn't built and is impractical offline).
+- Removed all **rendered emoji** (anti-slop rule "no emoji"): chat feedback 👍/👎 → "Yes"/"No" text buttons (aria-labels "Helpful"/"Not helpful" kept); "☆ Save answer"/"Saved ★" → "Save answer"/"Saved" (chat + history); admin answers `👍 helpful`/`👎 unhelpful` → "Helpful"/"Unhelpful" badges (the green/red tone already conveys sentiment); failed-queries description `(👎)` dropped. Left the 👍/👎 in JSDoc comments (not the rendered trust surface — legitimate documentation of the M3.4 feature).
+- Ran the token-usage audit: zero hardcoded hex / inline-px in either app's TSX (the stylelint + eslint `no-restricted-syntax` guards are effective). Typographic arrows →/← are not emoji and were left as-is.
+
+**Key decisions:**
+- **Test components by direct invocation, not a renderer.** The primitives are pure functions returning React elements with no hooks, so calling `Cite({...})` / `Badge({...})` and asserting on the returned `el.props.className`/`children` covers every branch without pulling in `react-dom` / `@testing-library/react` / jsdom (which would be undeclared deps and need a network install behind the firewall). Keeps the `node` test environment and adds no dependency.
+- **Flip coverage on rather than scope it to tested files.** Since the new test fully covers all 12 components, including them in `collectCoverageFrom` is honest and removes the deferred-coverage debt the old config comment acknowledged.
+- **Fix emoji with text, not SVG icons.** The repo has no icon set wired into the apps; text labels are the cleanest design-system-consistent fix (buttons read by text, badges by tone) and keep the change low-risk.
+- **Did NOT change ds.css hit-target sizing.** `.btn` (~39px), `.btn-icon` (36px), `.chip` (~33px) are below the PRD's 44px hit-target line, but ds.css is the *visual source-of-truth* — enlarging interactive elements is a design decision with layout ripple, so it's documented as an audit finding for the design owner rather than changed unilaterally.
+
+**Files changed:**
+- `packages/ui/src/primitives.test.ts` — NEW: +26 conformance tests for all ds.css primitives.
+- `packages/ui/jest.config.cjs` — `collectCoverageFrom` now `*.{ts,tsx}` (components covered, not just helpers); updated the rationale comment.
+- `apps/web/app/chat/page.tsx` — feedback buttons 👍/👎 → "Yes"/"No"; save toggle ☆/★ → plain text.
+- `apps/web/app/history/page.tsx` — save toggle ☆/★ → plain text.
+- `apps/admin/app/answers/page.tsx` — `👍 helpful`/`👎 unhelpful` badges → "Helpful"/"Unhelpful".
+- `apps/admin/app/failed-queries/page.tsx` — dropped `(👎)` from the description copy.
+- `project-mds/PRD.md`, `project-mds/progress-state.md` — manifest + state updated.
+
+**Gates:** typecheck ✅ (ui/web/admin), `pnpm --filter @expertos/ui test` ✅ (2 suites / 29, 100% coverage), lint ✅ (eslint + stylelint), knip ✅, build ✅ (ui + web + admin; cleared the stale Next PackFileCache first per the deploy note).
+
+**Notes for next iteration:**
+- **Hit-target follow-up (needs design sign-off):** if the 44px hit-target rule is to be enforced literally, bump `.btn`/`.btn-icon`/`.chip` min-heights in `packages/ui/src/ds.css` (and re-sync `requirements/ds.css`) — left unchanged here because ds.css is the visual source-of-truth.
+- **Remaining M11 engineering:** E2E Playwright matrix (M11.1) + perf/caching tuning + load smoke (M11.3) both need a full running stack (Firebase auth + DB + LLM) — not cleanly doable offline in this sandbox. M11.4 (NT sign-offs) + the M9/M10 gates (OD#5 / OD#1) need product/legal decisions.
+- The visual-QA half of M11.5 (live `/design-review` against `requirements/Design System.md` in a browser) is still worth a pass when the apps can be run live; the static/automatable conformance is now enforced by the test suite.

@@ -118,8 +118,8 @@ export default function AnswersPage() {
           {rows.map((row) => (
             <Card key={row.messageId} pad>
               <div className="row gap2">
-                {row.helpful === true && <Badge tone="green">👍 helpful</Badge>}
-                {row.helpful === false && <Badge tone="red">👎 unhelpful</Badge>}
+                {row.helpful === true && <Badge tone="green">Helpful</Badge>}
+                {row.helpful === false && <Badge tone="red">Unhelpful</Badge>}
                 {row.insufficientKnowledge && <Badge tone="amber">Insufficient knowledge</Badge>}
                 {row.model != null && <Badge tone="info">{row.model}</Badge>}
                 {row.confidence != null && (

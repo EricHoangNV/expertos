@@ -166,7 +166,7 @@ function AnswerFeedback({ messageId }: { messageId: string }) {
         aria-pressed={verdict === true}
         aria-label="Helpful"
       >
-        👍
+        Yes
       </Button>
       <Button
         variant={verdict === false ? "dark" : "subtle"}
@@ -176,7 +176,7 @@ function AnswerFeedback({ messageId }: { messageId: string }) {
         aria-pressed={verdict === false}
         aria-label="Not helpful"
       >
-        👎
+        No
       </Button>
       {verdict !== null && (
         <>
@@ -251,11 +251,11 @@ function SaveAnswer({ messageId }: { messageId: string }) {
     }
   }, [getIdToken, messageId]);
 
-  if (saved) return <Badge tone="green">Saved ★</Badge>;
+  if (saved) return <Badge tone="green">Saved</Badge>;
   return (
     <>
       <Button variant="subtle" size="sm" onClick={() => void save()} disabled={busy}>
-        ☆ Save answer
+        Save answer
       </Button>
       {error && <Badge tone="red">{error}</Badge>}
     </>

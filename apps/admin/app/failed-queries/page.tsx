@@ -56,7 +56,7 @@ export default function FailedQueriesPage() {
         </div>
       </div>
       <p className="muted">
-        Answers users rated unhelpful (👎), newest first — across all tenants. Triage these to feed
+        Answers users rated unhelpful, newest first — across all tenants. Triage these to feed
         weak answers back into knowledge.
       </p>
 
