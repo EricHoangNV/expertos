@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from "@nestjs/common";
 import type { PrismaClient } from "@expertos/db";
 import { ConciergeReviewService } from "./concierge-review.service";
 import type { ConciergeFlywheelService } from "./concierge-flywheel.service";
+import type { ConciergeDeliveryService } from "./concierge-delivery.service";
 import type { StructuredLogger } from "../observability/logger.service";
 import type { AuthUser } from "../auth/auth.types";
 
@@ -89,7 +90,15 @@ function makeService(tx: ReturnType<typeof makeTx>) {
   const flywheel = {
     applyReviewOutcome: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<ConciergeFlywheelService>;
-  return { service: new ConciergeReviewService(prisma, logger, flywheel), tx, flywheel };
+  const delivery = {
+    deliver: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<ConciergeDeliveryService>;
+  return {
+    service: new ConciergeReviewService(prisma, logger, flywheel, delivery),
+    tx,
+    flywheel,
+    delivery,
+  };
 }
 
 describe("ConciergeReviewService.list", () => {
@@ -366,10 +375,44 @@ describe("ConciergeReviewService.respond", () => {
     );
   });
 
-  it("does not run the flywheel when the verdict is rejected (409)", async () => {
+  it("async-delivers the refined answer after the verdict commits (M9.3)", async () => {
+    const tx = makeTx();
+    const { service, delivery } = makeService(tx);
+
+    await service.respond(EXPERT_USER, null, REQUEST_ROW.id, {
+      verdict: "great",
+      revisedAnswer: "An improved answer.",
+      notes: null,
+    });
+
+    expect(delivery.deliver).toHaveBeenCalledWith({
+      reviewRequestId: REQUEST_ROW.id,
+      responseId: "resp-1",
+      tenantId: EXPERT_USER.tenantId,
+      revisedAnswer: "An improved answer.",
+      edited: true,
+    });
+  });
+
+  it("hands delivery a null revision for a verdict-only response (it stays silent)", async () => {
+    const tx = makeTx();
+    const { service, delivery } = makeService(tx);
+
+    await service.respond(EXPERT_USER, null, REQUEST_ROW.id, {
+      verdict: "good",
+      revisedAnswer: null,
+      notes: null,
+    });
+
+    expect(delivery.deliver).toHaveBeenCalledWith(
+      expect.objectContaining({ revisedAnswer: null, edited: false }),
+    );
+  });
+
+  it("does not run the flywheel or delivery when the verdict is rejected (409)", async () => {
     const tx = makeTx();
     tx.humanReviewRequest.findFirst.mockResolvedValue({ ...REQUEST_ROW, status: "answered" });
-    const { service, flywheel } = makeService(tx);
+    const { service, flywheel, delivery } = makeService(tx);
 
     await expect(
       service.respond(EXPERT_USER, null, REQUEST_ROW.id, {
@@ -379,6 +422,7 @@ describe("ConciergeReviewService.respond", () => {
       }),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(flywheel.applyReviewOutcome).not.toHaveBeenCalled();
+    expect(delivery.deliver).not.toHaveBeenCalled();
   });
 
   it("marks edited:false for a verdict-only response (no revision)", async () => {

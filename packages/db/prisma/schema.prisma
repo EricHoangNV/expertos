@@ -690,6 +690,11 @@ model Message {
   sourceVersionIds String[]    @default([]) @map("source_version_ids") @db.Uuid
   model            String?
   confidence       Float?
+  // When set, this assistant message is a concierge "refined update" (M9.3) — the reviewer-edited
+  // answer delivered back into the conversation — pointing at the original answer it refines. Carries
+  // the OD#5 visual-indicator signal ("AI-reviewed/edited content") to the read path. Soft link (no
+  // FK relation): the original cascades with the conversation, so this never dangles.
+  refinedFromMessageId String? @map("refined_from_message_id") @db.Uuid
   createdAt        DateTime    @default(now()) @map("created_at")
 
   tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)

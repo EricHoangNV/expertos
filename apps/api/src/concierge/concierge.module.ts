@@ -2,12 +2,14 @@ import { Module } from "@nestjs/common";
 import { createDefaultEmbeddingProvider } from "../ingestion/ingestion.defaults";
 import { AuthModule } from "../auth/auth.module";
 import { AdminModule } from "../admin/admin.module";
+import { EmailModule } from "../email/email.module";
 import { ConciergeConfigController } from "./concierge-config.controller";
 import { ConciergeConfigService } from "./concierge-config.service";
 import { ConciergeQueueService } from "./concierge-queue.service";
 import { ConciergeReviewService } from "./concierge-review.service";
 import { ConciergeReviewController } from "./concierge-review.controller";
 import { ConciergeFlywheelService } from "./concierge-flywheel.service";
+import { ConciergeDeliveryService } from "./concierge-delivery.service";
 import {
   CONCIERGE_ALLOW_SILENT,
   CONCIERGE_EMBEDDING_PROVIDER,
@@ -32,18 +34,24 @@ import {
  * (on the review service). The flywheel embeds captured voice examples with the same model as voice
  * retrieval ({@link CONCIERGE_EMBEDDING_PROVIDER}).
  *
+ * M9.3 adds {@link ConciergeDeliveryService} (invoked by {@link ConciergeReviewService} after a verdict:
+ * an *edited* answer is pushed back into the conversation as a "refined update" + the user is emailed —
+ * "visible update vs silent"). It sends through the {@link EmailModule} transactional-email seam.
+ *
  * `AuthModule` supplies the auth guards/decorators (the queue services run elevated reads via the
  * global `PrismaClient`, like the expert portal); `AdminModule` exports {@link AdminAuditService} (the
- * audit sink the config editor writes through). Async delivery (M9.3) builds on this module.
+ * audit sink the config editor writes through); `EmailModule` supplies the {@link EmailService} the
+ * async delivery notification sends through.
  */
 @Module({
-  imports: [AuthModule, AdminModule],
+  imports: [AuthModule, AdminModule, EmailModule],
   controllers: [ConciergeConfigController, ConciergeReviewController],
   providers: [
     ConciergeConfigService,
     ConciergeQueueService,
     ConciergeReviewService,
     ConciergeFlywheelService,
+    ConciergeDeliveryService,
     { provide: CONCIERGE_ALLOW_SILENT, useFactory: resolveSilentReviewAllowed },
     { provide: CONCIERGE_EMBEDDING_PROVIDER, useFactory: createDefaultEmbeddingProvider },
   ],

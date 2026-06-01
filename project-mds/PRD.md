@@ -70,7 +70,7 @@
 - [x] M9.0 **GATE:** Open Decision #5 (Mode B legal/brand ruling) resolved — **RESOLVED:** Mode B approved as default; AI-reviewed/edited answers must show a visual indicator (asterisk or info icon with tooltip: "This response includes AI-reviewed/edited content"). ToS already covers this; no Mode-A-only fallback needed.
 - [x] M9.1 Admin trigger config (off / user-prompted / auto-silent) + confidence threshold + SLA + volume cap — **DONE** (`apps/api/src/concierge/` `ConciergeConfigService` over the `review_configs` global singleton + `GET/PATCH /admin/concierge-config` admin-RLS editor + audit-in-tx + `apps/admin/app/concierge` page). **OD#5 RESOLVED:** Mode B (`auto_silent`) is now the default; `CONCIERGE_ALLOW_SILENT` should default to `true`. The admin UI should enable Mode B by default. AI-reviewed/edited answers must display a visual indicator (asterisk or info icon with tooltip).
 - [x] M9.2 Concierge review queue in Expert portal; reviewer verdict (Good/Bad/Great) + edit — **DONE.** Enqueue: `apps/api/src/concierge/concierge-queue.service.ts` `ConciergeQueueService.enqueueIfTriggered` (consumed by `ChatService` after a turn — Mode B `auto_silent` + low-confidence proxy → silent `HumanReviewRequest`; elevated-tenant-bounded for the tenant-wide daily volume cap; idempotent; non-fatal). Reviewer: `concierge-review.service.ts` `ConciergeReviewService` (`list`/`get`/`respond`, `@Roles("expert")` `/concierge-reviews` routes) — voice-scoped via the M8.5 elevated-but-bounded RLS pattern (resolve-expert-first, `tenant_id`+`message.conversation.expertId` predicates); `respond` writes a `ReviewResponse` (verdict + `edited`-derived edit) and moves the request to `answered`. Admin UI: `apps/admin/app/concierge-reviews` (queue + open-to-review verdict/edit form, Expert nav group). OD#5 gate flipped: `CONCIERGE_ALLOW_SILENT` now defaults allowed. Escalate-to-consultation + the global flywheel are M9.4; async delivery (push-back + email) is M9.3.
-- [ ] M9.3 Async delivery (visible update vs silent) + transactional email notification
+- [x] M9.3 Async delivery (visible update vs silent) + transactional email notification — **DONE.** New email-provider seam `apps/api/src/email/` (`EmailProvider`/`EmailService` choke point + `OfflineEmailProvider` default + dependency-free `HttpEmailProvider` `fetch` driver behind `EMAIL_PROVIDER`, swapped when `EMAIL_API_URL`+`EMAIL_API_KEY`+`EMAIL_FROM` set — the Stripe/TidyCal seam pattern). New `ConciergeDeliveryService` (invoked by `ConciergeReviewService.respond` after the verdict commits, non-fatal, elevated-tenant-bounded): when the reviewer **edited** the answer → appends the refined answer as a new assistant message marked `refined_from_message_id` (migration `20260601080000`; the OD#5 visual-indicator hook surfaced on `ChatMessageDto` + a web history badge), bumps `conversation.updatedAt`, stamps `review_responses.delivered_to_user=true`, and sends a transactional email (outside the tx, best-effort). A verdict-only/unchanged response stays **silent** (the M9.4 context injection feeds it forward). "visible update vs silent" = edited→visible, unedited→silent. `email.service.ts`+`concierge-delivery.service.ts` 100% all metrics; +18 `apps/api` tests. **M9 COMPLETE.**
 - [x] M9.4 Reviewer-feedback flywheel: conversation-context injection (immediate) + `voice_examples`/`knowledge_drafts`/chunk-flagging (global); escalate-to-consultation — **DONE.** `apps/api/src/concierge/concierge-flywheel.service.ts` `ConciergeFlywheelService.applyReviewOutcome` (invoked by `ConciergeReviewService.respond` after the verdict commits, non-fatal, elevated-tenant-bounded): great/edited → `knowledge_drafts` row (→ Expert Review → publish/re-embed) **+** an embedded `voice_examples` row on the expert's published profile (same embedder as voice retrieval); bad → flags the answer's source chunks (`chunks.flag_count`/`last_flagged_at`, migration `20260601070000`). Escalate-to-consultation: `ConciergeReviewService.escalate` (`POST /concierge-reviews/:id/escalate`) opens a `recommended` consultation for the asking user + moves the request to `escalated`. Immediate context injection: `ConversationService.loadHistory` substitutes the latest reviewer-edited revision into replayed prompt history (display untouched — visible delivery is M9.3). Admin UI: `apps/admin/app/concierge-reviews` "Escalate to consultation" action.
 
 #### M10 — Analytics
@@ -127,7 +127,7 @@ The biggest risk is **not technical** — it is building too many platform capab
 - **Backend:** NestJS (framework on the Node.js runtime) in a single **TypeScript monorepo**, **hybrid-ready** — ingestion/parsing sits behind a `Parser`/job contract so a Python worker can be slotted in later for just spreadsheets/PDFs if TS parsing quality falls short.
 - **Auth:** **Firebase Auth** (managed; offloads password storage, MFA, session security; integrates with GCP and the future mobile app). **Phase 1 = Google sign-in only**; email/password and other providers are a later config toggle. The backend token-verify guard is provider-agnostic, so adding providers later touches zero backend code.
 - **Tenancy:** **Consumer-first, tenant-ready schema** — ship a consumer app (multiple selectable expert voices, temporary uploads, user-private context) but bake `tenant_id` + knowledge-scope columns into every table now, so B2B isolation is a later config layer, not a migration.
-- **AI orchestration:** **Thin custom layer over provider SDKs** (OpenAI / Anthropic / Gemini) + pgvector, behind a small provider-abstraction interface. Full control over prompts, citation-to-chunk fidelity, grounding, and cost — citation integrity is the make-or-break feature in this category.
+- **AI orchestration:** **Thin custom layer over provider SDKs** (OpenAI / Anthropic / Google) + pgvector, behind a small provider-abstraction interface. Full control over prompts, citation-to-chunk fidelity, grounding, and cost — citation integrity is the make-or-break feature in this category. **Provider config is per-capability and per-plan** (see §"AI Provider Configuration").
 - **CI/CD:** Phase 1 ships with **manual build & deploy**; the automated CI/CD pipeline is deferred to Phase 2. Test suites + the 90% coverage threshold still run (locally / pre-push) in Phase 1.
 - **Payments:** **Stripe** in Phase 1, behind a swappable `PaymentProvider` abstraction; revenue is mirrored into our own ledger for in-app reporting/reconciliation.
 
@@ -286,8 +286,33 @@ Next.js Admin Portal ─┤→ NestJS API (Cloud Run, scale-to-zero)
 - **Cloud Run scale-to-zero** for API, admin, and ingestion jobs — pay only on traffic.
 - **pgvector inside the existing Postgres** for MVP (no separate vector DB); the retrieval layer is abstracted behind a `VectorStore` interface so swapping to Vertex AI Vector Search / Qdrant later is a driver change, not a rewrite.
 - **Redis is optional at launch** — start with Postgres-backed counters + in-process LRU cache; introduce Memorystore when rate-limit/cache volume justifies it.
-- **LLM/embedding providers behind one interface** so model choice is config-tunable for cost (cheap model for high-volume/fair-use-degraded users, premium model for normal usage).
+- **LLM/embedding providers behind one interface** so model choice is config-tunable for cost (cheap model for high-volume/fair-use-degraded users, premium model for normal usage). **Per-plan, per-capability provider routing** — see §"AI Provider Configuration."
 - **Aggressive caching** (semantic question cache → retrieval cache → answer cache) to protect margin from day 1.
+
+### AI Provider Configuration
+
+Provider selection is **per-capability** (`chat` | `embedding`) **× per-plan** (`free` | `plus` | `premium` | `degraded`), stored as admin-editable config (DB or env). The system resolves `(capability, plan) → (provider, model)` at request time. Switching a single cell (e.g. embeddings from OpenAI to Google) does not affect other cells.
+
+**Default provider matrix (launch):**
+
+| Capability | Free | Plus | Premium | Degraded (past fair-use) |
+|------------|------|------|---------|--------------------------|
+| **Chat** | OpenAI `gpt-4o-mini` | OpenAI `gpt-4o` | OpenAI `gpt-4o` | OpenAI `gpt-4o-mini` |
+| **Embedding** | OpenAI `text-embedding-3-small` | ← same | ← same | ← same |
+
+**Backup provider matrix (configured, manual switch only — no auto-failover):**
+
+| Capability | Free | Plus | Premium | Degraded |
+|------------|------|------|---------|----------|
+| **Chat** | Anthropic `claude-haiku-4-5` | Anthropic `claude-sonnet-4-6` | Anthropic `claude-sonnet-4-6` | Anthropic `claude-haiku-4-5` |
+| **Embedding** | Google `text-embedding-004` | ← same | ← same | ← same |
+
+**Implementation:**
+- `AiProviderConfig` resolves `(capability, plan) → { provider, model, apiKey }` from a config table or env-backed registry.
+- The `LlmProvider` and `EmbeddingProvider` interfaces remain unchanged — the config layer selects *which* driver instance to inject.
+- Admin can switch any cell independently (e.g. move embeddings to Google while keeping OpenAI for chat).
+- No automatic failover between default and backup — switching is a manual admin action (prevents silent cost/quality changes).
+- Each provider's API key is stored in Secret Manager; unused providers' keys can be left empty until needed.
 
 ---
 

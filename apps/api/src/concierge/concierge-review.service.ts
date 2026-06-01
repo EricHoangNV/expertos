@@ -14,6 +14,7 @@ import { PRISMA } from "../database/database.module";
 import type { AuthUser } from "../auth/auth.types";
 import { StructuredLogger } from "../observability/logger.service";
 import { ConciergeFlywheelService } from "./concierge-flywheel.service";
+import { ConciergeDeliveryService } from "./concierge-delivery.service";
 
 /** Max characters of the AI answer surfaced as a queue-item preview. */
 const ANSWER_PREVIEW_CHARS = 280;
@@ -107,6 +108,7 @@ export class ConciergeReviewService {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly logger: StructuredLogger,
     private readonly flywheel: ConciergeFlywheelService,
+    private readonly delivery: ConciergeDeliveryService,
   ) {}
 
   /** A page of the reviewer's queue, most-actionable first (open items by SLA, then newest). */
@@ -168,7 +170,7 @@ export class ConciergeReviewService {
     id: string,
     input: ReviewResponseCreateInput,
   ): Promise<ReviewResponseDto> {
-    const { dto, flywheel } = await this.runReviewer(user, async (tx) => {
+    const { dto, flywheel, delivery } = await this.runReviewer(user, async (tx) => {
       const row = await this.loadInVoice(tx, user, requestedExpertId, id);
       if (!RESPONDABLE.has(row.status)) {
         throw new ConflictException(`review is already ${row.status}`);
@@ -222,12 +224,24 @@ export class ConciergeReviewService {
           improvedAnswer: revised ?? original,
           edited,
         },
+        delivery: {
+          reviewRequestId: row.id,
+          responseId: response.id,
+          tenantId: user.tenantId,
+          revisedAnswer: revised,
+          edited,
+        },
       };
     });
 
     // Feed the reviewer's verdict into the global flywheel (M9.4). Best-effort: the service swallows
     // its own errors so the recorded verdict (already committed above) is never rolled back.
     await this.flywheel.applyReviewOutcome(flywheel);
+
+    // Async-deliver the refined answer back to the user (M9.3): push an edited answer into the
+    // conversation + email the user. Also best-effort (swallows its own errors), and a no-op for a
+    // verdict-only response that left the answer unchanged (it stays silent).
+    await this.delivery.deliver(delivery);
 
     return dto;
   }

@@ -2115,3 +2115,44 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M10.3 (concierge metrics + knowledge-quality signals)** is now fully unblocked: aggregate `human_review_requests` (volume/SLA — `slaDueAt` vs `answeredAt`), `review_responses` (verdict mix), and the new `chunks.flag_count`/`last_flagged_at` (knowledge-gap) — the `AnalyticsService` admin cross-tenant pattern (M10.1/M10.2). A failed-query-inspector read over flagged chunks is the knowledge-quality surface.
 - **Seam-tested with a mocked tx** — the real elevated cross-user writes (`knowledge_drafts`/`voice_examples` raw insert/`chunks.updateMany`) + the `review_responses` join in `loadHistory` join the M11 Testcontainers live-DB list. `voice_examples`/`knowledge_drafts`/`review_responses` are `tenant_only`; `chunks` is `knowledge` (tenant_write); `consultations` is `user_scoped`.
 - The minted `voice_examples` embedding uses the offline `HashingEmbeddingProvider` (like all writes here) — when the real embedder lands, both this and retrieval move via `createDefaultEmbeddingProvider`.
+
+## M9.3 — Concierge async delivery (visible update vs silent) + transactional email
+**Date:** 2026-06-01
+**Ref:** PRD §"Concierge Mode" → "Async delivery"; PRD Task Manifest M9.3 (the final M9 slice)
+
+**What was done:**
+- **New email-provider seam (`apps/api/src/email/`)** — the first transactional-email abstraction, mirroring the Stripe/TidyCal swappable-provider pattern:
+  - `email-provider.ts` — `EmailProvider` interface (`name` + `send(EmailMessage)`), `EmailMessage` (`to`/`subject`/`text`/`html?`), `EmailDeliveryError`.
+  - `offline-email-provider.ts` — `OfflineEmailProvider` default (records `lastMessage`, no network) — keeps the path runnable/testable without a mail provider.
+  - `http-email-provider.ts` — `HttpEmailProvider`, a dependency-free generic transactional-email REST driver: structural `EmailHttpClient` (default `fetch`-based `FetchEmailHttpClient`), provider-neutral `{from,to,subject,text,html}` Bearer-JSON envelope.
+  - `email.tokens.ts` (`EMAIL_PROVIDER`), `email.defaults.ts` (`createDefaultEmailProvider()` → HTTP driver when `EMAIL_API_URL`+`EMAIL_API_KEY`+`EMAIL_FROM` all set, else offline), `email.module.ts` (provides token + exports `EmailService`).
+  - `email.service.ts` — `EmailService`, the single send choke point: logs driver+subject only (no recipient PII), errors propagate (caller decides fatality).
+- **New `ConciergeDeliveryService` (`apps/api/src/concierge/concierge-delivery.service.ts`)** — async delivery, invoked by `ConciergeReviewService.respond` after the verdict commits (alongside the M9.4 flywheel), non-fatal + elevated-tenant-bounded (`runSystem` `is_admin` re-bounded to tenant). When the reviewer **edited** the answer: appends the refined answer as a new assistant message marked `refinedFromMessageId`, bumps `conversation.updatedAt`, stamps `review_responses.delivered_to_user=true` (one elevated tx), then sends the email (outside the tx; own try/catch). Verdict-only/unchanged → silent.
+- **`messages.refined_from_message_id`** — migration `20260601080000_message_refined_from` (additive nullable scalar uuid, no FK), schema field on `Message`, surfaced on `ChatMessageDto.refinedFromMessageId` via `ConversationService.get`.
+- **Web** — `apps/web/app/history/page.tsx` shows a "Reviewed & refined by our team" info badge (title tooltip = the OD#5 "AI-reviewed/edited content" disclosure) on any message carrying the marker.
+- **Wiring** — `ConciergeModule` imports `EmailModule` + provides `ConciergeDeliveryService`; `ConciergeReviewService` gains the 4th constructor dep and calls `delivery.deliver(...)` after the flywheel.
+
+**Key decisions:**
+- **Delivery gate = `edited`** (a changed answer is the only thing worth re-surfacing). Deterministic; does NOT depend on the request's `visibility` column (every queued request is `silent` today since only Mode B auto-enqueues). "visible update vs silent" = edited→visible-update, unedited→silent.
+- **Refined update as a NEW message** (not an in-place content edit) — preserves the original answer for provenance and keeps the M9.4 `loadHistory` context injection (which reads the original message) intact; bumping `updatedAt` sorts the refined conversation to the top of history (so the email's `/history` link lands meaningfully even though the page doesn't yet honor a `?c=` deep-link param).
+- **Email best-effort under the in-conversation delivery** (the primary channel): the email send is outside the tx with its own catch, so a mail failure never rolls back the committed push-back.
+- **Offline-default email driver** so the whole delivery path is runnable/testable without a live mail provider (the `EchoLlmProvider`/`OfflinePaymentProvider` precedent).
+- **`HttpEmailProviderOptions` not exported** (matches `HttpTidyCalProviderOptions`) — knip-clean.
+
+**Files changed:**
+- `apps/api/src/email/{email-provider,offline-email-provider,http-email-provider,email.tokens,email.defaults,email.service,email.module}.ts` — new email seam (+ `*.test.ts` for service/offline/http).
+- `apps/api/src/concierge/concierge-delivery.service.ts` (+ `.test.ts`) — async delivery.
+- `apps/api/src/concierge/concierge-review.service.ts` — inject + invoke delivery after commit.
+- `apps/api/src/concierge/concierge.module.ts` — import `EmailModule`, provide `ConciergeDeliveryService`, doc comment.
+- `apps/api/src/concierge/concierge-review.service.test.ts` — delivery dep + assertions (async-delivers / null-revision silent / no-delivery-on-409).
+- `apps/api/src/chat/conversation.service.ts` (+ `.test.ts`) — `get` selects + surfaces `refinedFromMessageId`.
+- `packages/db/prisma/schema.prisma` + `migrations/20260601080000_message_refined_from/migration.sql` — `messages.refined_from_message_id`.
+- `packages/shared/src/chat.ts` — `ChatMessageDto.refinedFromMessageId`.
+- `apps/web/app/history/page.tsx` — OD#5 refined-update badge.
+
+**Feedback loops:** typecheck 11✓ (one transient `EIO` on `prisma generate` cleared on retry — external-drive flakiness), lint 7✓ + lint:css✓, knip clean, touched suites green (64 tests across the 6 touched files). `email.service.ts` + `concierge-delivery.service.ts` 100% all metrics (coverage scoped check). Full parallel `pnpm test` still hits the documented aarch64/linuxkit Prisma-engine worker SIGABRT (random unrelated suites fail-to-run; 0 assertion failures across runs) — the standing sandbox quirk.
+
+**Notes for next iteration:**
+- **M9 is COMPLETE.** Natural next task = **M10.3** (concierge volume/SLA/verdict metrics + knowledge-quality signals): the full dataset now exists — `human_review_requests` (volume by trigger_mode/visibility, SLA breach via `sla_due_at`/`answered_at`, status funnel) + `review_responses` (good/bad/great + edit + `delivered_to_user` rates) + `chunks.flag_count`/`last_flagged_at`. Add an `AnalyticsService.concierge` method (the M10.1/M10.2 admin cross-tenant `RlsService.run`+`groupBy` pattern; coerce raw BigInt counts → Number) + `GET /admin/analytics/concierge` + an admin page.
+- **Mode A (`user_prompted`) up-front review prompts are still NOT built** — the queue only auto-enqueues Mode B silent (M9.2). The user-facing "would you like our team to review this?" opt-in + queue-on-opt-in is a future UX slice, distinct from M9.3.
+- When wiring a real mail provider, set `EMAIL_API_URL`/`EMAIL_API_KEY`/`EMAIL_FROM` (Secret Manager) and verify the `HttpEmailProvider` envelope field names against the provider's docs (the `fetch` transport needs live network — deploy-time, the Stripe/TidyCal caveat). A future enhancement: have the history page honor the email's `?c=<conversationId>` deep link to auto-open the refined conversation.

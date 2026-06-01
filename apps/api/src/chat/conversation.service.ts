@@ -323,7 +323,13 @@ export class ConversationService {
       const messages = await tx.message.findMany({
         where: { conversationId, role: { in: ["user", "assistant"] } },
         orderBy: { createdAt: "asc" },
-        select: { id: true, role: true, content: true, createdAt: true },
+        select: {
+          id: true,
+          role: true,
+          content: true,
+          createdAt: true,
+          refinedFromMessageId: true,
+        },
       });
       const citationsByMessage = await this.loadCitations(
         tx,
@@ -337,6 +343,8 @@ export class ConversationService {
           content: m.content,
           createdAt: m.createdAt.toISOString(),
           citations: citationsByMessage.get(m.id) ?? [],
+          // M9.3: a concierge "refined update" carries the id of the answer it refines (OD#5 indicator).
+          refinedFromMessageId: m.refinedFromMessageId,
         })),
       };
     });

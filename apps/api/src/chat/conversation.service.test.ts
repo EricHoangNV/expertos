@@ -438,6 +438,38 @@ describe("ConversationService.get", () => {
     expect(tx.message.findMany.mock.calls[0][0].orderBy).toEqual({ createdAt: "asc" });
   });
 
+  it("surfaces the concierge refined-update marker on a delivered answer (M9.3 / OD#5)", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue(CONV_ROW);
+    tx.message.findMany.mockResolvedValue([
+      {
+        id: "m2",
+        role: "assistant",
+        content: "the original answer",
+        createdAt: new Date("2026-06-01T10:01:00.000Z"),
+        refinedFromMessageId: null,
+      },
+      {
+        id: "m3",
+        role: "assistant",
+        content: "the expert-refined answer",
+        createdAt: new Date("2026-06-02T09:00:00.000Z"),
+        refinedFromMessageId: "m2",
+      },
+    ]);
+    tx.citation.findMany.mockResolvedValue([]);
+    const { service } = makeService(tx);
+
+    const result = await service.get(USER, "conv-1");
+
+    expect(result.messages[0].refinedFromMessageId).toBeNull();
+    expect(result.messages[1].refinedFromMessageId).toBe("m2");
+    // The read path requests the marker column.
+    expect(tx.message.findMany.mock.calls[0][0].select).toMatchObject({
+      refinedFromMessageId: true,
+    });
+  });
+
   it("derives an upload citation kind and tolerates null chunk ids on the read path", async () => {
     const tx = makeTx();
     tx.conversation.findUnique.mockResolvedValue(CONV_ROW);

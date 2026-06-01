@@ -41,6 +41,13 @@ export interface ChatMessageDto {
    * `ordinal` (the read path preserves it, so a non-contiguous list like a lone `[2]` is faithful).
    */
   citations: ChatCitationDto[];
+  /**
+   * Set on an assistant message that is a concierge **refined update** (M9.3): the id of the original
+   * answer this reviewer-edited message refines. The history view shows the OD#5 visual indicator
+   * ("This response includes AI-reviewed/edited content") for any message where this is present.
+   * `null`/absent for an ordinary AI answer and for user messages.
+   */
+  refinedFromMessageId?: string | null;
 }
 
 /**

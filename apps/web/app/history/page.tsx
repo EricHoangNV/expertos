@@ -136,6 +136,11 @@ function ConversationDetail({
             </Badge>
             {m.role === "assistant" ? (
               <>
+                {m.refinedFromMessageId ? (
+                  <Badge tone="info" title="This response includes AI-reviewed/edited content">
+                    Reviewed &amp; refined by our team
+                  </Badge>
+                ) : null}
                 <AnswerView content={m.content} citations={m.citations} interactive />
                 {savedIds.has(m.id) ? (
                   <Badge tone="green">Saved</Badge>
