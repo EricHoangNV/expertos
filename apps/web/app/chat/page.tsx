@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Badge, Button, Card, Cite, Field, Select, Textarea } from "@expertos/ui";
+import { Badge, Button, Card, Cite, Field, Input, Select, Textarea } from "@expertos/ui";
 import type { ChatCitationDto, ConsultationRecommendationDto } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
 import {
@@ -10,6 +10,7 @@ import {
   renditionLabel,
   respondToRecommendation,
   streamChat,
+  submitFeedback,
   type ExpertVoice,
 } from "../../src/lib/chat-client";
 
@@ -19,8 +20,14 @@ interface UiMessage {
   citations: ChatCitationDto[];
   /** False while the assistant message is still streaming. */
   done: boolean;
+  /** Persisted message id (assistant turns, set on the `done` frame) — the feedback target (M3.4). */
+  messageId?: string;
   /** Display name when the answer is rendered in an expert's voice. */
   expertName?: string;
+  /** True when no grounding sources were retrieved (M3.4) — surface a graceful next step. */
+  insufficientKnowledge?: boolean;
+  /** True when the answer was served by the cheaper fair-use model (M6.3) — a subtle note. */
+  degraded?: boolean;
   /** In-chat consultation recommendation (M7.2), present only when a funnel rule fired. */
   recommendation?: ConsultationRecommendationDto | null;
 }
@@ -158,6 +165,90 @@ function ConsultationPrompt({ recommendation }: { recommendation: ConsultationRe
 }
 
 /**
+ * 👍/👎 feedback on a finished assistant answer (M3.4). The verdict is an idempotent upsert keyed
+ * on the answer, so the user can flip 👍↔👎 or add/revise a reason; submitting reuses the same
+ * endpoint. The reason field appears once a verdict is chosen — optional, length-bounded to mirror
+ * the API's 500-char limit (directive §1.1). Ownership is enforced server-side by RLS.
+ */
+function AnswerFeedback({ messageId }: { messageId: string }) {
+  const { getIdToken } = useAuth();
+  const [verdict, setVerdict] = useState<boolean | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = useCallback(
+    async (helpful: boolean, withReason: boolean) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const token = await getIdToken();
+        if (!token) {
+          setError("Please sign in to leave feedback.");
+          return;
+        }
+        const trimmed = reason.trim();
+        await submitFeedback(messageId, helpful, token, withReason && trimmed ? trimmed : undefined);
+        setVerdict(helpful);
+      } catch {
+        setError("Couldn't save your feedback — please try again.");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [getIdToken, messageId, reason],
+  );
+
+  return (
+    <div className="row gap2 wrap">
+      <span className="label">Was this helpful?</span>
+      <Button
+        variant={verdict === true ? "primary" : "subtle"}
+        size="sm"
+        onClick={() => void send(true, true)}
+        disabled={busy}
+        aria-pressed={verdict === true}
+        aria-label="Helpful"
+      >
+        👍
+      </Button>
+      <Button
+        variant={verdict === false ? "dark" : "subtle"}
+        size="sm"
+        onClick={() => void send(false, true)}
+        disabled={busy}
+        aria-pressed={verdict === false}
+        aria-label="Not helpful"
+      >
+        👎
+      </Button>
+      {verdict !== null && (
+        <>
+          <Input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            disabled={busy}
+            maxLength={500}
+            placeholder="Add a reason (optional)"
+            aria-label="Feedback reason"
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void send(verdict, true)}
+            disabled={busy || !reason.trim()}
+          >
+            Send reason
+          </Button>
+          <span className="muted">Thanks for your feedback.</span>
+        </>
+      )}
+      {error && <Badge tone="red">{error}</Badge>}
+    </div>
+  );
+}
+
+/**
  * One assistant turn: the answer prose with inline citation markers plus a sources drawer
  * (M4.2). The drawer lists each resolved source with its quote and `document_version_id`
  * provenance; clicking an inline marker (or the answer's `.cite`) highlights and scrolls to the
@@ -290,6 +381,9 @@ export default function ChatPage() {
                 ...m,
                 citations: event.citations,
                 done: true,
+                messageId: event.messageId,
+                insufficientKnowledge: event.insufficientKnowledge,
+                degraded: event.degraded ?? false,
                 recommendation: event.recommendation ?? null,
               })),
             );
@@ -350,8 +444,26 @@ export default function ChatPage() {
             ) : (
               <p>{m.content}</p>
             )}
+            {m.role === "assistant" && m.done && m.degraded && (
+              <Badge tone="info">
+                Fair-use mode — answered with a lighter model while you’re over this period’s soft
+                limit.
+              </Badge>
+            )}
+            {m.role === "assistant" && m.done && m.insufficientKnowledge && (
+              <Card className="card-pad">
+                <Badge tone="amber">Limited knowledge</Badge>
+                <p>
+                  I couldn’t find enough in the expert’s knowledge base to answer this confidently.
+                  Try rephrasing your question, or book a consultation for a direct answer.
+                </p>
+              </Card>
+            )}
             {m.role === "assistant" && m.done && m.recommendation && (
               <ConsultationPrompt recommendation={m.recommendation} />
+            )}
+            {m.role === "assistant" && m.done && m.messageId && (
+              <AnswerFeedback messageId={m.messageId} />
             )}
           </Card>
         ))}

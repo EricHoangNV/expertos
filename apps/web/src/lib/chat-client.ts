@@ -1,4 +1,5 @@
 import type {
+  AnswerFeedbackDto,
   ChatStreamEvent,
   RecommendationResponseResultDto,
   RecommendationResponseValue,
@@ -100,6 +101,28 @@ export async function respondToRecommendation(
     throw new Error(`recommendation response failed (${res.status})`);
   }
   return (await res.json()) as RecommendationResponseResultDto;
+}
+
+/**
+ * Submits (or revises) the user's 👍/👎 verdict on an assistant answer (M3.4). The endpoint is an
+ * idempotent upsert keyed on `(user, message)`, so re-calling flips the verdict or revises the
+ * reason; ownership is enforced server-side by RLS. `reason` is optional free text (omit to clear).
+ */
+export async function submitFeedback(
+  messageId: string,
+  helpful: boolean,
+  token: string,
+  reason?: string,
+): Promise<AnswerFeedbackDto> {
+  const res = await fetch(`${API_URL}/answer-feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ messageId, helpful, ...(reason ? { reason } : {}) }),
+  });
+  if (!res.ok) {
+    throw new Error(`feedback submit failed (${res.status})`);
+  }
+  return (await res.json()) as AnswerFeedbackDto;
 }
 
 /** Fetches the selectable expert voices for the picker (only published, active voices). */
