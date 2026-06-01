@@ -91,3 +91,15 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - This is latent in the existing raw-SQL stores (`PgVectorStore`, conversation-search `SEARCH_SQL`, `PgExpertStore`, the semantic-cache store, the M8.3 `FailedQueryService` `LATERAL` join) — they were only ever unit-tested with a mocked `$queryRawUnsafe`. When those join the live integration pass, audit each raw statement for an un-cast `uuid`/`uuid[]` parameter (the GUC `set_config(...)` calls in `applyRlsContext` are fine — they take `text`).
 
 **Rule:** In Prisma `$queryRawUnsafe`/`$executeRawUnsafe`, cast every `uuid` (and `uuid[]`) bind parameter explicitly (`$n::uuid`) — Prisma types string params as `text`, and Postgres will not infer the column type for you; a passing mocked-tx unit test cannot catch this, only a live-DB run will.
+
+---
+
+## 8. A stamped retention/expiry field with no sweeper is a silent compliance gap — verify the deleter exists
+
+**Context:** NT.3 — backing the published data-retention policy. The M5.2 upload pipeline stamped an `expires_at` on every `temporary` upload and four code comments referenced "a sweeper reclaims them" / "a future sweeper job", but no such job had ever been built. Retrieval defensively filtered expired rows so nothing leaked, which masked the gap — but the rows accumulated forever and the policy's "auto-delete: yes" promise was aspirational.
+
+- Writing the expiry stamp is the easy, visible half; the background deleter that acts on it is the half that silently never ships. A `lt: now` filter on the read path makes the system *behave* as if expired data is gone, so the missing enforcement is invisible in normal use and in unit tests.
+- The fix is a deterministic, admin-triggered sweep (`RetentionService.preview`/`sweep`) honouring the per-row stamp (not a separate constant — `TEMPORARY_RETENTION_DAYS` was 7 while the policy DRAFT said 90; the stamp is the source of truth), run cross-tenant under the admin `is_admin` RLS bypass, with the delete + its audit entry in one transaction. No in-app cron (per "No full infra Day 1") — a route a Cloud Scheduler job targets.
+- Scope discipline: only the classes with unambiguous, side-effect-free *deletion* semantics were swept (uploads, idle conversations, usage logs). The policy's concierge records ("anonymize after retention") and consultations (deleting them distorts historical MRR) need anonymize-not-delete instead — bolting them onto a deleter would implement the wrong semantics, so they were left as an explicit follow-up.
+
+**Rule:** Whenever you see a stamped `expires_at` / `retention_days` / TTL column (or a comment promising one will be reclaimed), confirm a sweeper actually deletes on it — a read-path expiry filter hides the absence. When you build the sweep, key it off the per-row stamp (the authoritative TTL), keep the action+audit atomic, and only *delete* classes whose retention truly means deletion; "anonymize/retain-aggregate" classes need a separate non-deletion path.
