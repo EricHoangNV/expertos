@@ -1611,3 +1611,27 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - Remaining deferred consumer-web UI: conversation history sidebar + saved answers + full-text search + answer feedback (M3.2–M3.4 are API-only); web upload UI with the temp/persistent mode picker POSTing to `/uploads` (M5); and surfacing the chat `done.degraded` flag as a subtle fair-use note in `apps/web/app/chat/page.tsx` (pairs naturally with this page's fair-use story).
 - Build gotcha reconfirmed: `next build` with `output: standalone` over a stale `.next` cache throws `SyntaxError: Unexpected end of JSON input` — `rm -rf apps/*/.next apps/*/.turbo` then rebuild (already documented in the seam notes).
 - No nav scaffold exists in `apps/web`; if more pages land, consider a small shared top-nav (out of scope here).
+
+## Consumer-web chat answer affordances (feedback + insufficient-knowledge + degraded note)
+**Date:** 2026-06-01
+**Ref:** PRD Task Manifest Phase 1 — M3.4 (answer feedback + insufficient-knowledge path) & M6.3 (fair-use degrade-don't-block); deferred consumer-web UI from progress-state "Next tasks".
+
+**What was done:**
+- Surfaced three already-shipped `done`-frame signals on the existing `apps/web/app/chat/page.tsx` — all had API/wire support (M3.4/M6.3) but no consumer UI.
+- **Answer feedback (M3.4):** added `submitFeedback(messageId, helpful, token, reason?)` to `apps/web/src/lib/chat-client.ts` (POSTs the idempotent `/answer-feedback` upsert, omits an empty reason). New `AnswerFeedback` component under each finished assistant answer: 👍/👎 buttons (active state via `aria-pressed`, flip the verdict), and once a verdict is chosen an optional reason `Input` (maxLength 500, mirrors the API bound) + a "Send reason" button that re-submits the same verdict with the reason.
+- **Insufficient-knowledge next step (M3.4):** when `done.insufficientKnowledge` is true, an amber "Limited knowledge" `Card` suggests rephrasing or booking a consultation.
+- **Fair-use degraded note (M6.3):** when `done.degraded` is true, a subtle info `Badge` notes the answer was served by the lighter model over the period's soft limit.
+- `UiMessage` now captures `messageId` / `insufficientKnowledge` / `degraded` off the `done` event (previously only `citations`/`recommendation` were captured).
+
+**Key decisions:**
+- Reused existing DS primitives (`Button`/`Badge`/`Input`/`Card`) + `.row/.gap2/.wrap/.muted/.label` utilities — no new CSS or components (directive §2.3: search before building UI).
+- Feedback verdict submits immediately on 👍/👎 click (reason optional, addable after) because the endpoint is an idempotent upsert keyed on `(user, message)` — re-submitting flips the verdict or revises the reason, so there's no "save" gate to design.
+- Purely additive frontend; no API/shared/backend code touched, so the 830 test count is unchanged and no tested package was affected.
+
+**Files changed:**
+- `apps/web/src/lib/chat-client.ts` — added `submitFeedback` + `AnswerFeedbackDto` import.
+- `apps/web/app/chat/page.tsx` — extended `UiMessage` + `done`-event capture; added `AnswerFeedback` component; rendered the degraded note, insufficient-knowledge card, and feedback control in the assistant card; imported `Input` from `@expertos/ui` and `submitFeedback`.
+
+**Notes for next iteration:**
+- Remaining deferred consumer-web UI: **conversation history sidebar + saved-answers list + full-text search** (M3.2/M3.3 are API-only — consume `GET /conversations`, `/conversations/:id`, `/saved-answers`, `/conversations/search`); and the **web upload UI** with the temp/persistent mode picker POSTing to `/uploads` (M5). The chat page now also has the `messageId` in hand if a "save answer" bookmark affordance (`POST /saved-answers`) is wanted alongside feedback.
+- No nav scaffold in `apps/web` yet; if a history sidebar lands it pairs with a small shared layout (out of scope here).
