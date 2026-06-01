@@ -19,6 +19,8 @@ const NAV: NavItem[] = [
   { href: "/recommendation-rules", label: "Funnel rules" },
   { href: "/failed-queries", label: "Flagged answers" },
   { href: "/users", label: "Users" },
+  { href: "/experts", label: "Experts" },
+  { href: "/voice-profiles", label: "Voice profiles" },
   { href: "/audit", label: "Audit log" },
 ];
 

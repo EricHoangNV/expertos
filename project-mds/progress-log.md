@@ -1485,3 +1485,33 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M8.4 is not fully closed** — remaining: expert CRUD (no expert-management API exists; build an `AdminExpertService` on the `AdminUserService` template + an `apps/admin/app/experts` page) and a voice-profile admin UI over the existing M2.3 `/voice-profiles` routes (just admin-client fns + a page). Thread `AdminAuditService.record` through any new expert mutation. Marked `[~]` in the manifest.
 - Seam-tested with a mocked tx; the real cascade + admin cross-tenant visibility + the `fair_use_flags`/`data_deletion_requests` WITH-CHECK-under-`is_admin` inserts join the M11 Testcontainers list.
 - Full `apps/api` suite ran clean this session: 58 suites / 494 tests. Totals: 775 pass (shared 126, ui 3, db 9, ai 143, api 494).
+
+## M8.4 (COMPLETE) — Admin expert-roster management + voice-profile admin UI
+**Date:** 2026-06-01
+**Ref:** PRD M8.4 (§"Admin & Expert portals" → "Manage … experts / voice profiles"); closes the two items left `[~]` after the prior M8.4 slice (audit + users/subscriptions/fair-use + user-data deletion).
+
+**What was done:**
+- **Expert CRUD API.** New `AdminExpertService` (`apps/api/src/admin/admin-expert.service.ts`) + `AdminExpertController` (`/admin/experts`, `@Roles("admin")`), registered in `AdminModule`. Methods: `list` (active + slug/name search, voice-profile `_count`), `get` (operator email + voice/document `_count`, 404), `create` (optional operator link, P2002→409, 404 missing operator), `update` (free-text + operator connect/disconnect/unlink, slug frozen, "" → null), `setActive` (toggle). Every mutation appends an `AdminAuditService` entry in the same tx (`expert.created`/`updated`/`activated`/`deactivated`).
+- **Shared DTOs/schemas** in `packages/shared/src/admin.ts`: `adminExpertListQuerySchema` (boolean-or-query-string `active`), `adminExpertCreateSchema` (url-safe slug regex, normalized name/title/bio), `adminExpertUpdateSchema` (nullable userId, empty-patch rejected), `adminExpertActiveUpdateSchema`, `AdminExpertSummaryDto`/`AdminExpertDetailDto` (+ index exports).
+- **Expert admin UI:** `apps/admin/app/experts/page.tsx` (filtered table + inline create form) + `apps/admin/app/experts/[id]/page.tsx` (active toggle, details editor incl. operator link, voice/document Stat cards, deep link to `/voice-profiles?expertId=`).
+- **Voice-profile admin UI** over the existing M2.3 `/voice-profiles` routes (no new API): `apps/admin/app/voice-profiles/page.tsx` — status/expert-filtered sign-off queue (reuses `publishStatusTone`/`statusLabel`), per-row Submit/Approve/Request-changes, inline draft editor, create form. New admin-client fns + a local `VoiceProfileAdminDto` (wire shape). "Experts"/"Voice profiles" nav entries added to `AdminFrame`.
+
+**Key decisions:**
+- Audit threaded only through the NEW expert mutations; voice-profile actions reuse the M2.3 `VoiceProfileService` unchanged (no audit retrofit — per the seam note, those routes are the API-done piece).
+- Slug frozen after create (identity field, directive §4.7) — only `create` accepts it.
+- Operator link via Prisma `{ connect }`/`{ disconnect }` so a null `userId` unlinks; both unique constraints (slug, operator) map to a single 409.
+- Voice-profile DTO kept admin-local rather than retrofitting the api-local `VoiceProfileSummary` (carries `Date`/`@expertos/ai` types) into shared.
+- Read the `?expertId=` deep link via `window.location` in an effect (no `useSearchParams`) to avoid the Next static-render Suspense-boundary build requirement (no precedent for it in the repo).
+
+**Files changed:**
+- `apps/api/src/admin/admin-expert.service.ts`, `admin-expert.controller.ts`, `admin-expert.service.test.ts` — new (service 100% all metrics, 20 tests).
+- `apps/api/src/admin/admin.module.ts` — register the new service + controller.
+- `packages/shared/src/admin.ts` (+ `admin.test.ts` +12, `index.ts` exports) — expert schemas/DTOs.
+- `apps/admin/app/experts/page.tsx`, `app/experts/[id]/page.tsx`, `app/voice-profiles/page.tsx` — new pages.
+- `apps/admin/src/lib/admin-client.ts` — expert + voice-profile client fns + `VoiceProfileAdminDto`.
+- `apps/admin/src/components/AdminFrame.tsx` — "Experts"/"Voice profiles" nav.
+
+**Notes for next iteration:**
+- **M8.5 (expert portal) is the last open M8 item.** Build it on this session's precedent: same `AdminFrame` + `admin-client` shape; reuse `listVoiceProfiles`/`voiceProfileAction` (the M2.3 routes scope an expert to their own profiles service-side) + the M8.1 `/knowledge` routes; add consultation-conversion views over the M7 funnel + an admin surface for the manual TidyCal reconcile / unmatched `booking_webhook_events`.
+- Seam-tested with a mocked tx; the real expert writes + the cross-tenant admin RLS visibility join the M11 Testcontainers list.
+- Full `apps/api` suite ran clean this session: 59 suites / 514 tests. Totals: 807 pass (shared 138, ui 3, db 9, ai 143, api 514).

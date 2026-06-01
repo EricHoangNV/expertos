@@ -10,6 +10,7 @@ import type {
   KnowledgeDraftUpdateInput,
   KnowledgeVersionDto,
   PublishStatusValue,
+  LanguageValue,
   RecommendationRuleDto,
   RecommendationRuleUpdateInput,
   RecommendationRulesDto,
@@ -26,6 +27,12 @@ import type {
   FairUseFlagUpdateInput,
   Role,
   UserDeletionResultDto,
+  AdminExpertSummaryDto,
+  AdminExpertDetailDto,
+  AdminExpertCreateInput,
+  AdminExpertUpdateInput,
+  VoiceProfileCreateInput,
+  VoiceProfileUpdateInput,
 } from "@expertos/shared";
 
 /**
@@ -296,4 +303,132 @@ export function getAuditLogs(
   if (params?.offset != null) search.set("offset", String(params.offset));
   const query = search.toString();
   return request<AdminAuditLogDto[]>(`/admin/audit-logs${query ? `?${query}` : ""}`, token);
+}
+
+// ── M8.4 — expert-roster management ─────────────────────────────────────────
+
+/** The expert management list, optionally narrowed by active state and/or a slug/name substring. */
+export function listExperts(
+  token: string,
+  params?: { active?: boolean; search?: string; limit?: number; offset?: number },
+): Promise<AdminExpertSummaryDto[]> {
+  const search = new URLSearchParams();
+  if (params?.active != null) search.set("active", String(params.active));
+  if (params?.search != null && params.search !== "") search.set("search", params.search);
+  if (params?.limit != null) search.set("limit", String(params.limit));
+  if (params?.offset != null) search.set("offset", String(params.offset));
+  const query = search.toString();
+  return request<AdminExpertSummaryDto[]>(`/admin/experts${query ? `?${query}` : ""}`, token);
+}
+
+/** One expert's full detail (operator link + content counts). */
+export function getExpert(token: string, id: string): Promise<AdminExpertDetailDto> {
+  return request<AdminExpertDetailDto>(`/admin/experts/${id}`, token);
+}
+
+/** Author a new expert. */
+export function createExpert(
+  token: string,
+  body: AdminExpertCreateInput,
+): Promise<AdminExpertDetailDto> {
+  return request<AdminExpertDetailDto>(`/admin/experts`, token, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Edit an expert's free-text fields and/or operator link. */
+export function updateExpert(
+  token: string,
+  id: string,
+  body: AdminExpertUpdateInput,
+): Promise<AdminExpertDetailDto> {
+  return request<AdminExpertDetailDto>(`/admin/experts/${id}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Activate / deactivate an expert. */
+export function setExpertActive(
+  token: string,
+  id: string,
+  active: boolean,
+): Promise<AdminExpertDetailDto> {
+  return request<AdminExpertDetailDto>(`/admin/experts/${id}/active`, token, {
+    method: "PATCH",
+    body: JSON.stringify({ active }),
+  });
+}
+
+// ── M8.4 — voice-profile administration (over the M2.3 /voice-profiles routes) ──
+
+/**
+ * A voice profile as returned by the M2.3 `/voice-profiles` routes. Mirrors the API-local
+ * `VoiceProfileSummary` but with the wire (JSON) shape: dates are ISO strings, language a plain
+ * string. Kept here (not in `@expertos/shared`) because the API type carries `Date`/`@expertos/ai`
+ * types that aren't wire-friendly; the admin UI only displays these fields.
+ */
+export interface VoiceProfileAdminDto {
+  id: string;
+  expertId: string;
+  expertName: string;
+  language: string;
+  name: string;
+  description: string | null;
+  guidelines: string | null;
+  status: PublishStatusValue;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  updatedAt: string;
+}
+
+/** Sign-off lifecycle actions a reviewer can drive a voice profile through (M2.3). */
+export type VoiceProfileAction = "submit" | "approve" | "request-changes";
+
+/** The voice-profile sign-off queue / authoring list (admin sees every profile in the tenant). */
+export function listVoiceProfiles(
+  token: string,
+  params?: { status?: PublishStatusValue; expertId?: string; language?: LanguageValue },
+): Promise<VoiceProfileAdminDto[]> {
+  const search = new URLSearchParams();
+  if (params?.status != null) search.set("status", params.status);
+  if (params?.expertId != null && params.expertId !== "") search.set("expertId", params.expertId);
+  if (params?.language != null) search.set("language", params.language);
+  const query = search.toString();
+  return request<VoiceProfileAdminDto[]>(`/voice-profiles${query ? `?${query}` : ""}`, token);
+}
+
+/** Author a new draft voice profile for an expert. */
+export function createVoiceProfile(
+  token: string,
+  body: VoiceProfileCreateInput,
+): Promise<VoiceProfileAdminDto> {
+  return request<VoiceProfileAdminDto>(`/voice-profiles`, token, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Edit a draft voice profile's free-text fields. */
+export function updateVoiceProfile(
+  token: string,
+  id: string,
+  body: VoiceProfileUpdateInput,
+): Promise<VoiceProfileAdminDto> {
+  return request<VoiceProfileAdminDto>(`/voice-profiles/${id}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Drive a voice profile through the sign-off lifecycle. */
+export function voiceProfileAction(
+  token: string,
+  id: string,
+  action: VoiceProfileAction,
+): Promise<VoiceProfileAdminDto> {
+  return request<VoiceProfileAdminDto>(`/voice-profiles/${id}/${action}`, token, {
+    method: "POST",
+  });
 }

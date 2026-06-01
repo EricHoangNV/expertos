@@ -130,6 +130,10 @@ export {
   dataDeletionStatusSchema,
   adminUserListQuerySchema,
   adminUserRoleUpdateSchema,
+  adminExpertListQuerySchema,
+  adminExpertCreateSchema,
+  adminExpertUpdateSchema,
+  adminExpertActiveUpdateSchema,
 } from "./admin";
 export type {
   AdminAuditListQueryInput,
@@ -147,6 +151,12 @@ export type {
   AdminUserSubscriptionDto,
   AdminUserActivityDto,
   AdminUserDetailDto,
+  AdminExpertListQueryInput,
+  AdminExpertCreateInput,
+  AdminExpertUpdateInput,
+  AdminExpertActiveUpdateInput,
+  AdminExpertSummaryDto,
+  AdminExpertDetailDto,
 } from "./admin";
 export type {
   ChatRequestInput,
