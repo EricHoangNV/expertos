@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { estimateTokens } from "@expertos/ai";
 import type { ChatMessage } from "@expertos/ai";
 import type {
   ConversationDetailDto,
@@ -13,11 +14,35 @@ import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 
 /**
- * Number of trailing messages replayed as conversation context (M3.1). This is a deliberate
- * INTERIM cap so a long chat can't grow the prompt — and its cost — without bound. Replacing it
- * with a token-budget / summarization policy is Open Decision #8, scheduled for M3.5.
+ * Conversation context-window policy (Open Decision #8, resolved in M3.5). Long multi-turn chats
+ * must not grow the prompt — and its per-answer cost — without bound, so {@link
+ * ConversationService.loadHistory} replays only the most recent turns that fit inside a fixed
+ * **token budget** rather than a fixed message count.
+ *
+ * Decisions:
+ * 1. **Budget by estimated tokens, not message count.** Ten short messages and ten long ones cost
+ *    very differently; bounding tokens is what actually caps the prompt size and spend. The window
+ *    is the most-recent messages whose combined estimate fits {@link HISTORY_TOKEN_BUDGET}.
+ * 2. **The estimate is deterministic and offline** — it reuses {@link estimateTokens} (the same
+ *    word→token heuristic that sizes ingestion chunks), so windowing itself costs nothing and never
+ *    makes an LLM call. The real tokenizer can replace it later in one place (`@expertos/ai`).
+ * 3. **Whole messages, newest-first, always ≥ the latest message.** A message is kept in full or
+ *    not at all (never half a turn), and the single most-recent message is always carried even if
+ *    it alone exceeds the budget, so an immediate follow-up never loses its antecedent.
+ * 4. **A hard row ceiling backstops the DB read** ({@link HISTORY_MAX_MESSAGES}) so a pathological
+ *    burst of tiny messages can't make the query scan an unbounded number of rows before the
+ *    token budget trims them.
+ *
+ * Deferred (documented seam, not built): LLM **summarization** of turns that fall outside the
+ * window. Truncation is the M3.5 policy; if summarization lands later it must run on a cheap model
+ * and, critically, must NOT summarize away a concierge "inject corrected answer into context"
+ * edit (M9). Because this window keeps the *most recent* turns and a concierge correction enters as
+ * recent context, truncation of older turns is already safe for that mechanism today.
  */
-const HISTORY_LIMIT = 10;
+const HISTORY_TOKEN_BUDGET = 1500;
+
+/** Hard backstop on rows fetched for the history window — see {@link HISTORY_TOKEN_BUDGET}. */
+const HISTORY_MAX_MESSAGES = 40;
 
 /** Max characters of a chunk persisted as a citation `quote` preview (full text lives on the chunk). */
 const QUOTE_PREVIEW_CHARS = 500;
@@ -108,21 +133,34 @@ export class ConversationService {
   constructor(private readonly rls: RlsService) {}
 
   /**
-   * Replays the most recent turns of a conversation as prompt context, oldest-first, excluding
-   * any system rows. Capped at {@link HISTORY_LIMIT} (interim — see Open Decision #8 / M3.5).
-   * Throws {@link NotFoundException} when the conversation does not belong to the acting user
-   * (RLS makes a peer's conversation invisible).
+   * Replays the most recent turns of a conversation as prompt context, oldest-first, excluding any
+   * system rows. The window is bounded by a token budget rather than a fixed message count — see
+   * {@link HISTORY_TOKEN_BUDGET} for the full Open Decision #8 policy. Throws {@link
+   * NotFoundException} when the conversation does not belong to the acting user (RLS makes a peer's
+   * conversation invisible).
    */
   async loadHistory(user: AuthUser, conversationId: string): Promise<ChatMessage[]> {
     return this.rls.run(user, async (tx) => {
       await this.requireConversation(tx, conversationId);
+      // Fetch newest-first (capped) and accumulate whole messages until the next one would exceed
+      // the token budget; the most recent message is always kept (see HISTORY_TOKEN_BUDGET).
       const rows = await tx.message.findMany({
         where: { conversationId, role: { in: ["user", "assistant"] } },
         orderBy: { createdAt: "desc" },
-        take: HISTORY_LIMIT,
+        take: HISTORY_MAX_MESSAGES,
         select: { role: true, content: true },
       });
-      return rows
+      const windowed: typeof rows = [];
+      let tokens = 0;
+      for (const row of rows) {
+        const cost = estimateTokens(row.content);
+        if (windowed.length > 0 && tokens + cost > HISTORY_TOKEN_BUDGET) {
+          break;
+        }
+        tokens += cost;
+        windowed.push(row);
+      }
+      return windowed
         .reverse()
         .map((row) => ({ role: row.role as ChatMessage["role"], content: row.content }));
     });

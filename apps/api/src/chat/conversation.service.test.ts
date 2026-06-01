@@ -49,7 +49,7 @@ const TURN: ConversationTurn = {
 };
 
 describe("ConversationService.loadHistory", () => {
-  it("returns the capped, chronological user/assistant history", async () => {
+  it("returns the within-budget, chronological user/assistant history", async () => {
     const tx = makeTx();
     tx.conversation.findUnique.mockResolvedValue({ id: "conv-1" });
     // Stored DESC (newest first); the service reverses to chronological.
@@ -70,13 +70,50 @@ describe("ConversationService.loadHistory", () => {
       { role: "user", content: "q2" },
       { role: "assistant", content: "a2" },
     ]);
+    // The DB read is bounded by a hard row backstop (HISTORY_MAX_MESSAGES); the token budget then
+    // trims within that. Short messages all fit, so the full set is replayed here.
     const args = tx.message.findMany.mock.calls[0][0];
-    expect(args.take).toBe(10);
+    expect(args.take).toBe(40);
     expect(args.where).toEqual({
       conversationId: "conv-1",
       role: { in: ["user", "assistant"] },
     });
     expect(args.orderBy).toEqual({ createdAt: "desc" });
+  });
+
+  it("windows by token budget, keeping the most recent whole messages", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue({ id: "conv-1" });
+    // ~600 estimated tokens each (~450 words / 0.75). Two fit the 1500-token budget; the third
+    // (oldest) would push over it and is dropped — whole-message, newest-first.
+    const big = (tag: string) => `${tag} ${"word ".repeat(450)}`.trim();
+    tx.message.findMany.mockResolvedValue([
+      { role: "assistant", content: big("a2") },
+      { role: "user", content: big("q2") },
+      { role: "assistant", content: big("a1") },
+    ]);
+    const { service } = makeService(tx);
+
+    const history = await service.loadHistory(USER, "conv-1");
+
+    expect(history).toHaveLength(2);
+    expect(history.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(history[0].content).toBe(big("q2"));
+    expect(history[1].content).toBe(big("a2"));
+  });
+
+  it("always keeps the single most recent message even when it exceeds the budget", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue({ id: "conv-1" });
+    // One message far larger than the whole budget — it must still be carried so a follow-up
+    // never loses its immediate antecedent.
+    const huge = `q ${"word ".repeat(5000)}`.trim();
+    tx.message.findMany.mockResolvedValue([{ role: "user", content: huge }]);
+    const { service } = makeService(tx);
+
+    const history = await service.loadHistory(USER, "conv-1");
+
+    expect(history).toEqual([{ role: "user", content: huge }]);
   });
 
   it("throws NotFound when the conversation is not the acting user's", async () => {

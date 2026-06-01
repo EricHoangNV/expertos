@@ -624,3 +624,30 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **No web UI** for feedback or the insufficient-knowledge next-step — deferred with M3.2/M3.3's history/search/saved-answer UI. Consume via `apps/web/src/lib/chat-client.ts`.
 - **M8.3 admin inspector** will add the admin-side read over `answer_feedback`; the service intentionally exposes only user-scoped submit/remove for now.
 - DB note unchanged: run api tests with `PRISMA_CLIENT_ENGINE_TYPE=binary` on this sandbox (LEARNINGS §2).
+
+## M3.5 — Conversation context-window / cost ceiling policy (Open Decision #8)
+**Date:** 2026-06-01
+**Ref:** PRD M3.5 / §"Open Decisions" #8 / §"Chat experience". Closes M3.
+
+**What was done:**
+- Retired the interim `HISTORY_LIMIT = 10` message cap (M3.1) in `ConversationService.loadHistory` and replaced it with a **token-budget window**: the most-recent user/assistant messages whose combined estimate fits `HISTORY_TOKEN_BUDGET = 1500`, with a hard `HISTORY_MAX_MESSAGES = 40` row-read backstop.
+- Reused `estimateTokens` from `@expertos/ai` (the same word→token heuristic that sizes ingestion chunks) so windowing is deterministic, offline, and adds zero LLM cost.
+- Wrote the full OD#8 resolution into the `HISTORY_TOKEN_BUDGET` doc comment (4 decisions + deferred-summarization seam) and into PRD §"Open Decisions" #8 as a RESOLVED block; updated the manifest (`[x] M3.5`, `[x] OD#8`, M3 heading → COMPLETE, OD#8 table row → ✅ RESOLVED).
+- Added 2 `loadHistory` tests: token-budget windowing (two ~600-token messages fit, third dropped) and always-keep-the-single-most-recent (one over-budget message still carried).
+
+**Key decisions:**
+- **Budget by estimated tokens, not message count.** Ten short vs ten long messages cost very differently; token-bounding is what actually caps prompt size and per-answer spend. A message-count cap (the M3.1 interim) doesn't.
+- **Whole messages, newest-first, always ≥ the latest message.** Never half a turn; the single most-recent message is always carried (the `windowed.length > 0` guard) so an immediate follow-up never loses its antecedent. Chose message-level (not turn-level) windowing for simplicity — the oldest kept message can be an assistant reply whose question fell outside the window, which still reads as coherent context.
+- **Deterministic/offline, reusing the existing token estimator.** Matches the `deriveTitle` precedent (no LLM, no cost) and keeps a single tokenizer definition that the real tokenizer can later replace in one place.
+- **Summarization deferred, not built.** Truncation is the M3.5 policy. Documented the seam: if LLM summarization lands it must use a cheap model and must NOT summarize away a concierge "inject corrected answer into context" edit (M9). Already M9-safe today because the window keeps the most-recent turns, where a correction enters as recent context.
+
+**Files changed:**
+- `apps/api/src/chat/conversation.service.ts` — added `estimateTokens` import; replaced `HISTORY_LIMIT` with `HISTORY_TOKEN_BUDGET`/`HISTORY_MAX_MESSAGES` + the full OD#8 policy doc comment; rewrote `loadHistory` to accumulate whole messages within the token budget (newest-first, always-keep-latest) before reversing to chronological.
+- `apps/api/src/chat/conversation.service.test.ts` — renamed the cap test, updated `take` expectation to 40, added token-budget-windowing and always-keep-latest tests.
+- `project-mds/PRD.md` — manifest `[x] M3.5` + `[x] OD#8`; M3 heading → COMPLETE; OD#8 table row → ✅ RESOLVED; added the RESOLVED block to §"Open Decisions" #8.
+
+**Notes for next iteration:**
+- **M3 is fully complete (M3.1–M3.5).** Next is **M4.1** — citation builder with chunk-resolvability guarantee, resolving `[n]` markers against `prompt.citations` (already carried on the `done` SSE frame as `ChatCitationDto[]`, `ordinal=i+1`); never trust the model to emit an out-of-range marker.
+- `HISTORY_TOKEN_BUDGET` bounds only the *replayed history* portion of the prompt — the system message, freshly-retrieved facts, and the new user message are separate and not bounded by it. Re-tune in one place if cost/quality calibration needs it.
+- Windowing is seam-tested with a mocked tx (the message rows are fixtures); no DB-backed exercise of the actual `createdAt desc` ordering — joins the M11 Testcontainers list with the other raw/DB-coupled paths.
+- DB note unchanged: run api tests with `PRISMA_CLIENT_ENGINE_TYPE=binary` on this sandbox (LEARNINGS §2). (This run's gates all passed via `pnpm` without needing it for the mocked unit tests.)

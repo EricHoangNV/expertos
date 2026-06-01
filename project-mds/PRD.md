@@ -29,12 +29,12 @@
 - [x] M2.3 Expert sign-off workflow on own voice profile; language-aware voice (EN + VI)
 - [x] M2.4 Voice-vs-facts separation tests; voice-fidelity assertion in eval harness (Open Decisions #2, #3, #6)
 
-#### M3 — Chat experience
+#### M3 — Chat experience — COMPLETE
 - [x] M3.1 Chat UI with streaming + context-retaining follow-ups
 - [x] M3.2 Conversation history + auto-titling + saved answers
 - [x] M3.3 Full-text conversation search (message content, not just titles)
 - [x] M3.4 Insufficient-knowledge path + graceful next step; answer feedback (👍/👎 + reason)
-- [ ] M3.5 Resolve Open Decision #8 (context-window / cost ceiling policy)
+- [x] M3.5 Resolve Open Decision #8 (context-window / cost ceiling policy)
 
 #### M4 — Citations
 - [ ] M4.1 Citation builder with chunk-resolvability guarantee (never emit an unresolvable citation)
@@ -94,7 +94,7 @@
 - [ ] OD#5 Concierge Mode B legal/brand ruling — blocks M9 (Legal + PM, **before M9**)
 - [ ] OD#6 Eval golden-set ownership, size, refresh — blocks M2 / M4 (Eng lead, Phase 0)
 - [ ] OD#7 Streaming vs citation-resolvability UX — blocks M3 / M4 (Eng + Design, early M3)
-- [ ] OD#8 Conversation context-window / cost ceiling policy — blocks M3 (Eng, early M3)
+- [x] OD#8 Conversation context-window / cost ceiling policy — blocks M3 (Eng, early M3) — RESOLVED in M3.5 (token-budget window, deterministic/offline; LLM summarization deferred; see §"Open Decisions" #8)
 - [x] OD#9 Vietnamese retrieval quality — blocks M1 (Eng, M1) — RESOLVED in M1.3 (cross-lingual default + mandatory NFC normalization; see §"Open Decisions" #9)
 - [ ] OD#10 TidyCal webhook reliability / missed-event recovery — blocks M7 (Eng, M7)
 
@@ -500,7 +500,7 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 | 5 | **Concierge Mode B (silent review) legal/brand ruling** | A human silently editing an answer attributed to a named expert is the highest-liability mechanism in the app; rules differ by jurisdiction (VN + EU/US). | M9 | Legal + PM | **before M9** |
 | 6 | **Eval golden-set ownership, size, refresh** | The harness is specified; the dataset isn't. A thin/stale golden set gives false confidence. | M2 / M4 | Eng lead | Phase 0 |
 | 7 | **Streaming vs. citation-resolvability UX** | Verifying every citation before display conflicts with token streaming — citations could flash then vanish, or buffering kills the streaming feel. | M3 / M4 | Eng + Design | early M3 |
-| 8 | **Conversation context-window / cost ceiling policy** | Long multi-turn chats grow the prompt unbounded — a correctness and cost risk. | M3 | Eng | early M3 |
+| 8 | **Conversation context-window / cost ceiling policy** | Long multi-turn chats grow the prompt unbounded — a correctness and cost risk. | M3 | Eng | ✅ RESOLVED (M3.5) |
 | 9 | **Vietnamese retrieval quality (not just voice tone)** | i18n affects embeddings, chunking, and retrieval — deeper than answer styling. | M1 | Eng | ✅ RESOLVED (M1.3) |
 | 10 | **TidyCal webhook reliability / missed-event recovery** | Booking confirmation depends on the webhook; a missed event leaves a booking in limbo. | M7 | Eng | M7 |
 
@@ -519,6 +519,12 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 **7. Streaming vs. citation-resolvability UX** — likely resolution (confirm + spec): **stream the prose, render citation markers only after post-generation validation**, so a citation never appears then disappears; specify the placeholder/loading behavior for citations during streaming.
 
 **8. Conversation context-window / cost ceiling policy** — truncation/summarization strategy for long chats: max turns/tokens carried before summarizing earlier turns; whether summarization is itself an LLM call and on which model; interaction with the concierge "inject corrected answer into context" mechanism (don't summarize away a human correction).
+
+> **RESOLVED (M3.5).** Decisions:
+> 1. **Bound the replayed context by an estimated-token budget, not a fixed message count.** `ConversationService.loadHistory` carries the most-recent user/assistant messages whose combined estimate fits `HISTORY_TOKEN_BUDGET` (1500 tokens). Token-bounding is what actually caps prompt size and per-answer spend — ten short messages and ten long ones cost very differently — so the interim `HISTORY_LIMIT = 10` message cap (M3.1) is retired.
+> 2. **The estimate is deterministic and offline.** It reuses `estimateTokens` from `@expertos/ai` (the same word→token heuristic that sizes ingestion chunks), so windowing adds **zero LLM cost** and never makes a model call. When the real tokenizer lands it replaces that one helper and both ingestion and context-windowing move together.
+> 3. **Whole messages, newest-first, always ≥ the latest message.** A message is kept in full or not at all (never half a turn); the single most-recent message is always carried even if it alone exceeds the budget, so an immediate follow-up never loses its antecedent. A hard `HISTORY_MAX_MESSAGES = 40` row ceiling backstops the DB read so a burst of tiny messages can't make the query scan unbounded rows.
+> 4. **Summarization is deferred (documented seam, not built).** Truncation is the M3.5 policy. If LLM summarization of out-of-window turns lands later it must run on a cheap model and must **not** summarize away a concierge "inject corrected answer into context" edit (M9). Because the window keeps the *most recent* turns and a concierge correction enters as recent context, truncation of older turns is already safe for that mechanism today — the constants + comment in `conversation.service.ts` mark the spot.
 
 **9. Vietnamese retrieval quality** — confirm the embedding + retrieval stack performs on Vietnamese, not just that answers can be styled in VI: does the embedding model retrieve well for VI queries against VI / mixed EN-VI knowledge; VI chunking behavior; whether retrieval is language-filtered, multilingual, or cross-lingual — and add VI cases to the eval golden set (§6).
 
