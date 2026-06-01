@@ -1753,3 +1753,36 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Cross-instance limiting needs Redis** — the in-process counter is per-instance, so on Cloud Run with N instances the effective ceiling is ~N×max. Acceptable as a coarse safety net at launch; swap the `LruCache` in `RateLimitService` for a Memorystore-backed store when volume justifies it (the PRD architecture's stated trigger).
 - **DI-bootstrap smoke could not run** on this box — the documented Prisma-engine SIGILL quirk (the generated client rejects `binary`; the library engine SIGILLs) blocks `NestFactory.create`. The wiring mirrors the existing `EntitlementGuard` APP_GUARD pattern exactly, so DI risk is minimal; a clean parallel run / live DB validates it (joins the M11 list).
 - **Remaining M11.2:** authz/RLS negative tests (needs the M11 Testcontainers live-DB pass for real RLS enforcement), `/cso` audit.
+
+## M11.2 (partial) — Live-DB authz/RLS negative tests
+**Date:** 2026-06-01
+**Ref:** PRD M11.2 (Security tests — authz/RLS negative); §"Data Model" RLS isolation guarantee; §"Testing Strategy"
+
+**What was done:**
+- Added `packages/db/src/rls.integration.test.ts` — 15 live-database tests that validate the RLS policies from migration `20260531212901_rls_and_vector_index` against a **real Postgres**, connecting as the non-superuser **`app_user`** role (the role that actually enforces RLS — the table owner/superuser bypasses it; FORCE ROW LEVEL SECURITY + no-BYPASSRLS closes that). Previously every RLS-touching store/service was unit-tested with a *mocked* `$queryRawUnsafe`, so the core multi-tenant isolation guarantee had never been exercised end-to-end.
+- Coverage of all three policy families: **tenant_isolation** (users) — own-tenant read / cross-tenant read blocked / fail-closed when no context set / admin-bypass reads across tenants / WITH-CHECK blocks a cross-tenant insert. **tenant_user_isolation** (conversations) — owner reads / same-tenant *different user* blocked / cross-tenant user blocked / admin reads any / WITH-CHECK blocks inserting for another user. **tenant_write + global_read** (documents) — own-tenant read / cross-tenant read blocked / **GLOBAL-tenant read allowed** (global_read SELECT policy) / WITH-CHECK blocks a cross-tenant write / WITH-CHECK blocks a tenant writing *into* the GLOBAL tenant (global_read is SELECT-only).
+- The suite drives the real `applyRlsContext` helper inside interactive transactions; seeds ephemeral random-UUID tenants under an admin context (is_admin bypasses WITH CHECK) and cleans them up via tenant-cascade in `afterAll` (GLOBAL-tenant doc deleted explicitly).
+- Wired it to be **opt-in and isolated from CI**: gated on `RLS_TEST_DATABASE_URL`, excluded from the default Jest run (`packages/db/jest.config.cjs` `testPathIgnorePatterns`), and run via a dedicated `packages/db/jest.integration.config.cjs` + new `test:integration` script (`pnpm --filter @expertos/db test:integration`). The default `pnpm test` is byte-identical in behaviour — still 849 pass / 0 fail / 0 skip with no DB.
+- Verified live: all 15 pass against the running `expertos-pg` (`pgvector/pgvector:pg16`) container.
+- Recorded LEARNINGS #7 (Prisma raw-helper `text` param binding → explicit `::uuid`/`::uuid[]` casts needed) and updated the PRD M11.2 manifest note (authz/RLS negative tests now DONE; only `/cso` audit remains).
+
+**Key decisions:**
+- **Live container over Testcontainers** — `expertos-pg` is already running with the schema migrated+seeded and `app_user` provisioned, so no image pull / firewall concern; this is the long-deferred "M11 Testcontainers live-DB pass" achieved on the box's existing DB.
+- **Connect as `app_user`, not the owner** — the entire point is to exercise the FORCE-RLS path the owner bypasses. Set the container's `app_user` password to `app_user` (`ALTER ROLE`) so the test connects via Docker NAT (pg_hba is `scram-sha-256` for non-127.0.0.1 hosts); transient container state, reflected in the test-header example URL.
+- **Raw SQL inserts/reads** (not Prisma model methods) — pins the RLS guarantee at the SQL boundary and lets the test control `tenant_id`/`user_id` exactly, including the cross-tenant/cross-user forgeries the WITH-CHECK tests need.
+- **Dedicated integration config + env gate** over an in-file `describe.skip` — keeps the default unit run's "0 skip" count pristine while the live suite runs on demand.
+
+**Files changed:**
+- `packages/db/src/rls.integration.test.ts` — NEW; the 15-test live RLS suite.
+- `packages/db/jest.integration.config.cjs` — NEW; opt-in integration Jest config (matches `*.integration.test.ts`, no coverage gate, serial, 30s timeout).
+- `packages/db/jest.config.cjs` — added `testPathIgnorePatterns` to exclude `*.integration.test.ts` from the default coverage run.
+- `packages/db/package.json` — added `test:integration` script.
+- `knip.json` — broadened the jest-config ignore glob (`**/jest.config.*` → `**/jest*.config.*`) so the new integration config isn't flagged unused.
+- `project-mds/LEARNINGS.MD` — added learning #7 (Prisma raw `text` param binding → `::uuid` casts).
+- `project-mds/PRD.md` — M11.2 manifest note: authz/RLS negative tests DONE.
+- `project-mds/progress-state.md` + `progress-log.md` — this entry.
+
+**Notes for next iteration:**
+- **The live DB (`expertos-pg`, localhost:5432, `app_user`/`app_user`) is the harness for the rest of the deferred raw-SQL validation.** The other stores still only unit-tested with mocked tx — `PgVectorStore` (cosine `<=>` + `ts_rank` keyword), conversation-search `SEARCH_SQL` (`ts_rank`/`ts_headline`/LATERAL + GIN index usage), `PgExpertStore` (`array_agg(DISTINCT)::text[]`), the semantic-cache store, and the `FailedQueryService`/`ExpertPortalService` `LATERAL` joins — can now get real integration tests on this same pattern (admin-context seed → app_user read).
+- **Watch LEARNINGS #7:** any new raw-SQL test (or a fix to those stores when they go live) must cast `uuid`/`uuid[]` bind params explicitly (`$n::uuid`), or Postgres aborts with `operator does not exist: uuid = text`. A passing mocked-tx unit test will not catch it.
+- **Remaining M11.2:** the `/cso` audit (run the `/security-review` skill over the branch) — the last sub-item; M11.2 stays `[~]` until then.

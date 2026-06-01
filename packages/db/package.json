@@ -17,6 +17,7 @@
     "typecheck": "prisma generate && tsc --noEmit -p tsconfig.json",
     "lint": "eslint src --ext .ts",
     "test": "jest --coverage",
+    "test:integration": "jest --config jest.integration.config.cjs --runInBand",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",

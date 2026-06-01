@@ -6,4 +6,8 @@ const base = require("../../jest.base.cjs");
 module.exports = {
   ...base,
   collectCoverageFrom: [...base.collectCoverageFrom, "!src/client.ts"],
+  // Live-DB RLS tests need a real Postgres (the `app_user` role) and are opt-in — they
+  // run via `test:integration` (jest.integration.config.cjs), never in the default
+  // `pnpm test` coverage run, so CI stays green on a box with no database.
+  testPathIgnorePatterns: ["/node_modules/", "\\.integration\\.test\\.ts$"],
 };

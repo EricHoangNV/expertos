@@ -78,3 +78,16 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Guarded by an offline eval-harness regression case (`vi-pricing-nfd`): an NFD-form query against an NFC corpus must return the same ranked result as its NFC twin.
 
 **Rule:** Any text that is tokenized, embedded, or full-text indexed must be Unicode-NFC-normalized first, applied consistently to both indexed content and query text. Treat NFC normalization as part of input sanitization (directive §1). When a new embedding/tokenizer driver lands, keep NFC normalization in its tokenization path. A passing English test proves nothing about this — add a decomposed-vs-composed regression case for any diacritic-bearing language.
+
+---
+
+## 7. Prisma `$queryRawUnsafe`/`$executeRawUnsafe` binds string params as `text` — `uuid` columns/comparisons need an explicit `::uuid` cast
+
+**Context:** M11.2 — building the live-DB RLS negative test suite (`packages/db/src/rls.integration.test.ts`), the first code in the repo to exercise the raw-SQL paths against real Postgres as the `app_user` role.
+
+- A raw `INSERT INTO tenants (id, ...) VALUES ($1, $2, ...)` with a JS `randomUUID()` string for the `uuid` `id` column failed at runtime with `ERROR: operator does not exist: uuid = text` (SQLSTATE `42883`) — even though the statement contains no visible `=`.
+- Root cause: Prisma's raw helpers send every JS string parameter to Postgres typed as `text` (not `unknown`), so Postgres never infers the parameter as `uuid` from the target column. In a multi-row `VALUES` / any context where the planner must unify the parameter against a `uuid`, it looks for a `uuid = text` operator, finds none, and aborts. A single-row assignment sometimes survives via an assignment cast, so the bug is intermittent and easy to miss in a quick smoke.
+- Fix: cast every `uuid` parameter at the SQL boundary — `$1::uuid` for scalars, `$1::uuid[]` for `id = ANY($1::uuid[])` array predicates. With the casts, all 15 RLS isolation/WITH-CHECK tests pass as `app_user`.
+- This is latent in the existing raw-SQL stores (`PgVectorStore`, conversation-search `SEARCH_SQL`, `PgExpertStore`, the semantic-cache store, the M8.3 `FailedQueryService` `LATERAL` join) — they were only ever unit-tested with a mocked `$queryRawUnsafe`. When those join the live integration pass, audit each raw statement for an un-cast `uuid`/`uuid[]` parameter (the GUC `set_config(...)` calls in `applyRlsContext` are fine — they take `text`).
+
+**Rule:** In Prisma `$queryRawUnsafe`/`$executeRawUnsafe`, cast every `uuid` (and `uuid[]`) bind parameter explicitly (`$n::uuid`) — Prisma types string params as `text`, and Postgres will not infer the column type for you; a passing mocked-tx unit test cannot catch this, only a live-DB run will.
