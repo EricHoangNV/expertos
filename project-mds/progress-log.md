@@ -2156,3 +2156,67 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M9 is COMPLETE.** Natural next task = **M10.3** (concierge volume/SLA/verdict metrics + knowledge-quality signals): the full dataset now exists — `human_review_requests` (volume by trigger_mode/visibility, SLA breach via `sla_due_at`/`answered_at`, status funnel) + `review_responses` (good/bad/great + edit + `delivered_to_user` rates) + `chunks.flag_count`/`last_flagged_at`. Add an `AnalyticsService.concierge` method (the M10.1/M10.2 admin cross-tenant `RlsService.run`+`groupBy` pattern; coerce raw BigInt counts → Number) + `GET /admin/analytics/concierge` + an admin page.
 - **Mode A (`user_prompted`) up-front review prompts are still NOT built** — the queue only auto-enqueues Mode B silent (M9.2). The user-facing "would you like our team to review this?" opt-in + queue-on-opt-in is a future UX slice, distinct from M9.3.
 - When wiring a real mail provider, set `EMAIL_API_URL`/`EMAIL_API_KEY`/`EMAIL_FROM` (Secret Manager) and verify the `HttpEmailProvider` envelope field names against the provider's docs (the `fetch` transport needs live network — deploy-time, the Stripe/TidyCal caveat). A future enhancement: have the history page honor the email's `?c=<conversationId>` deep link to auto-open the refined conversation.
+
+## Test Coverage Archive (moved from progress-state.md)
+**Date:** 2026-06-01
+**Ref:** Housekeeping — progress-state.md was 269KB (target: ~3KB); test changelog and completed narratives were bloating the state file and breaking the AFK agent prompt (126KB prompt → docker sandbox exit code 255).
+
+**What was done:**
+- Moved the full test detail changelog from the `- Tests:` line in progress-state.md to this archive entry
+- Trimmed progress-state.md completed items to one-line summaries
+- The test count summary remains in progress-state.md; detailed per-milestone test breakdowns are below
+
+**Test detail by milestone (as of 986 pass / 0 fail / 0 skip):**
+
+- **M9.3** `apps/api` +18: `email.service.test.ts` ×2 (send delegates+logs driver/subject only / propagates provider failure); `offline-email-provider.test.ts` ×1 (records lastMessage no-network); `http-email-provider.test.ts` ×3 (Bearer JSON envelope w/ from / html-only-when-present / propagates transport failure); `concierge-delivery.service.test.ts` ×9 (pushes refined msg+marks delivered+emails / generic greeting w/o display name / silent-when-unedited / silent-when-no-revision / no-op-when-request-vanished / still-delivers-when-email-fails / stringifies-non-Error-email / swallows-write-failure non-fatal / stringifies-non-Error-write); `concierge-review.service.test.ts` +2 (async-delivers after commit / null-revision verdict-only / no-delivery-on-409); `conversation.service.test.ts` +1 (get surfaces `refinedFromMessageId`). Coverage: `email.service.ts` + `concierge-delivery.service.ts` 100% all metrics.
+
+- **M9.4** `apps/api` +22: `concierge-flywheel.service.test.ts` ×12 (great/edited→draft+embedded voice example / edit-under-non-great-is-positive / bad→deduped non-null chunk flag / verdict-only good→no-op / no-expert→draft-no-voice / no-published-profile→draft-no-voice / long-question→truncated title / no-question→generic title / request-not-found→no-op / bad-no-chunks→no flag / swallows Error + non-Error); `concierge-review.service.test.ts` +6 (respond feeds flywheel after commit / passes original as improvedAnswer for verdict-only / no-flywheel-on-409; escalate opens consultation + status→escalated / falls back to active default type / untyped when no active type / 409 already-answered / 404 not-in-voice); `conversation.service.test.ts` +2 (loadHistory injects latest reviewer-edited revision into context / skips lookup when no assistant messages in window). `apps/shared` +3 (`concierge.test.ts`: `reviewEscalateSchema`). Coverage: 100% all metrics.
+
+- **M9.2** `apps/api` +27: `concierge-queue.service.test.ts` ×11; `concierge-review.service.test.ts` ×14; `chat.service.test.ts` +2. `apps/shared` +9. Coverage: 100% all metrics.
+
+- **M9.1** `apps/api` +7: `concierge-config.service.test.ts` (getConfig/updateConfig including rejects-Mode-B-when-silent-disallowed). `apps/shared` +8. Coverage: 100% all metrics.
+
+- **M10.2** `apps/api` +3: `analytics.service.test.ts` (conversation/recommendation/consultation/revenue funnel). `apps/shared` +4. Coverage: 100% all metrics.
+
+- **M10.1** `apps/api` +5: `analytics.service.test.ts` (per-feature/per-model rollups + daily series). `apps/shared` +4. Coverage: 100% all metrics.
+
+- **M11.5** `packages/ui` +26: `primitives.test.ts` (all 12 ds.css components 100% all-metrics).
+
+- **M11.2** `apps/api` +13: rate-limit service ×6, guard ×7, clientIp tests. `apps/ai` +6: prompt-injection hardening. Admin reconcile +2. `apps/shared` +4. Coverage: 100% all metrics.
+
+- **M8.5** `apps/api` +12: `expert-portal.service.test.ts`. `apps/shared` +5. Coverage: 100% all metrics.
+
+- **M8.4** `apps/api` +42: `admin-expert.service.test.ts` ×20, `admin-audit.service.test.ts` ×4, `admin-user.service.test.ts` ×18. `apps/shared` +24. Coverage: 100% all metrics.
+
+- **M8.3** `apps/api` +28: failed-query ×4, recommendation-rules ×10, entitlement-matrix ×9, revenue ×5. `apps/shared` +27. Coverage: 100% all metrics.
+
+- **Cache invalidation** `apps/api` +3: `lru-cache.test.ts` deletePrefix, `response-cache.service.test.ts` invalidateTenant ×2.
+
+- **M8.2** `apps/api` +18: `knowledge-draft.service.test.ts`. `apps/shared` +11. Coverage: gated 100% lines.
+
+- **M8.1** `apps/api` +16: `knowledge.service.test.ts`. `apps/shared` +4. Coverage: 100% lines/stmts/funcs, 96.4% branch.
+
+- **M7.3** `apps/api` +33: `booking.service.test.ts` ×16, `offline-tidycal-provider.test.ts` ×7, `http-tidycal-provider.test.ts` ×10. `apps/shared` +3. Coverage: 100% all metrics.
+
+- **M7.2** `apps/api` +9: `recommendation.service.test.ts`. `apps/shared` +5. Coverage: 100% all metrics.
+
+- **M7.1** `apps/ai` +15: `recommendation/evaluate.test.ts`. `apps/api` +11. Coverage: 100% all metrics.
+
+- **M6.5** `apps/api` +10: `model-pricing.test.ts` ×6, `usage-log.service.test.ts` ×4. Coverage: 100% lines.
+
+- **M6.4** `apps/api` +27: `lru-cache.test.ts` ×6, `response-cache.service.test.ts` ×9, `semantic-cache.store.test.ts` ×5, `retrieval.service.test.ts` ×2, `chat.service.test.ts` ×6. Coverage: 100% all metrics.
+
+- **M6.3** `apps/ai` +1, `apps/api` +7: entitlement + degrade tests. Coverage: 100% lines / 97.22% branch.
+
+- **M6.2** `apps/api` +55: `billing.service.test.ts` ×27, `offline-payment-provider.test.ts` ×13, `stripe-payment-provider.test.ts` ×15. Coverage: 100% all metrics.
+
+- **M6.1** `apps/api` +19: `entitlement.service.test.ts` ×14, `entitlement.guard.test.ts` ×4, `all-exceptions.filter.test.ts` ×1.
+
+- **M5.4** `apps/ai` +1, `apps/api` +9: upload retrieval + citation tests. Coverage: gated 100% lines.
+
+- **Live-DB integration tests (35 total, run separately via `test:integration`):** 15 RLS (`packages/db`), 6 PgVectorStore, 8 conversation full-text search, 5 PgExpertStore, 5 FailedQueryService, 5 ExpertPortalService, 6 PgSemanticCacheStore.
+
+- **Sandbox note:** full parallel `pnpm test` hits the documented aarch64/linuxkit Prisma-engine SIGILL/SIGABRT quirk (~1 random worker per jest process). Counts confirmed per-suite in isolated runs with zero assertion failures.
+
+**Notes for next iteration:**
+- When adding new tests, update only the count in progress-state.md (e.g., `987 pass`). Record the per-test breakdown in your progress-log.md entry instead.

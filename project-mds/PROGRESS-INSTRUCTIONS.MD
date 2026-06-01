@@ -33,6 +33,12 @@ Replace the Current State section with the latest:
 
 This is the only file another agent will read, so keep it accurate and current.
 
+**Size limit: progress-state.md must stay under 4 KB.** It is embedded in the AFK agent prompt — a bloated file breaks the agent. Rules:
+- **Completed items: one line each.** Format: `  - M7.2: Short description`. No implementation details, no file lists, no test breakdowns.
+- **Tests line: count only.** Format: `- Tests: 986 pass / 0 fail / 0 skip (shared 175, ui 29, db 9, ai 149, api 624)`. Do NOT append per-milestone test changelogs — those go in your progress-log.md entry.
+- **Next tasks: one line each.** Format: `  1. **M10.3** — Short description`. No multi-paragraph rationale.
+- All detail (test breakdowns, implementation narratives, key decisions) belongs in your progress-log.md entry.
+
 ### Step 2 — Append to `progress-log.md`
 
 Append a new entry **at the bottom** of `progress-log.md`. Use this format:

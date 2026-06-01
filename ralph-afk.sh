@@ -87,8 +87,13 @@ for ((i=1; i<=iterations; i++)); do
   # Extract compact context snippets (avoids injecting full files via @)
   # Task Manifest: from "## Task Manifest" to just before "## Context"
   TASK_MANIFEST=$(sed -n '/^## Task Manifest/,/^## Context/{ /^## Context/d; p; }' project-mds/PRD.md)
-  # Progress: only test counts + build status + next tasks
-  PROGRESS_SUMMARY=$(sed -n '/^- Tests:/p; /^- E2E tests:/p; /^- Build:/p; /^- Next tasks/,$ p' project-mds/progress-state.md)
+  # Progress: the full state file (should be ~3KB per PROGRESS-INSTRUCTIONS.MD)
+  PROGRESS_SUMMARY=$(cat project-mds/progress-state.md)
+  # Safety net: truncate to 8KB if an agent bloated the state file
+  if [ ${#PROGRESS_SUMMARY} -gt 8192 ]; then
+    PROGRESS_SUMMARY="${PROGRESS_SUMMARY:0:8192}
+... (truncated — progress-state.md exceeds 8KB limit, see PROGRESS-INSTRUCTIONS.MD)"
+  fi
   # Requests: only the "Open Requests" section (stop at first ---)
   OPEN_REQUESTS=$(sed -n '1,/^---$/p' project-mds/REQUESTS.MD)
   # Feedbacks: only the "Latest Review Verdicts" section (stop at first ---)
@@ -268,7 +273,7 @@ $final_summary"
   fi
 
   # Check for PRD completion signal
-  if [ -n "${final_summary:-}" ] && [[ "$final_summary" == *"<promise>COMPLETE</promise>"* ]]; then
+  if [ -n "${final_summary:-}" ] && [[ "$final_summary" =~ \<promise\>COMPLETE\</promise\>[[:space:]]*$ ]]; then
     notify "🎉 PRD complete after $i iterations!"
     head_after=$(git rev-parse HEAD 2>/dev/null)
     if [ "$head_before" != "$head_after" ]; then
