@@ -390,3 +390,44 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Persisting which expert answered** is intentionally NOT done — it lands on the message row in M3 when the conversation model exists; the answer path returns/derives attribution today.
 - **`PgExpertStore` raw SQL is seam-tested only** (mocked tx): the `array_agg`→`text[]` mapping and the conditional `$1::language`/`LIMIT $n` param-position shift need the M11 Testcontainers pass (same policy as `PgVectorStore`/`PgVoiceExampleStore`).
 - No new bug/learning surfaced; no LEARNINGS/DIRECTIVES change warranted.
+
+## M2.3 — Expert sign-off workflow on own voice profile + language-aware voice (EN/VI)
+**Date:** 2026-06-01
+**Ref:** PRD §"Expert voice layer" / Task Manifest M2.3 (Phase 1)
+
+**What was done:**
+- Added the voice domain's **first write path**: `VoiceProfileService` (`apps/api/src/voice/voice-profile.service.ts`) — the publish-lifecycle state machine for voice profiles, run inside `RlsService.run` using Prisma Client model methods.
+  - `create` (author a `draft`), `update` (edit free-text only while `draft`; `""` clears description/guidelines to NULL), `submit` (`draft→expert_review`), `approve`/sign-off (`expert_review→published`, stamps `approvedBy`=actor + `approvedAt`=now), `requestChanges` (`expert_review→draft`), `list` (sign-off queue / authoring list).
+  - Invalid transition → 409 `ConflictException`; missing → 404; ownership fail → 403.
+- Enforced the **ownership rule** (NT.2 — an expert signs off on their own voice): non-admin actor may only act on a profile whose `Expert.userId === user.id`; admin acts across the tenant. `list` auto-scopes non-admins to their own profiles. Enforced in `assertOwnership` (NOT RLS — `voice_profiles` RLS is tenant-only).
+- New shared schemas (`packages/shared`): `publishStatusSchema` (new `publish.ts`, also serves the M8 knowledge gate) + `voiceProfileCreateSchema` / `voiceProfileUpdateSchema` / `voiceProfileListQuerySchema`. NFC-normalized text fields (directive §36), EN/VI, `limit` coerced for query strings.
+- New `VoiceProfileController` (`POST /voice-profiles`, `PATCH /:id`, `POST /:id/{submit,approve,request-changes}`, `GET /`) — the first admin/expert-portal API surface — gated `@Roles("expert")` (admin satisfies via hierarchy), ownership enforced in the service.
+- New reusable `ZodValidationPipe` (`apps/api/src/common/zod-validation.pipe.ts`), structurally typed so apps/api takes no `zod` dependency → 400 with field-level issues on bad input.
+- Added `VoiceProfileSummary` to `voice.types.ts`; wired service+controller into `VoiceModule`.
+- Tests: `voice-profile.service.test.ts` (19), `voice-profile.controller.test.ts` (4), `zod-validation.pipe.test.ts` (2), `publish.test.ts` (2), extended `voice.test.ts` (+11). All new code 100% coverage; gated `*.service.ts` = 100%.
+
+**Key decisions:**
+- **M2.3 vs M2.4:** picked M2.3 (the riskier, architectural item — first write path + ownership authz) over M2.4 (test-harness work, an easy win to save for later), per the priority order (architecture/integration first, fail fast on risk).
+- **Prisma Client model methods, not raw SQL:** voice_profiles has no `Unsupported` column, so the write seam follows the `DocumentVersionRepository` pattern. Raw SQL stays confined to pgvector/`array_agg` reads.
+- **Ownership in the service, not RLS:** `voice_profiles` RLS is `tenant_only`; the per-expert ownership rule is application-level (`assertOwnership`). Documented as a guardrail for future mutations.
+- **Scope held to the sign-off workflow + minimal authoring (create/update of the *profile*).** Voice-*example* authoring with embeddings is left to M8.4; the full portal **UI** is M8.5. Added HTTP routes here (unlike M2.1/M2.2's deferred routes) because a sign-off action inherently needs an actor-facing endpoint.
+- **`ZodValidationPipe` structurally typed** to avoid adding a `zod` dependency to apps/api (schemas live in `@expertos/shared`).
+- **OD#3 (cold-start) not formally resolved** — took the pragmatic stance (author draft → submit → sign off) but left the product/expert template-vs-blank decision open.
+
+**Files changed:**
+- `packages/shared/src/publish.ts` (new) — `PUBLISH_STATUSES` + `publishStatusSchema`.
+- `packages/shared/src/voice.ts` — voice-profile create/update/list schemas (+ shared NFC-normalized field helpers).
+- `packages/shared/src/index.ts` — export the new schemas/types.
+- `packages/shared/src/publish.test.ts` (new), `packages/shared/src/voice.test.ts` — schema tests.
+- `apps/api/src/common/zod-validation.pipe.ts` (new) + `.test.ts` — reusable validator.
+- `apps/api/src/voice/voice-profile.service.ts` (new) + `.test.ts` — workflow + authz.
+- `apps/api/src/voice/voice-profile.controller.ts` (new) + `.test.ts` — HTTP surface.
+- `apps/api/src/voice/voice.types.ts` — `VoiceProfileSummary`.
+- `apps/api/src/voice/voice.module.ts` — register controller + service.
+
+**Notes for next iteration:**
+- **Any new voice-profile mutation MUST call `assertOwnership`/`loadManageable`** — RLS will not catch a peer-expert touching another's profile within the tenant.
+- **Reuse `ZodValidationPipe`** for every future controller body/query; do NOT add zod to apps/api to type a schema.
+- **Portal UI is M8.5**, **voice-example authoring is M8.4** — the API + `VoiceProfileSummary` (status/approvedBy/approvedAt) are ready for both.
+- Prisma model writes are unit-tested with a mocked tx; same M11 Testcontainers caveat as the other stores (RLS WITH CHECK on insert, enum casts).
+- No new bug surfaced; no LEARNINGS/DIRECTIVES change warranted (the zod-structural-typing choice is captured here + in progress-state notes).

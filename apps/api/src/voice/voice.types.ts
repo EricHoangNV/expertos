@@ -1,4 +1,25 @@
 import type { RetrievalLanguage } from "@expertos/ai";
+import type { PublishStatusValue } from "@expertos/shared";
+
+/**
+ * A voice profile as seen by the sign-off workflow (M2.3) — the authoring/review surface, as
+ * opposed to {@link VoiceProfileMeta} which is the trimmed shape the runtime prompt builder
+ * needs. Carries the lifecycle `status` and the sign-off provenance (`approvedBy`/`approvedAt`)
+ * so the expert/admin portal can render the review queue and "signed off by … on …".
+ */
+export interface VoiceProfileSummary {
+  id: string;
+  expertId: string;
+  expertName: string;
+  language: RetrievalLanguage;
+  name: string;
+  description: string | null;
+  guidelines: string | null;
+  status: PublishStatusValue;
+  approvedBy: string | null;
+  approvedAt: Date | null;
+  updatedAt: Date;
+}
 
 /**
  * The voice profile metadata for an expert + language: the distilled guidelines plus the

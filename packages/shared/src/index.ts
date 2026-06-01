@@ -24,5 +24,19 @@ export type {
   RetrievalFilters,
   RetrievalQueryInput,
 } from "./retrieval";
-export { voiceQuerySchema, expertListQuerySchema } from "./voice";
-export type { VoiceQueryInput, ExpertListQueryInput } from "./voice";
+export { PUBLISH_STATUSES, publishStatusSchema } from "./publish";
+export type { PublishStatusValue } from "./publish";
+export {
+  voiceQuerySchema,
+  expertListQuerySchema,
+  voiceProfileCreateSchema,
+  voiceProfileUpdateSchema,
+  voiceProfileListQuerySchema,
+} from "./voice";
+export type {
+  VoiceQueryInput,
+  ExpertListQueryInput,
+  VoiceProfileCreateInput,
+  VoiceProfileUpdateInput,
+  VoiceProfileListQueryInput,
+} from "./voice";
