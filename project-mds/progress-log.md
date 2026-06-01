@@ -1260,3 +1260,38 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Publish-time cache invalidation** (M6.4 follow-up) applies to `publish` too — clear in-process caches + `deleteMany` the tenant's `semantic_cache` rows after `ingest`.
 - **No live DB this session** — the migration SQL (a single additive enum column mirroring the init-schema pattern) was authored but not `migrate deploy`'d/validated against Postgres; do that when a DB is available. The service is seam-tested with a mocked tx (M11 Testcontainers list).
 - `Document` has no per-expert link, so a published draft is tenant/scope-scoped knowledge only; if expert attribution is ever needed, that's a schema change on `documents`.
+
+## M8.1 + M8.2 — Admin UI (knowledge publish-workflow + draft review portal)
+**Date:** 2026-06-01
+**Ref:** PRD M8.1, M8.2 (§"Admin & Expert portals"; §"Design System") — closes the UI halves of the two APIs
+
+**What was done:**
+- Turned `apps/admin` from a bare scaffold into a real Next App-Router portal on the existing M8.1/M8.2 APIs.
+- **Lib layer (mirrors `apps/web/src/lib`):**
+  - `src/lib/firebase.ts` + `src/lib/auth-context.tsx` — verbatim copies of web's (lazy Firebase client, `AuthProvider`/`useAuth`, Google sign-in, `getIdToken`).
+  - `src/lib/admin-client.ts` — typed fetch wrapper (Bearer ID token, surfaces `{message}`/`{reason}` API error body): `listDocuments`/`getDocument`/`versionAction` (M8.1) + `listDrafts`/`getDraft`/`updateDraft`/`draftAction` (M8.2).
+  - `src/lib/status-tone.ts` — single status→`.badge`-tone mapper (`publishStatusTone`/`draftStatusTone`/`statusLabel`): published→green, expert_review→amber, rejected→red, neutral→ink/info.
+- **Frame:** `src/components/AdminFrame.tsx` — Design-System `.shell` (`Shell`/`Topbar`/`Content` primitives) with an ink sidebar of review queues (active-route highlight), gated on Firebase auth (sign-in screen when signed out).
+- **Pages:** `/` (queue landing cards), `/knowledge` (M8.1 status-filtered review queue), `/knowledge/[id]` (version-history detail + Submit/Approve/Request-changes/Archive), `/knowledge-drafts` (M8.2 draft queue), `/knowledge-drafts/[id]` (draft detail/edit — editable only while `draft` — + Submit/Publish/Request-changes/Reject).
+- Added `@expertos/shared` + `firebase` deps to `apps/admin/package.json`; layout wraps `AuthProvider`.
+
+**Key decisions:**
+- Mirrored web's `firebase.ts`/`auth-context.tsx` rather than extracting a shared package — the two are independent Next apps with separate bundles; the lazy-init pattern is what keeps `next build` working without creds.
+- Status→tone centralized in `status-tone.ts` (not inline per page) so badge semantics are single-sourced across both queues.
+- "Mark valuable" (`POST /knowledge-drafts`) intentionally NOT built — it's a conversation-viewer action and no admin conversation viewer exists yet; adding an unused client fn would fail knip.
+- Auth in the UI is a UX gate only; the security boundary stays server-side (`@Roles("expert")`/`@Roles("admin")` + RLS). A non-expert who signs in sees the queues but every call 403s (shown as the page error badge).
+- No page tests — consistent with `apps/web` (the repo has no Next page tests); gates are typecheck/lint/build/knip.
+
+**Files changed:**
+- `apps/admin/package.json` — add `@expertos/shared`, `firebase` deps.
+- `apps/admin/app/layout.tsx` — wrap children in `AuthProvider`.
+- `apps/admin/app/page.tsx` — landing with queue cards inside `AdminFrame`.
+- `apps/admin/app/knowledge/page.tsx`, `apps/admin/app/knowledge/[id]/page.tsx` — M8.1 queue + version-history detail.
+- `apps/admin/app/knowledge-drafts/page.tsx`, `apps/admin/app/knowledge-drafts/[id]/page.tsx` — M8.2 queue + detail/edit.
+- `apps/admin/src/lib/{firebase.ts,auth-context.tsx,admin-client.ts,status-tone.ts}`, `apps/admin/src/components/AdminFrame.tsx` — new lib + frame.
+
+**Notes for next iteration:**
+- M8.5 (expert portal) = the same `AdminFrame` + the M2.3 `/voice-profiles` routes + consultation-conversion views over the M7 funnel; M8.3 (matrix/rules editors, revenue reports, query inspector) needs **new API routes first** (none exist for plan-entitlement editing / revenue aggregation / `answer_feedback` admin reads) — build the route, then the page.
+- The admin TidyCal **reconcile** (`POST /consultation-bookings/reconcile`) + unmatched `booking_webhook_events` (`matched=false`) want a surface here too; `admin-client.ts` is the place to add it.
+- Build artifact note: `apps/admin/.next/standalone` causes a harmless jest-haste "naming collision" warning (web has the same) — the artifact is gitignored.
+- Verify the portal end-to-end once Firebase creds + a live API/DB are available (this session has neither; build/typecheck/lint/knip all pass).
