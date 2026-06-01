@@ -1849,3 +1849,28 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Runbook (this aarch64/linuxkit sandbox):** the Prisma **library** engine SIGILLs at runtime, so the integration suite needs the **binary** engine. Regenerate first: `PRISMA_CLIENT_ENGINE_TYPE=binary pnpm --filter @expertos/db exec prisma generate`; run: `PRISMA_CLIENT_ENGINE_TYPE=binary RLS_TEST_DATABASE_URL="postgresql://app_user:app_user@localhost:5432/expertos?schema=public" pnpm --filter @expertos/api test:integration`; then regenerate the default (library) engine before the gates (`pnpm --filter @expertos/db exec prisma generate`) since typecheck/build also `prisma generate`.
 - **Remaining deferred raw-SQL stores** for this same harness (copy the test): conversation-search `ts_rank`/`ts_headline` (`ConversationService.search`), `PgExpertStore` `array_agg`, `PgSemanticCacheStore`, and the `FailedQueryService`/`ExpertPortalService` `LATERAL` joins. Watch LEARNINGS #7 (`$n::uuid` cast on raw uuid params).
 - Default suite unchanged: 849 pass / 0 fail / 0 skip; the 6 integration tests run only via `test:integration`.
+
+## M11 (hardening) — Live-DB integration tests for conversation full-text search
+**Date:** 2026-06-01
+**Ref:** PRD M11 (§"Testing Strategy"); the next deferred raw-SQL store on the "M11 Testcontainers live-DB pass" list, after `PgVectorStore`.
+
+**What was done:**
+- Added `apps/api/src/chat/conversation-search.integration.test.ts` — 8 opt-in live-Postgres tests for the M3.3 `ConversationService.search` raw-SQL path (`SEARCH_SQL`: `websearch_to_tsquery('simple', …)` + `ts_rank` + a `ts_headline` guillemet snippet + a `LATERAL` best-message subquery), run as the non-superuser `app_user` role against the running `expertos-pg` container.
+- Driven through the **real `ConversationService` + `RlsService`** (not the raw SEARCH_SQL string), so the test also exercises the production RLS-context derivation (`tenantId`/`userId`/`isAdmin` from the `AuthUser`).
+- Coverage: (1) message-body match → `«»` snippet + non-null `messageId`, asserts no `<b>` HTML; (2) title-only match → null snippet + null `messageId`; (3) **a different user in the SAME tenant's conversation is invisible** to the searcher (the `user_scoped` `conversations` anchor holds even though `messages` is `tenant_only`); (4) identical `ts_rank` tie broken by `updated_at DESC`; (5) Vietnamese term match through the `'simple'` config (NFC); (6) limit/offset pagination order; (7) empty result for an absent term; (8) a cross-tenant user sees none of the seeded conversations. All 8 pass live.
+- Ran the full `apps/api` integration suite (`test:integration`): 14 live tests pass (8 new + 6 existing `PgVectorStore`).
+
+**Key decisions:**
+- Test through the real service rather than re-running `SEARCH_SQL` directly — pins both the SQL behaviour AND the RLS-context derivation, and can't drift from the production query string.
+- Seed cross-user rows under an admin context (`is_admin` bypasses WITH CHECK); the isolation test then proves a normal user context can't see another user's conversation.
+- Explicit `updated_at` timestamps + identical message content make the rank-tie/recency assertion deterministic (ts_rank values are otherwise hard to predict).
+- NFC-normalize the VI content + query in the test: the store's keyword path doesn't normalize (the upstream `retrievalQuerySchema` does), so a direct-service test must pre-normalize (directive §1.2).
+- `Set<string>` for the owned-id set — `randomUUID()` returns a branded template-literal type that wouldn't accept a plain `r.conversation.id` string in `.has()`.
+
+**Files changed:**
+- `apps/api/src/chat/conversation-search.integration.test.ts` — new opt-in live-DB integration suite (excluded from default `pnpm test` by the existing `*.integration.test.ts` ignore pattern; runs via `pnpm --filter @expertos/api test:integration`).
+
+**Notes for next iteration:**
+- **Runbook (this aarch64/linuxkit sandbox):** the Prisma **library** engine SIGILLs at runtime, so the integration suite needs the **binary** engine. Regenerate first (`PRISMA_CLIENT_ENGINE_TYPE=binary pnpm --filter @expertos/db exec prisma generate`), run with `PRISMA_CLIENT_ENGINE_TYPE=binary RLS_TEST_DATABASE_URL="postgresql://app_user:app_user@localhost:5432/expertos?schema=public" pnpm --filter @expertos/api test:integration`, then regenerate the default (library) engine before the gates.
+- **Remaining deferred raw-SQL stores** for this same harness (copy the test): `PgExpertStore` `array_agg`, `PgSemanticCacheStore`, and the `FailedQueryService`/`ExpertPortalService` `LATERAL` joins. Watch LEARNINGS #7 (`$n::uuid` cast on raw uuid params).
+- Default suite unchanged: 849 pass / 0 fail / 0 skip; the integration tests run only via `test:integration`.
