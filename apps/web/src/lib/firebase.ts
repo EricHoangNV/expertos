@@ -1,5 +1,5 @@
 import { getApp, getApps, initializeApp, type FirebaseOptions } from "firebase/app";
-import { type Auth, getAuth, GoogleAuthProvider } from "firebase/auth";
+import { type Auth, connectAuthEmulator, getAuth, GoogleAuthProvider } from "firebase/auth";
 
 /**
  * Firebase **client** config — only `NEXT_PUBLIC_*` values, which are safe to ship
@@ -30,6 +30,12 @@ export function getFirebaseAuth(): Auth {
   if (!cachedAuth) {
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     cachedAuth = getAuth(app);
+    // E2E only: point Auth at the local emulator when its host is provided. Unset in
+    // production, so this is a no-op there (never ship a build with this var set).
+    const emulatorHost = process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST;
+    if (emulatorHost) {
+      connectAuthEmulator(cachedAuth, `http://${emulatorHost}`, { disableWarnings: true });
+    }
   }
   return cachedAuth;
 }

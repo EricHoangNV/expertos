@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node", "@playwright/test"],
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["playwright.config.ts", "specs/**/*.ts", "fixtures/**/*.ts", "global-setup.ts"]
+}

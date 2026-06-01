@@ -2322,3 +2322,41 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - NT.4 still needs the **human** PM/legal sign-off on the disclaimer copy + ToS coverage before launch (the code gate is done). NT.3 (data-retention policy publish) is the other open NT besides the deferred NT.5/NT.6.
 - The detector is question-only by design; if a future need arises to catch high-stakes content that only surfaces in the answer, extend `ChatService` to also detect on `built.text` (the recommendation engine already scans question+answer for its keyword path).
 - Keyword lists are curated constants in `detect.ts` — broaden there if real traffic shows misses; no config table (kept deterministic, unlike the admin-tunable recommendation rules).
+
+## M11.1 — Full E2E path matrix (Playwright) — harness + specs
+**Date:** 2026-06-01
+**Ref:** PRD §"Testing Strategy" (M11 Hardening, M11.1)
+
+**What was done:**
+- Stood up a new opt-in `e2e/` workspace (added to `pnpm-workspace.yaml` + `knip.json`). It has no `test` script, so Turbo's `pnpm test` never runs it — same opt-in convention as the live-DB integration suites in `packages/db`/`apps/api`. Run it with `pnpm --filter @expertos/e2e test:e2e`.
+- `playwright.config.ts`: single-worker ordered run; `webServer` array boots/attaches api(:3001 /health) + web(:3000) + admin(:3002) with the NEXT_PUBLIC_* the clients need (incl. the Auth-emulator host); `E2E_NO_WEBSERVER=1` to skip when the operator runs the apps. HTML+list reporters, trace/screenshot/video on failure.
+- Auth fixtures (`fixtures/auth.ts`): `signIn`/`signInAdmin` drive the **real** UI sign-in path against the Firebase **Auth emulator** popup widget (shared `clickGoogleSignInAndDrivePopup` reuses an existing emulator account or creates one); `getEmulatorIdToken` mints an ID token via the emulator REST API for API-level setup (used by data-deletion to mirror a target user row via `GET /me`).
+- `fixtures/env.ts` centralizes every URL/credential/toggle (dev defaults, env overrides) + 4 deterministic test identities (member/other/expert/admin). `fixtures/web-actions.ts` has accessibility-first chat helpers (`gotoChat`/`ask`/`saveLastAnswer`).
+- 7 spec files / 18 discovered tests, grounded in the actual rendered DOM (roles/labels/placeholders read from the app, not invented): `web-chat` (ask→answer→save, helpful-feedback+reason, NT.4 high-stakes disclaimer [deterministic detector], insufficient-knowledge next step), `web-voice-and-consultation` (M2.2 voice rendition + M7.2 book — guarded/skip when no seed), `web-history` (M3.3 search + M3.2 saved answers + rename), `web-upload` (M5.3 in-memory CSV→searchable chunks + unsupported-type red-badge rejection), `admin-portal` (role-aware nav + M8.1 review-gate queue + expert-vs-admin nav gating), `account-billing` (M6.3 plan + usage meter), `data-deletion` (M8.4 record-deletion-request).
+- Enabler: env-guarded `connectAuthEmulator` wiring added to web + admin `firebase.ts` (runs only when `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` is set — prod no-op). Documented the two emulator vars in `.env.example`.
+- `e2e/README.md`: full live-stack prerequisites (Postgres+pgvector seed, Auth emulator, 3 services), test identities/roles, run commands, env override table.
+
+**Key decisions:**
+- **Opt-in workspace, not part of `pnpm test`.** E2E needs a live stack the default gate can't provide; mirroring the project's existing opt-in integration-test pattern keeps `pnpm test` green (still 1013) while landing the harness.
+- **Emulator popup auth over a token-injection bypass.** Exercises the real `signInWithPopup` code path and avoids adding any auth bypass to the API (firebase-admin already honors `FIREBASE_AUTH_EMULATOR_HOST`). Only a tiny, prod-safe client wiring was needed.
+- **Flow-level assertions, not model-output assertions.** Specs assert the contract (turn completes, affordance appears, badge shows) so they're robust to whatever knowledge is seeded; seed-dependent paths (expert voice, consultation) `test.skip` when absent.
+- **3 honest `test.fixme` legs** for flows whose UI/seed prerequisite isn't present yet (consumer self-serve checkout CTA — not built in apps/web; full publish→retrieval round-trip — needs a freshly-ingested Draft; irreversible deletion cascade — would wipe shared seed). Keeps the matrix represented without flaky/fictional tests.
+
+**Files changed:**
+- `pnpm-workspace.yaml` — add `e2e` workspace
+- `knip.json` — add `e2e` workspace (config + `*.spec.ts` entries)
+- `.env.example` — document `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` / `FIREBASE_AUTH_EMULATOR_HOST`
+- `apps/web/src/lib/firebase.ts`, `apps/admin/src/lib/firebase.ts` — env-guarded `connectAuthEmulator` (prod no-op)
+- `e2e/package.json`, `e2e/tsconfig.json`, `e2e/.gitignore`, `e2e/playwright.config.ts`, `e2e/README.md`
+- `e2e/fixtures/env.ts`, `e2e/fixtures/auth.ts`, `e2e/fixtures/web-actions.ts`
+- `e2e/specs/{web-chat,web-voice-and-consultation,web-history,web-upload,admin-portal,account-billing,data-deletion}.spec.ts`
+
+**Verification:**
+- Verified here: `pnpm typecheck` (12 ✅), `pnpm lint` (incl stylelint ✅), `pnpm test` (1013 pass, e2e correctly excluded), `pnpm deadcode` (knip ✅), `pnpm build` (7 ✅), and `playwright test --list` discovers all 18 tests / 7 files (config + specs parse).
+- NOT verified here: an actual browser run — needs the live stack (Postgres+pgvector + Auth emulator + 3 services + seed) + `playwright install chromium`, which the sandbox/CI doesn't provide.
+
+**Notes for next iteration:**
+- To run green, bring up the stack per `e2e/README.md`, seed (`pnpm --filter @expertos/db db:seed`), grant expert/admin roles to the `e2e-expert@`/`e2e-admin@` identities, then `pnpm --filter @expertos/e2e exec playwright install chromium && pnpm --filter @expertos/e2e test:e2e`.
+- The emulator popup-widget selectors (`Add new account` / `Auto-generate user information` / `Sign in with Google.com`) are based on the documented Firebase Auth emulator widget; if a Firebase version changes them, adjust `clickGoogleSignInAndDrivePopup` in `e2e/fixtures/auth.ts`.
+- M11.1 left `[~]` (not `[x]`): the harness + buildable specs are done but the suite is unexecuted here and 3 legs are `fixme`. Resolve the fixmes as the consumer checkout CTA / ingestion-driven publish path land.
+- This unblocks M11.3 (load smoke) which needs the same live stack.

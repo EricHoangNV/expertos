@@ -2,6 +2,7 @@
 
 ## Current State
 - Completed:
+  - M11.1 (harness): Playwright E2E foundation — opt-in `e2e/` workspace, 18 tests/7 specs grounded in real DOM, emulator auth fixtures + env-guarded `connectAuthEmulator` wiring; execution awaits live stack (3 `test.fixme` legs await UI/seed)
   - NT.4 (technical): High-stakes-topic detector → educational-scope prompt rule + disclaimer (live+history) + `high_stakes` logging + topic-trigger CTA (PM/legal sign-off still pending)
   - M10.4: Validation scorecard (activation/engagement/willingness-to-pay/funnel) — admin analytics
   - M10.3: Concierge volume/SLA/verdict metrics + knowledge-quality signals (admin analytics)
@@ -58,7 +59,7 @@
 - Build: passing — `pnpm build` (turbo) builds all 7 workspaces.
 - Gates: typecheck ✅, test ✅ (coverage gate met, 100%), lint ✅ (incl. stylelint), build ✅, deadcode (knip) ✅
 - Next tasks (priority order):
-  1. **M11.1** — Playwright E2E (needs live stack)
+  1. **M11.1** — execute the Playwright E2E suite against a live stack (Postgres+pgvector + Firebase Auth emulator + 3 services + seed); resolve the 3 `test.fixme` legs as their UI/seed lands (consumer checkout CTA, publish→retrieval round-trip, deletion cascade)
   2. **M11.3** — Load smoke (needs live stack)
   3. **M11.4 / NT** — remaining product/legal sign-offs (NT.3 data-retention, NT.4 copy/ToS review, NT.5/NT.6 deferred)
   4. Remaining Phase-0 Open Decisions (#3, product halves of #2/#6)

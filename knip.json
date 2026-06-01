@@ -28,6 +28,10 @@
     "apps/api": {
       "entry": ["src/main.ts", "src/ingestion/ingest.cli.ts"],
       "project": ["src/**/*.ts"]
+    },
+    "e2e": {
+      "entry": ["playwright.config.ts", "specs/**/*.spec.ts"],
+      "project": ["**/*.ts"]
     }
   },
   "ignoreDependencies": ["ts-jest", "@types/jest", "@prisma/client"],
