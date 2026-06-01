@@ -16,6 +16,7 @@ import type {
   RecommendationRulesDto,
   RecommendationTriggerValue,
   RevenueReportDto,
+  UsageAnalyticsDto,
   FailedQueryDto,
   AdminAuditLogDto,
   AdminFairUseFlagDto,
@@ -169,6 +170,14 @@ export function getRevenueReport(
 ): Promise<RevenueReportDto> {
   const query = months != null ? `?months=${months}` : "";
   return request<RevenueReportDto>(`/admin/revenue/report${query}`, token);
+}
+
+// M10.1 — Admin usage & cost analytics
+
+/** Platform-wide usage & cost report over the trailing `days` window. */
+export function getUsageAnalytics(token: string, days?: number): Promise<UsageAnalyticsDto> {
+  const query = days != null ? `?days=${days}` : "";
+  return request<UsageAnalyticsDto>(`/admin/analytics/usage${query}`, token);
 }
 
 // M8.3 — Admin plan-entitlement matrix editor

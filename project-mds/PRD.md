@@ -74,7 +74,7 @@
 - [ ] M9.4 Reviewer-feedback flywheel: conversation-context injection (immediate) + `voice_examples`/`knowledge_drafts`/chunk-flagging (global); escalate-to-consultation
 
 #### M10 — Analytics
-- [ ] M10.1 Usage & cost analytics
+- [x] M10.1 Usage & cost analytics — **DONE** (`apps/api/src/analytics/` `AnalyticsService` admin cross-tenant RLS read over `usage_logs` → `GET /admin/analytics/usage`: window totals [events/tokens/`cost_micros`/distinct active users] + per-feature + per-model rollups [Prisma `groupBy`] + trailing **daily** series [raw `date_trunc('day')` + `count(DISTINCT user_id)`, BigInt-coerced]; `apps/admin/app/analytics` dashboard. OD#1-independent instrumentation — the kill-line M10.4 is the OD#1-gated piece.)
 - [ ] M10.2 Consultation funnel + attribution (question→conversation→recommendation→booking→revenue)
 - [ ] M10.3 Concierge volume/SLA/verdict metrics + knowledge-quality signals
 - [ ] M10.4 Instrument validation success criteria / kill line (Open Decision #1)

@@ -27,6 +27,7 @@ const NAV: NavItem[] = [
   { href: "/answers", label: "AI answers", group: "Expert" },
   { href: "/conversions", label: "Conversions", group: "Expert" },
   { href: "/revenue", label: "Revenue", group: "Admin" },
+  { href: "/analytics", label: "Usage & cost", group: "Admin" },
   { href: "/entitlements", label: "Entitlements", group: "Admin" },
   { href: "/recommendation-rules", label: "Funnel rules", group: "Admin" },
   { href: "/failed-queries", label: "Flagged answers", group: "Admin" },

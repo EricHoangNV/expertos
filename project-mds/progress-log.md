@@ -1943,3 +1943,29 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Hit-target follow-up (needs design sign-off):** if the 44px hit-target rule is to be enforced literally, bump `.btn`/`.btn-icon`/`.chip` min-heights in `packages/ui/src/ds.css` (and re-sync `requirements/ds.css`) — left unchanged here because ds.css is the visual source-of-truth.
 - **Remaining M11 engineering:** E2E Playwright matrix (M11.1) + perf/caching tuning + load smoke (M11.3) both need a full running stack (Firebase auth + DB + LLM) — not cleanly doable offline in this sandbox. M11.4 (NT sign-offs) + the M9/M10 gates (OD#5 / OD#1) need product/legal decisions.
 - The visual-QA half of M11.5 (live `/design-review` against `requirements/Design System.md` in a browser) is still worth a pass when the apps can be run live; the static/automatable conformance is now enforced by the test suite.
+
+---
+
+## M10.1 — Usage & cost analytics (PRD M10.1)
+
+**What:** Built the first M10 analytics slice — a platform-wide admin usage & cost report over the `usage_logs` ledger. Chose this as the highest-value *buildable* engineering task: M9 is gated on OD#5 (legal), M11.1/M11.3 need a live stack, M11.4/NT need product/legal sign-offs. M10's *instrumentation* (the metrics) is OD#1-independent — only the M10.4 kill-line needs OD#1's PM numbers — so M10.1 is unblocked.
+
+**Decisions:**
+- **Mirrored the `RevenueService` admin cross-tenant RLS pattern exactly** — `AnalyticsService.usage` runs inside `RlsService.run` under an admin principal so the `is_admin` GUC reads platform-wide (no `tenant_id` predicate); `@Roles("admin")` on `AnalyticsController` is the boundary. New `AnalyticsModule` imports only `AuthModule` (read-only), registered in `AppModule` after `RevenueModule`.
+- **Aggregation split:** per-feature + per-model rollups via Prisma `groupBy` (`_count`/`_sum`); window totals derived by summing the by-feature rollup (no extra aggregate, every row carries a feature_key); the trailing **daily** series + the window-wide **distinct active users** via raw SQL (`date_trunc('day')` + `count(DISTINCT user_id)` have no Prisma Client expression — the M8.3 revenue-series precedent). Postgres `BigInt` `count`/`sum` coerced with `Number()`.
+- **Window-wide active users is its own raw scalar** — it can't be summed from the per-day distinct counts without double-counting a user active on several days.
+- A null `model` (cache/marker rows, M6.4) surfaces as `"(none)"` rather than being dropped; rollups sorted highest-`costMicros`-first.
+- Day granularity (vs revenue's months) because usage is far higher volume; window `days` default 30, max 365.
+
+**Files:**
+- `packages/shared/src/analytics.ts` (+ `index.ts` export) — `usageAnalyticsQuerySchema` + DTOs (`UsageAnalyticsDto`/`UsageByFeatureDto`/`UsageByModelDto`/`UsagePeriodDto`).
+- `apps/api/src/analytics/{analytics.service,analytics.controller,analytics.module}.ts` + `app.module.ts` registration.
+- `apps/admin/app/analytics/page.tsx` + `getUsageAnalytics` in `admin-client.ts` + AdminFrame nav entry.
+- Tests: `apps/api/src/analytics/analytics.service.test.ts` (+5), `packages/shared/src/analytics.test.ts` (+4).
+- `project-mds/PRD.md`, `project-mds/progress-state.md` — manifest M10.1 → [x], state updated (884 pass total).
+
+**Gates:** typecheck ✅ (11 tasks), new suites pass in isolation (`analytics.service.test.ts` 5/5 @ 100% service coverage; `analytics.test.ts` 4/4), lint ✅ (eslint + stylelint), knip ✅, build ✅ (admin `/analytics` route builds — cleared the stale Next PackFileCache first per the deploy note). Sandbox parallel-`pnpm test` caveat unchanged (per-suite confirmed).
+
+**Notes for next iteration:**
+- **M10.2 (consultation funnel + attribution)** is the natural next slice on the same `AnalyticsService` host: question→conversation→recommendation→booking→revenue, `groupBy` over `consultation_recommendations`/`consultations` + the `transactions`/`amount_cents` revenue join — the `ExpertPortalService.conversions` shape but admin platform-wide. Add `GET /admin/analytics/funnel`.
+- **M10.3** (concierge metrics) awaits M9; **M10.4** (kill-line) is the only OD#1-gated piece.
