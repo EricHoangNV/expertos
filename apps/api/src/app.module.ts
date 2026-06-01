@@ -5,6 +5,7 @@ import { EntitlementsModule } from "./entitlements/entitlements.module";
 import { HealthController } from "./health/health.controller";
 import { HealthService } from "./health/health.service";
 import { IngestionModule } from "./ingestion/ingestion.module";
+import { KnowledgeModule } from "./knowledge/knowledge.module";
 import { ObservabilityModule } from "./observability/observability.module";
 import { RetrievalModule } from "./retrieval/retrieval.module";
 import { VoiceModule } from "./voice/voice.module";
@@ -19,6 +20,7 @@ import { BillingModule } from "./billing/billing.module";
     EntitlementsModule,
     ObservabilityModule,
     IngestionModule,
+    KnowledgeModule,
     RetrievalModule,
     VoiceModule,
     ChatModule,

@@ -1188,3 +1188,39 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Verify the TidyCal payload shapes against real docs when wiring the live account** — `EVENT_NAME_MAP` + `toBookingEvent` + the `/bookings` poll response are best-effort structural guesses (adjust only those). The `HttpTidyCalProvider` REST poll needs live network (deploy-time, like the Stripe `FetchStripeHttpClient`).
 - Seam-tested with a mocked tx — the real `booking_webhook_events`/`consultations` writes join the M11 Testcontainers list; the migration was validated against live Postgres this session.
 - The deferred consumer-web pages (entitlements/usage, history/saved-answers/search/feedback, upload UI) remain open in parallel.
+
+## M8.1 (API) — Knowledge versioned-publish + expert-review gate
+**Date:** 2026-06-01
+**Ref:** PRD.md Task Manifest M8.1; PRD §"Admin & Expert portals" / §"Data Model" (publish lifecycle)
+
+**What was done:**
+- Built the knowledge publish-workflow API — the architectural core of M8 and the integration point between the M1.1 ingestion drafts and M1.2 retrieval. New `apps/api/src/knowledge/` module (`KnowledgeService` + `KnowledgeController` + `KnowledgeModule`), wired into `AppModule`.
+- `KnowledgeService` is a state machine over the shared `publish_status` enum: `draft → expert_review → published` (`request-changes` → `draft`), `published → archived`. Invalid transitions → `ConflictException` (409); missing version/document → `NotFoundException` (404).
+- `approve` (the expert-review gate) flips the version's chunks `pending → published` (retrieval-visible), points `document.publishedVersionId` at it + sets `document.status = published`, and **supersedes the prior published version** (archives its row + chunks) so retrieval never returns two generations. `archive` reverses it for a live version (chunks → archived; clears the document pointer + marks archived when it was the live one). `approve` stamps `approvedBy`/`approvedAt`.
+- `KnowledgeController` (`@Roles("expert")`): `GET /knowledge/documents` (review queue, status/scope filter), `GET /knowledge/documents/:id` (version history), `POST /knowledge/versions/:versionId/{submit,approve,request-changes,archive}`.
+- Shared contracts: `packages/shared/src/knowledge.ts` — `knowledgeListQuerySchema` + `KnowledgeVersionDto`/`KnowledgeDocumentDto`/`KnowledgeDocumentDetailDto` (exported from the index, DTOs in shared so the admin UI can consume them).
+- Tests: `knowledge.service.test.ts` (16 cases — every transition, the supersede + chunk-visibility side effects, the conflict/404 paths) → `knowledge.service.ts` 100% lines/stmts/funcs, 96.4% branch (≥90 gate). `knowledge.test.ts` (4 cases — schema defaults/coercion/caps/enum).
+
+**Key decisions:**
+- API-first, marked `[~]` not `[x]`: the admin UI (the `.shell`, status `.badge` tones, the publish queue) is the open follow-up — consistent with how every milestone here shipped (M2.3 voice routes before the M8.5 portal; M3.2–M3.4 API before UI). Building the bare `apps/admin` shell + Firebase admin auth + an API client is a substantial, lower-risk frontend slice best done as its own task; the risky/architectural core (the state machine + the retrieval-visibility integration) is what this task delivered.
+- Chunk-visibility flip + prior-version supersede live ONLY in `approve`/`archive` (the gate), never in ingestion — ingestion always produces drafts (`DocumentVersionRepository.store({publish:false})`). The seed/CLI `{publish:true}` path remains the only short-circuit publisher (for seeding).
+- `document.status` mirrors the latest version's status; `publishedVersionId` independently tracks the live generation — so a doc can serve v2 while v3 is being drafted.
+- Role-gated (`expert`+) + RLS tenant isolation, NO per-expert ownership assertion — knowledge is tenant/scope-scoped, unlike voice profiles which tie to an expert's `userId`. Any expert in the tenant reviews/publishes.
+- Upload-to-create-a-draft reuses the existing `IngestionService.ingest({publish:false})` — no new ingest path was added.
+
+**Files changed:**
+- `packages/shared/src/knowledge.ts` — NEW: list-query schema + 3 DTOs for the publish workflow.
+- `packages/shared/src/knowledge.test.ts` — NEW: 4 schema tests.
+- `packages/shared/src/index.ts` — export the new schema + DTO types.
+- `apps/api/src/knowledge/knowledge.service.ts` — NEW: the publish-workflow state machine + chunk-visibility/document-pointer integration.
+- `apps/api/src/knowledge/knowledge.controller.ts` — NEW: `@Roles("expert")` routes for the review queue + version lifecycle.
+- `apps/api/src/knowledge/knowledge.module.ts` — NEW: module wiring (imports `AuthModule` for `RlsService`).
+- `apps/api/src/knowledge/knowledge.service.test.ts` — NEW: 16 service tests.
+- `apps/api/src/app.module.ts` — register `KnowledgeModule`.
+
+**Notes for next iteration:**
+- **Immediate follow-up = the M8.1 admin UI** on this API (`/knowledge` routes). `apps/admin` is still bare — needs the shared `.shell`, Firebase admin auth, an admin API client (mirror `apps/web/src/lib`), the review queue + version-history detail with status `.badge` tones, and the Submit/Approve/Request-changes/Archive actions. That closes M8.1.
+- **M6.4 publish-time cache invalidation** now has its clean hook: clear the in-process caches + `deleteMany` the tenant's `semantic_cache` rows inside `KnowledgeService.approve`/`archive`.
+- **M8.2 conversation-to-knowledge** (`knowledge_drafts`) reuses this publish gate — a promoted draft becomes a `document_version` that flows through the same `submit`/`approve`.
+- **Seam-tested with a mocked tx** — the real `document`/`document_version`/`chunk` writes + the chunk-visibility `updateMany` (and the retrieval-visibility behavior end-to-end) join the M11 Testcontainers list.
+- **Sandbox test caveat:** the full parallel `pnpm test` could not complete this session — the native Prisma engine SIGILLs ~1 random jest worker per process and ts-jest intermittently falls back to a babel transform that can't parse `type` imports (the documented aarch64/linuxkit quirk; restart the session for a clean parallel run). All counts were confirmed per-suite/per-file in isolated runs with zero assertion failures (api 423, shared 76); typecheck/lint/knip/build all pass.

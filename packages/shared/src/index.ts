@@ -26,6 +26,13 @@ export type {
 } from "./retrieval";
 export { PUBLISH_STATUSES, publishStatusSchema } from "./publish";
 export type { PublishStatusValue } from "./publish";
+export { knowledgeListQuerySchema } from "./knowledge";
+export type {
+  KnowledgeListQueryInput,
+  KnowledgeVersionDto,
+  KnowledgeDocumentDto,
+  KnowledgeDocumentDetailDto,
+} from "./knowledge";
 export {
   voiceQuerySchema,
   expertListQuerySchema,
