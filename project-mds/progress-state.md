@@ -2,6 +2,7 @@
 
 ## Current State
 - Completed:
+  - M11 (harness): Local live-DB integration runner — `infra/local-test-db.sh` + `pnpm test:integration` stands up pgvector in Docker, migrates+seeds, grants `app_user` LOGIN, runs both opt-in suites; **executed green: 50 live-DB tests (15 RLS + 35 api)** — the DB tier is no longer "not runnable in sandbox"
   - M6.2 (web): Self-serve checkout CTA in `apps/web` — `GET /me/plans` (priced upgrade tiers) + account-page Upgrade buttons → `POST /billing/checkout` + Manage-billing → `POST /billing/portal`; closes the M11.1 consumer-checkout `test.fixme` leg
   - NT.3 (technical): Data-retention sweeper (`RetentionService`) — admin `preview`/`sweep` deletes expired temporary uploads + idle conversations + old usage logs, **deletes consultation transcripts (keeps consultation revenue row)** + **anonymizes concierge review records in place** past 1yr, audited; `apps/admin/app/retention` (PM approval still pending)
   - M11.3: Cache hit/miss instrumentation (`GET /admin/analytics/cache`) + dependency-free `load/smoke.mjs` smoke harness (opt-in, like `e2e/`)
@@ -62,6 +63,6 @@
 - Build: passing — `pnpm build` (turbo) builds all 7 workspaces. (Note: a stale `apps/admin/.next/cache` can corrupt the standalone build with `Unexpected end of JSON input` — `rm -rf apps/admin/.next/cache` clears it; not a code error.)
 - Gates: typecheck ✅, test ✅ (coverage gate ≥90% met), lint ✅ (incl. stylelint), build ✅, deadcode (knip) ✅
 - Next tasks (priority order):
-  1. **M11.1 / M11.3** — execute the Playwright E2E suite + `load/smoke.mjs` against a live stack (Postgres+pgvector + Firebase Auth emulator + 3 services + seed); resolve the remaining 2 `test.fixme` legs as their seed/external-page lands (publish→retrieval round-trip, deletion cascade, Stripe-hosted checkout completion)
+  1. **M11.1** — execute the Playwright E2E suite against a live stack (Firebase Auth emulator + 3 services + seed); blocked in sandbox on chromium Linux system-deps + firebase-tools, NOT on the DB (now covered by `infra/local-test-db.sh`). M11.3 `load/smoke.mjs` still awaits the running services. Resolve the 2 `test.fixme` legs as seed/external-page lands.
   2. **M11.4 / NT** — remaining sign-offs are now human gates (NT.3 PM approval, NT.4 copy/ToS, NT.5/6 deferred)
   3. Phase-0 Open Decisions (#3, product halves of #2/#6)

@@ -2475,3 +2475,28 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - `e2e/specs/account-billing.spec.ts` — real upgrade-CTA test; narrowed fixme.
 
 **Tests:** api 653 → 655; suite 1031 → 1033 pass / 0 fail. typecheck/lint/deadcode/build all green.
+
+## M11 harness — local live-DB integration runner (executed green: 50 tests)
+**Date:** 2026-06-01
+**Ref:** PRD §"Testing Strategy" / Task Manifest M11.1 + M11.2; "next task: execute against a live stack"
+
+**What was done:**
+- Verified the opt-in live-DB integration tier — previously documented as "not runnable in CI/sandbox" — actually runs **green** against a local pgvector container:
+  - `packages/db` `rls.integration.test.ts` — 15 RLS negative tests (tenant_isolation / tenant_user_isolation / tenant_write+global_read) as the non-superuser `app_user` role.
+  - `apps/api` 6 suites (PgVectorStore, conversation search, expert store, semantic cache, expert portal, failed-query) — 35 tests.
+- Converted the manual setup into a committed, repeatable harness: `infra/local-test-db.sh` (`up` / `test` / `down` / `all`) + root `pnpm test:integration`. It pulls/starts `pgvector/pgvector:pg16`, waits for readiness, `prisma migrate deploy` + `db:seed` as owner, `ALTER ROLE app_user WITH LOGIN` (migrations create it `NOLOGIN`), then runs both suites with `RLS_TEST_DATABASE_URL` pointed at the `app_user` connection. No GCP dependency (unlike `infra/dev-setup.sh`).
+- Documented it in `infra/README.md` (new "Live-DB integration suites" subsection).
+
+**Key decisions:**
+- Scoped to the **DB/api integration tier**, not the full Playwright E2E stack. The Playwright path is blocked in this sandbox on chromium Linux system-deps (`validateDependenciesLinux`) + a `firebase-tools` Auth emulator + 3 running services — a much larger, riskier surface. The live-DB tier is the high-value, low-risk, fully-verifiable slice, so I delivered that as a durable artifact rather than chasing the browser stack.
+- `app_user` is granted LOGIN only in the local harness (a throwaway container); the migration deliberately ships it `NOLOGIN` because prod migrations/seeds run as the owner and the app connects with a managed password (per DIRECTIVES §4.21). The harness mirrors prod's RLS-enforcing connection without weakening the migration.
+- Seed is required before the RLS suite: it inserts a GLOBAL-tenant `documents` row whose FK needs the seeded GLOBAL tenant. Folding `db:seed` into the harness makes the suite self-contained.
+- Did not flip any Task Manifest `[ ]` → `[x]`: M11.1's remaining leg (Playwright E2E + load smoke against running services) is still sandbox-blocked, and the other open items are human sign-off gates.
+
+**Files changed:**
+- `infra/local-test-db.sh` — new Docker-based live-DB integration runner.
+- `package.json` — root `test:integration` script → the harness.
+- `infra/README.md` — documented the harness under the test-gate section.
+- `project-mds/progress-state.md` — recorded the executed-green live-DB tier + refined the M11.1 next-task framing (DB tier now covered; only the browser/emulator stack remains blocked).
+
+**Tests:** default suite unchanged (1033 pass / 0 fail; FULL TURBO cached). Live-DB tier now executes: 15 (db) + 35 (api) = **50 live tests pass**. typecheck/lint/deadcode/build all green.

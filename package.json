@@ -14,6 +14,7 @@
     "lint": "turbo run lint && pnpm lint:css",
     "lint:css": "stylelint \"packages/**/src/**/*.css\" \"apps/**/app/**/*.css\"",
     "deadcode": "knip",
+    "test:integration": "bash infra/local-test-db.sh",
     "deploy:api": "bash infra/deploy.sh api",
     "deploy:web": "bash infra/deploy.sh web",
     "deploy:admin": "bash infra/deploy.sh admin",

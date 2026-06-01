@@ -88,6 +88,24 @@ Firebase web config into deploys.
 enforced in `jest.base.cjs` (and the API's `*.service.ts`-scoped config). Phase 1
 runs this locally / pre-push; CI takes it over in Phase 2.
 
+### Live-DB integration suites (opt-in, M11.2)
+
+The RLS negative tests (`packages/db`) and the PgVectorStore / search / expert-store /
+semantic-cache / expert-portal / failed-query tests (`apps/api`) need a real
+Postgres+pgvector running as the non-superuser `app_user` role. They self-skip in the
+default `pnpm test`. `local-test-db.sh` stands up a throwaway pgvector container, migrates
++ seeds it, grants `app_user` a LOGIN (migrations create it `NOLOGIN`), and runs both
+suites — no GCP dependency:
+
+```bash
+pnpm test:integration            # up + migrate + seed + run both suites (50 live-DB tests)
+bash infra/local-test-db.sh up   # leave the DB running for repeated runs
+bash infra/local-test-db.sh test # re-run the suites against an already-up DB
+bash infra/local-test-db.sh down # remove the container
+```
+
+Override `EXPERTOS_TEST_PG_PORT` / `EXPERTOS_TEST_PG_IMAGE` etc. if 5432 is taken.
+
 ## 5. Smoke test
 
 ```bash
