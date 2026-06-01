@@ -68,6 +68,13 @@ export interface AnswerPromptInput {
   voiceExamples?: VoiceExampleInput[];
   /** Answer language. Defaults to `en`. */
   language?: PromptLanguage;
+  /**
+   * True when the question touched a high-stakes topic (financial / legal / medical / tax — NT.4),
+   * as decided by {@link detectHighStakes}. Adds a system-prompt rule scoping the answer to general
+   * educational context (no specific personalized advice); the disclaimer + consultation CTA are
+   * surfaced by the UI/funnel, not written into the prose. Defaults to false.
+   */
+  highStakes?: boolean;
 }
 
 /**

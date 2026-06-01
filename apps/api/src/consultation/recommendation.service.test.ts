@@ -69,6 +69,7 @@ function input(over: Partial<RecommendationInput> = {}): RecommendationInput {
     answer: "You file annually. [1]",
     citationCount: 1,
     insufficientKnowledge: false,
+    highStakes: false,
     ...over,
   };
 }

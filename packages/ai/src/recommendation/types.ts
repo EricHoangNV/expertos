@@ -56,6 +56,13 @@ export interface RecommendationSignals {
   insufficientKnowledge: boolean;
   /** Assistant turns in this conversation *including* the one just produced (always ≥ 1). */
   assistantTurnCount: number;
+  /**
+   * True when the question hit the high-stakes detector (financial / legal / medical / tax — NT.4).
+   * The `topic` trigger fires on this as well as on its configured keywords, so the consultation CTA
+   * reliably accompanies the legal disclaimer even when an admin left the topic rule's keyword list
+   * empty. A disabled topic rule still never fires (the admin's explicit opt-out).
+   */
+  highStakes: boolean;
 }
 
 /** A fired recommendation: which rule won, the type to book, and the matched term (if a keyword rule). */

@@ -496,6 +496,9 @@ model UsageLog {
   completionTokens Int?     @map("completion_tokens")
   costMicros       Int?     @map("cost_micros") // cost in millionths of a USD cent, integer-safe
   conversationId   String?  @map("conversation_id") @db.Uuid
+  // True when this chat answer touched a high-stakes topic (financial/legal/medical/tax — NT.4),
+  // logged for monitoring per PRD §"Non-Technical Requirements". Always false for non-chat usage.
+  highStakes       Boolean  @default(false) @map("high_stakes")
   occurredAt       DateTime @default(now()) @map("occurred_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -695,6 +698,9 @@ model Message {
   // the OD#5 visual-indicator signal ("AI-reviewed/edited content") to the read path. Soft link (no
   // FK relation): the original cascades with the conversation, so this never dangles.
   refinedFromMessageId String? @map("refined_from_message_id") @db.Uuid
+  // True when this answer touched a high-stakes topic (financial/legal/medical/tax — NT.4); carries
+  // the disclaimer signal to the history read path. Always false for user messages.
+  highStakes       Boolean     @default(false) @map("high_stakes")
   createdAt        DateTime    @default(now()) @map("created_at")
 
   tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)

@@ -9,6 +9,7 @@ function signals(overrides: Partial<RecommendationSignals> = {}): Recommendation
     citationCount: 1,
     insufficientKnowledge: false,
     assistantTurnCount: 1,
+    highStakes: false,
     ...overrides,
   };
 }
@@ -64,6 +65,24 @@ describe("evaluateRecommendation", () => {
       [rule({ trigger: "topic", keywords: ["legal", "tax"] })],
     );
     expect(out).toEqual({ trigger: "topic", consultationTypeKey: null, matchedKeyword: "legal" });
+  });
+
+  it("fires topic on the high-stakes signal even when the rule has no keywords (NT.4)", () => {
+    const out = evaluateRecommendation(
+      signals({ question: "How do I structure this?", answer: "It depends. [1]", highStakes: true }),
+      [rule({ trigger: "topic", keywords: [], consultationTypeKey: "intro_call" })],
+    );
+    // No keyword matched, so `matchedKeyword` stays null — the high-stakes detector drove the fire.
+    expect(out).toEqual({ trigger: "topic", consultationTypeKey: "intro_call", matchedKeyword: null });
+  });
+
+  it("high-stakes does NOT make a non-topic trigger fire, nor revive a disabled topic rule", () => {
+    expect(
+      evaluateRecommendation(signals({ highStakes: true }), [rule({ trigger: "low_confidence", threshold: 0, enabled: false })]),
+    ).toBeNull();
+    expect(
+      evaluateRecommendation(signals({ highStakes: true }), [rule({ trigger: "topic", keywords: [], enabled: false })]),
+    ).toBeNull();
   });
 
   it("high_intent does NOT match a term that appears only in the answer", () => {

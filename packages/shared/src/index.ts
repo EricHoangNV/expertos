@@ -70,6 +70,7 @@ export {
   savedAnswerCreateSchema,
   savedAnswerListQuerySchema,
   answerFeedbackSubmitSchema,
+  HIGH_STAKES_DISCLAIMER,
 } from "./chat";
 export { usageWindowSchema, entitlementUpdateSchema } from "./entitlements";
 export type {

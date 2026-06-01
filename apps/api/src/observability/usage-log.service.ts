@@ -20,6 +20,8 @@ interface UsageLogEntry {
   costMicros?: number;
   /** Conversation this usage belongs to, when applicable. */
   conversationId?: string;
+  /** True when the chat answer touched a high-stakes topic (NT.4) — logged for monitoring. */
+  highStakes?: boolean;
 }
 
 /**
@@ -61,6 +63,7 @@ export class UsageLogService {
             completionTokens: entry.completionTokens ?? null,
             costMicros,
             conversationId: entry.conversationId ?? null,
+            highStakes: entry.highStakes ?? false,
           },
         }),
       );

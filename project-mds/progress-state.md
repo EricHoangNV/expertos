@@ -2,6 +2,7 @@
 
 ## Current State
 - Completed:
+  - NT.4 (technical): High-stakes-topic detector → educational-scope prompt rule + disclaimer (live+history) + `high_stakes` logging + topic-trigger CTA (PM/legal sign-off still pending)
   - M10.4: Validation scorecard (activation/engagement/willingness-to-pay/funnel) — admin analytics
   - M10.3: Concierge volume/SLA/verdict metrics + knowledge-quality signals (admin analytics)
   - M9.3: Concierge async delivery (visible update vs silent) + transactional email
@@ -53,11 +54,11 @@
   - M1.3: Vietnamese retrieval quality + NFC normalization
   - M1.2: Hybrid retrieval (vector + keyword RRF fusion)
   - M1.1: Versioned ingestion pipeline
-- Tests: 997 pass / 0 fail / 0 skip (shared 179, ui 29, db 9, ai 149, api 631)
+- Tests: 1013 pass / 0 fail / 0 skip (shared 179, ui 29, db 9, ai 161, api 635)
 - Build: passing — `pnpm build` (turbo) builds all 7 workspaces.
 - Gates: typecheck ✅, test ✅ (coverage gate met, 100%), lint ✅ (incl. stylelint), build ✅, deadcode (knip) ✅
 - Next tasks (priority order):
   1. **M11.1** — Playwright E2E (needs live stack)
   2. **M11.3** — Load smoke (needs live stack)
-  3. **M11.4 / NT** — Product/legal sign-offs (NT.3 data-retention, NT.4 disclaimers)
+  3. **M11.4 / NT** — remaining product/legal sign-offs (NT.3 data-retention, NT.4 copy/ToS review, NT.5/NT.6 deferred)
   4. Remaining Phase-0 Open Decisions (#3, product halves of #2/#6)

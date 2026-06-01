@@ -28,6 +28,8 @@ export interface RecommendationInput {
   citationCount: number;
   /** True when no grounding sources were retrieved (the insufficient-knowledge path, M3.4). */
   insufficientKnowledge: boolean;
+  /** True when the question hit the high-stakes detector (NT.4) — the canonical `topic` signal. */
+  highStakes: boolean;
 }
 
 /**
@@ -110,6 +112,7 @@ export class RecommendationService {
             citationCount: input.citationCount,
             insufficientKnowledge: input.insufficientKnowledge,
             assistantTurnCount,
+            highStakes: input.highStakes,
           },
           rules,
         );

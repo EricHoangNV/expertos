@@ -45,6 +45,7 @@ const TURN: ConversationTurn = {
     sourceVersionIds: ["dv1"],
     model: "echo-dev",
     confidence: null,
+    highStakes: false,
     citations: [
       { ordinal: 1, chunkId: "c1", documentVersionId: "dv1", content: "Use the portal." },
       { ordinal: 2, chunkId: "c2", documentVersionId: "dv2", content: "Deadline is April." },
@@ -200,6 +201,7 @@ describe("ConversationService.persistTurn", () => {
       model: "echo-dev",
       sourceVersionIds: ["dv1"],
       confidence: null,
+      highStakes: false,
     });
     expect(tx.citation.create).toHaveBeenCalledTimes(2);
     expect(tx.citation.create.mock.calls[0][0].data).toMatchObject({
@@ -435,6 +437,28 @@ describe("ConversationService.get", () => {
       where: { messageId: { in: ["m2"] } },
       orderBy: { ordinal: "asc" },
     });
+    // The read path selects high_stakes so the disclaimer survives into history (NT.4).
+    expect(tx.message.findMany.mock.calls[0][0].select.highStakes).toBe(true);
+  });
+
+  it("surfaces the high-stakes flag on the assistant message in history (NT.4)", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue(CONV_ROW);
+    tx.message.findMany.mockResolvedValue([
+      {
+        id: "m2",
+        role: "assistant",
+        content: "It depends on your situation.",
+        createdAt: new Date("2026-06-01T10:01:00.000Z"),
+        highStakes: true,
+      },
+    ]);
+    tx.citation.findMany.mockResolvedValue([]);
+    const { service } = makeService(tx);
+
+    const result = await service.get(USER, "conv-1");
+
+    expect(result.messages[0].highStakes).toBe(true);
     expect(tx.message.findMany.mock.calls[0][0].orderBy).toEqual({ createdAt: "asc" });
   });
 

@@ -2281,3 +2281,44 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - `apps/admin/src/components/AdminFrame.tsx` — "Validation" nav link.
 
 **Gates:** typecheck ✅, test ✅ (100% gate; new code fully covered), lint ✅ (incl. stylelint), deadcode/knip ✅, build ✅ (7 workspaces, /validation page renders).
+
+## NT.4 — High-stakes-topic detection, disclaimers + consultation-routing (technical enforcement)
+**Date:** 2026-06-01
+**Ref:** PRD §"Non-Technical Requirements" (NT.4) / Task Manifest M11.4
+
+**What was done:**
+- Built a deterministic high-stakes detector (`packages/ai/src/high-stakes/`): pure, offline, no IO/clock/RNG — like the prompt builder and recommendation engine. Curated financial/legal/medical/tax keyword lists (EN + VI), matched whole-word over the shared NFC `tokenize` so "tax" hits "income tax" but not "syntax" and Vietnamese diacritics stay whole (directive §36). Returns the matched categories + terms, or null.
+- Threaded one detection (`detectHighStakes(input.text) !== null`) through every seam in `ChatService.answerStream` (fresh + cached paths):
+  1. **Prompt**: `buildAnswerPrompt` gains an optional `highStakes` flag → an educational-scope system rule (general context only, no personalized advice; "the interface adds the disclaimer" — mirrors the existing "AI rendition" UI-surfaces-the-label rule).
+  2. **Disclaimer**: single-sourced `HIGH_STAKES_DISCLAIMER` in `@expertos/shared`, surfaced on `ChatMessageDto` + the chat `done` event, rendered as a notice on the live turn AND the history read path.
+  3. **Logging**: `high_stakes` boolean on `messages` + `usage_logs` (migration `20260601090000`) for monitoring.
+  4. **Routing**: the M7 `topic` recommendation trigger now fires on the detector signal as well as its configured keywords, so the "book a consultation" CTA reliably accompanies the disclaimer even when an admin left the topic keywords empty (a disabled topic rule still never fires).
+- Tests: detector unit suite (8 cases incl. multi-category, whole-word, VI NFD); evaluate engine high-stakes-topic firing + non-revival of disabled/non-topic rules; answer-prompt scope-rule presence/absence; usage-log/conversation persistence + read-path flag; chat-service end-to-end thread-through (high-stakes, everyday, cache-hit).
+
+**Key decisions:**
+- **Disclaimer + scope-rule + log are a non-negotiable legal gate (always fire on detection); the consultation CTA is admin-tunable (the M7 topic rule).** Cleanly separates the liability disclaimer from the upsell — the disclaimer always shows; the admin still owns whether/how to recommend.
+- **Detect on the question only**, computed once before the prompt is built — deterministic and available pre-stream, matching the PRD examples ("should I sue my landlord?", "what medication should I take?"). Reused across fresh + cached paths.
+- **Keyword lists kept deliberately broad** — a missed disclaimer is the costly failure, an extra one merely cautious (PRD: append "when triggered").
+- Surfaced the flag via structured DTO/Message fields (not by mutating answer prose), following the OD#5 "AI-reviewed content" indicator pattern, so it renders identically live and in history and never collides with the streamed text.
+- Marked NT.4 `[~]` not `[x]`: the technical enforcement is complete, but NT.4 is a sign-off gate — the PM/legal review of the disclaimer copy + ToS coverage is a human action I can't grant.
+
+**Files changed:**
+- `packages/ai/src/high-stakes/{types,detect,detect.test}.ts` — new detector + tests.
+- `packages/ai/src/index.ts` — export `detectHighStakes`, `HIGH_STAKES_CATEGORIES`, types.
+- `packages/ai/src/prompt/{types,answer-prompt}.ts` + `answer-prompt.test.ts` — `highStakes` input → educational-scope section.
+- `packages/ai/src/recommendation/{types,evaluate}.ts` + `evaluate.test.ts` — `highStakes` signal; topic trigger fires on it.
+- `packages/shared/src/chat.ts` + `index.ts` — `highStakes` on `ChatMessageDto` + `done` event; `HIGH_STAKES_DISCLAIMER` const.
+- `packages/db/prisma/schema.prisma` + `migrations/20260601090000_high_stakes_topic/` — `high_stakes` column on `messages` + `usage_logs`.
+- `apps/api/src/chat/chat.service.ts` — detect once, thread through prompt/persist/usage/recommend/done (both paths).
+- `apps/api/src/chat/conversation.service.ts` — persist + select + map `highStakes`.
+- `apps/api/src/observability/usage-log.service.ts` — `highStakes` on the usage entry.
+- `apps/api/src/consultation/recommendation.service.ts` — `highStakes` on `RecommendationInput` → signals.
+- `apps/web/app/chat/page.tsx` + `app/history/page.tsx` — render the disclaimer notice.
+- Test files updated for the new required fields (conversation/recommendation/usage-log/chat service).
+
+**Gates:** typecheck ✅, test ✅ (1013 pass; new code 100% covered, gate met), lint ✅ (incl. stylelint), deadcode/knip ✅, build ✅ (7 workspaces).
+
+**Notes for next iteration:**
+- NT.4 still needs the **human** PM/legal sign-off on the disclaimer copy + ToS coverage before launch (the code gate is done). NT.3 (data-retention policy publish) is the other open NT besides the deferred NT.5/NT.6.
+- The detector is question-only by design; if a future need arises to catch high-stakes content that only surfaces in the answer, extend `ChatService` to also detect on `built.text` (the recommendation engine already scans question+answer for its keyword path).
+- Keyword lists are curated constants in `detect.ts` — broaden there if real traffic shows misses; no config table (kept deterministic, unlike the admin-tunable recommendation rules).

@@ -48,7 +48,23 @@ export interface ChatMessageDto {
    * `null`/absent for an ordinary AI answer and for user messages.
    */
   refinedFromMessageId?: string | null;
+  /**
+   * True when the answer touched a high-stakes topic (financial / legal / medical / tax — NT.4). The
+   * client renders the {@link HIGH_STAKES_DISCLAIMER} under any message where this is set, so the
+   * disclaimer survives into the history read path (not just the live turn). Absent/false otherwise.
+   */
+  highStakes?: boolean;
 }
+
+/**
+ * High-stakes-topic disclaimer (NT.4, PRD §"Non-Technical Requirements"). Shown verbatim under any
+ * answer the deterministic high-stakes detector flagged. Single-sourced here so the legal wording is
+ * identical on the live chat and the history read path, and so it can never drift from the
+ * system-prompt rule that scopes the answer to educational context. The actionable "book a
+ * consultation" CTA is surfaced separately by the M7 funnel (the topic trigger fires on high-stakes).
+ */
+export const HIGH_STAKES_DISCLAIMER =
+  "This response is AI-generated for informational purposes only and does not constitute professional financial, legal, medical, or tax advice. For decisions with significant financial, legal, or health consequences, consider booking a consultation for guidance tailored to your situation.";
 
 /**
  * A resolved citation for a finished answer. Aligns with the `@expertos/ai` prompt builder's
@@ -109,6 +125,12 @@ export type ChatStreamEvent =
        * client renders a Book / Maybe later / Ask another prompt from it.
        */
       recommendation?: ConsultationRecommendationDto | null;
+      /**
+       * True when the question touched a high-stakes topic (financial / legal / medical / tax —
+       * NT.4): the client surfaces the {@link HIGH_STAKES_DISCLAIMER} under the answer. The answer
+       * itself was scoped to general educational context by the prompt builder.
+       */
+      highStakes?: boolean;
     }
   | { type: "error"; message: string };
 

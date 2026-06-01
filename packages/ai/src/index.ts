@@ -47,6 +47,9 @@ export type {
   AnswerPromptInput,
   AnswerPrompt,
 } from "./prompt/types";
+export { detectHighStakes } from "./high-stakes/detect";
+export { HIGH_STAKES_CATEGORIES } from "./high-stakes/types";
+export type { HighStakesCategory, HighStakesResult } from "./high-stakes/types";
 export { evaluateRecommendation } from "./recommendation/evaluate";
 export { RECOMMENDATION_TRIGGERS } from "./recommendation/types";
 export type {

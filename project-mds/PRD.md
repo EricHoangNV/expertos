@@ -102,7 +102,7 @@
 - [x] NT.1 Legal/brand sign-off on Concierge Mode B disclosure — ✅ RESOLVED (OD#5): Mode B approved as default with visual indicator
 - [x] NT.2 Per-expert written sign-off — ✅ RESOLVED (OD#2): backend approval record as sign-off
 - [ ] NT.3 Data-retention + deletion policy reviewed and published
-- [ ] NT.4 High-stakes-topic disclaimers + consultation-routing reviewed
+- [~] NT.4 High-stakes-topic disclaimers + consultation-routing — **TECHNICAL ENFORCEMENT DONE** (deterministic high-stakes detector `packages/ai/src/high-stakes/` [financial/legal/medical/tax, EN+VI, whole-word over the shared tokenizer] wired at the `ChatService` seam → educational-scope system-prompt rule + `HIGH_STAKES_DISCLAIMER` surfaced on the live turn AND history read path + `high_stakes` flag on `messages`/`usage_logs` [migration `20260601090000`] + the M7 `topic` trigger now fires on the detector so the consultation CTA always accompanies the disclaimer). **Remaining: PM/legal sign-off on the disclaimer copy + ToS coverage** (the human review gate — not code)
 - [ ] NT.5 Plan pricing & fair-use limits finalized with PM, stated in plain language at purchase — DEFERRED (post-launch)
 - [ ] NT.6 Payment/billing terms (refunds, cancellation, proration) approved + reflected in Stripe config + UI copy — DEFERRED (post-launch)
 
@@ -631,7 +631,7 @@ These are not code; they are legal / brand / policy gates that must be cleared b
 > **Deletion workflow:** User requests deletion via account settings or support → soft-delete immediate → hard-delete within 30 days → confirmation email. Admin can trigger bulk deletion for compliance. All deletions are logged in the immutable audit trail.
 >
 > **Backups:** Database backups follow the same retention schedule — backups older than the retention window are purged. No PII persists in backups beyond the stated retention.
-- [ ] **High-stakes-topic disclaimers + consultation-routing reviewed** (financial/legal/medical-adjacent advice liability). **DRAFT (pending PM approval):**
+- [~] **High-stakes-topic disclaimers + consultation-routing** (financial/legal/medical-adjacent advice liability). **TECHNICAL ENFORCEMENT BUILT; PM/legal sign-off pending.** Implemented: a deterministic high-stakes detector (`packages/ai/src/high-stakes/`, pure like the prompt builder / recommendation engine — curated financial/legal/medical/tax keyword lists, EN + VI, whole-word over the shared NFC tokenizer) is computed once per turn in `ChatService` and threaded through every seam: (1) the answer prompt gains an educational-scope rule (general context only, no personalized advice, "the interface adds the disclaimer"); (2) the single-sourced `HIGH_STAKES_DISCLAIMER` (`@expertos/shared`) renders under the answer on both the live chat and the history read path; (3) the answer + usage row are flagged `high_stakes` (migration `20260601090000`) for monitoring; (4) the M7 `topic` recommendation trigger now fires on the detector signal as well as its keywords, so the "book a consultation" CTA reliably accompanies the disclaimer (an admin can still disable the topic rule — the disclaimer always shows regardless). What remains is the human gate below (copy + ToS review), not code. **DRAFT (pending PM approval):**
 
 > **High-Stakes Topic Disclaimers — DRAFT**
 >

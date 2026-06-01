@@ -98,6 +98,16 @@ function buildSystemPrompt(
     ].join("\n"),
   );
 
+  // High-stakes topic (NT.4): scope the answer to general educational context, never specific
+  // personalized advice. Placed right after the rules so it reads as a constraint on them, not as a
+  // style note. The disclaimer + "book a consultation" option are surfaced by the UI/funnel — the
+  // model must NOT write its own disclaimer (mirrors the "AI rendition" label rule below).
+  if (input.highStakes) {
+    sections.push(
+      "HIGH-STAKES TOPIC: This question touches a financial, legal, medical, or tax matter. Provide general, educational context grounded in the SOURCES only — do not give specific, personalized advice or a definitive recommendation for the user's own situation, and do not tell them what they should do. Do not write a disclaimer or a 'consult a professional' line yourself; the interface adds the disclaimer and a consultation option.",
+    );
+  }
+
   const guidelines = input.voice?.guidelines?.trim();
   if (guidelines) {
     sections.push(`Voice guidelines (style only):\n${normalizeText(guidelines)}`);

@@ -248,6 +248,39 @@ describe("ChatService.answerStream", () => {
     expect(events.at(-1)).toMatchObject({ type: "done", recommendation: null });
   });
 
+  it("detects a high-stakes question and threads the flag through every seam (NT.4)", async () => {
+    const { service, stubs } = makeService();
+    // "how do I file taxes" hits the tax category.
+    const events = await drain(service.answerStream(USER, baseInput()));
+
+    // The prompt was scoped to educational context.
+    expect(stubs.seenMessages[0][0].content).toContain("HIGH-STAKES TOPIC");
+    // Flagged on the persisted answer, the usage log, the funnel signal, and the done event.
+    expect(stubs.persistTurn.mock.calls[0][1].assistant.highStakes).toBe(true);
+    expect(stubs.record).toHaveBeenCalledWith(USER, expect.objectContaining({ highStakes: true }));
+    expect(stubs.recommend).toHaveBeenCalledWith(USER, expect.objectContaining({ highStakes: true }));
+    expect(events.at(-1)).toMatchObject({ type: "done", highStakes: true });
+  });
+
+  it("leaves an everyday question unflagged — no disclaimer, no scope rule (NT.4)", async () => {
+    const { service, stubs } = makeService();
+    const events = await drain(service.answerStream(USER, baseInput({ text: "what is a good morning routine" })));
+
+    expect(stubs.seenMessages[0][0].content).not.toContain("HIGH-STAKES TOPIC");
+    expect(stubs.persistTurn.mock.calls[0][1].assistant.highStakes).toBe(false);
+    expect(stubs.record).toHaveBeenCalledWith(USER, expect.objectContaining({ highStakes: false }));
+    expect(events.at(-1)).toMatchObject({ type: "done", highStakes: false });
+  });
+
+  it("flags a high-stakes question served from cache too (NT.4)", async () => {
+    const { service, stubs } = makeService({ cacheHit: CACHED_ANSWER });
+    const events = await drain(service.answerStream(USER, baseInput()));
+
+    expect(stubs.persistTurn.mock.calls[0][1].assistant.highStakes).toBe(true);
+    expect(stubs.record).toHaveBeenCalledWith(USER, expect.objectContaining({ highStakes: true }));
+    expect(events.at(-1)).toMatchObject({ type: "done", highStakes: true });
+  });
+
   it("evaluates the funnel on a cache hit too, with the cached answer's signals (M7.1)", async () => {
     const rec = {
       id: "rec-2",

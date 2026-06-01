@@ -8,6 +8,7 @@ import type {
   UploadedFileDto,
   UploadMode,
 } from "@expertos/shared";
+import { HIGH_STAKES_DISCLAIMER } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
 import { AnswerView } from "../../src/components/answer-view";
 import {
@@ -37,6 +38,24 @@ interface UiMessage {
   degraded?: boolean;
   /** In-chat consultation recommendation (M7.2), present only when a funnel rule fired. */
   recommendation?: ConsultationRecommendationDto | null;
+  /** True when the answer touched a high-stakes topic (NT.4) — show the legal disclaimer. */
+  highStakes?: boolean;
+}
+
+/**
+ * The high-stakes disclaimer (NT.4, PRD §"Non-Technical Requirements"): a non-dismissible legal
+ * notice shown under any answer the detector flagged (financial / legal / medical / tax). The copy
+ * is single-sourced in `@expertos/shared` so it can never drift from the system-prompt rule that
+ * scoped the answer to educational context; the actionable "book a consultation" CTA arrives
+ * separately as the M7 {@link ConsultationPrompt} (the topic trigger fires on high-stakes too).
+ */
+function HighStakesNotice() {
+  return (
+    <Card className="card-pad">
+      <Badge tone="amber">Important</Badge>
+      <p className="muted">{HIGH_STAKES_DISCLAIMER}</p>
+    </Card>
+  );
 }
 
 /** Replaces the last message in the list via `fn` (immutably). */
@@ -441,6 +460,7 @@ export default function ChatPage() {
                 insufficientKnowledge: event.insufficientKnowledge,
                 degraded: event.degraded ?? false,
                 recommendation: event.recommendation ?? null,
+                highStakes: event.highStakes ?? false,
               })),
             );
           } else {
@@ -515,6 +535,7 @@ export default function ChatPage() {
                 </p>
               </Card>
             )}
+            {m.role === "assistant" && m.done && m.highStakes && <HighStakesNotice />}
             {m.role === "assistant" && m.done && m.recommendation && (
               <ConsultationPrompt recommendation={m.recommendation} />
             )}

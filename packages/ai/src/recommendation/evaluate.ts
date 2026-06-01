@@ -71,7 +71,9 @@ function matchRule(
     }
     case "topic": {
       const matched = firstKeywordIn(`${signals.question} ${signals.answer}`, rule.keywords);
-      return { fired: matched !== null, matchedKeyword: matched };
+      // High-stakes detection (NT.4) is the canonical topic signal: fire on it even when the admin
+      // configured no keywords, so the consultation CTA always accompanies the high-stakes disclaimer.
+      return { fired: matched !== null || signals.highStakes, matchedKeyword: matched };
     }
     case "depth": {
       // A null/≤0 threshold can never fire — an unconfigured depth rule must not nag every turn.

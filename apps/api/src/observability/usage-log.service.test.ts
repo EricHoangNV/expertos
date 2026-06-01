@@ -31,6 +31,7 @@ describe("UsageLogService", () => {
       completionTokens: 20,
       costMicros: 1234,
       conversationId: "22222222-2222-2222-2222-222222222222",
+      highStakes: true,
     });
 
     expect(create).toHaveBeenCalledWith({
@@ -43,6 +44,7 @@ describe("UsageLogService", () => {
         completionTokens: 20,
         costMicros: 1234,
         conversationId: "22222222-2222-2222-2222-222222222222",
+        highStakes: true,
       },
     });
   });
@@ -69,6 +71,7 @@ describe("UsageLogService", () => {
         completionTokens: null,
         costMicros: null,
         conversationId: null,
+        highStakes: false,
       },
     });
   });

@@ -8,6 +8,7 @@ import type {
   ConversationSummaryDto,
   SavedAnswerDto,
 } from "@expertos/shared";
+import { HIGH_STAKES_DISCLAIMER } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
 import { AnswerView } from "../../src/components/answer-view";
 import {
@@ -142,6 +143,12 @@ function ConversationDetail({
                   </Badge>
                 ) : null}
                 <AnswerView content={m.content} citations={m.citations} interactive />
+                {m.highStakes ? (
+                  <Card className="card-pad">
+                    <Badge tone="amber">Important</Badge>
+                    <p className="muted">{HIGH_STAKES_DISCLAIMER}</p>
+                  </Card>
+                ) : null}
                 {savedIds.has(m.id) ? (
                   <Badge tone="green">Saved</Badge>
                 ) : (

@@ -120,6 +120,8 @@ export interface ConversationTurn {
     sourceVersionIds: string[];
     model: string;
     confidence: number | null;
+    /** True when the answer touched a high-stakes topic (NT.4) — carries the disclaimer to history. */
+    highStakes: boolean;
     /** Citation list in marker order; `citations[i]` is marker `[i + 1]`. */
     citations: TurnCitation[];
   };
@@ -260,6 +262,7 @@ export class ConversationService {
           sourceVersionIds: turn.assistant.sourceVersionIds,
           model: turn.assistant.model,
           confidence: turn.assistant.confidence,
+          highStakes: turn.assistant.highStakes,
         },
         select: { id: true },
       });
@@ -329,6 +332,7 @@ export class ConversationService {
           content: true,
           createdAt: true,
           refinedFromMessageId: true,
+          highStakes: true,
         },
       });
       const citationsByMessage = await this.loadCitations(
@@ -345,6 +349,8 @@ export class ConversationService {
           citations: citationsByMessage.get(m.id) ?? [],
           // M9.3: a concierge "refined update" carries the id of the answer it refines (OD#5 indicator).
           refinedFromMessageId: m.refinedFromMessageId,
+          // NT.4: a high-stakes answer carries the disclaimer signal into the history view.
+          highStakes: m.highStakes,
         })),
       };
     });

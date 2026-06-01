@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import {
   buildAnswerPrompt,
   buildCitations,
+  detectHighStakes,
   type ChatMessage,
   type LlmProvider,
   type PromptFact,
@@ -76,6 +77,11 @@ export class ChatService {
   ): AsyncGenerator<ChatStreamEvent> {
     const degraded = options?.degraded ?? false;
     const llm = degraded ? this.degradedLlm : this.llm;
+    // High-stakes detection (NT.4) is a pure function of the (NFC-normalized) question, so it is
+    // computed once up front and reused across the fresh and cached paths: it scopes the prompt to
+    // educational context, flags the persisted answer + usage log, drives the disclaimer on the
+    // client, and feeds the consultation funnel's `topic` trigger.
+    const highStakes = detectHighStakes(input.text) !== null;
     try {
       const history = input.conversationId
         ? await this.conversations.loadHistory(user, input.conversationId)
@@ -110,7 +116,7 @@ export class ChatService {
       if (answerKey) {
         const hit = await this.cache.lookupAnswer(user, answerKey, llm.name);
         if (hit) {
-          yield* this.serveCachedAnswer(user, input, hit, degraded);
+          yield* this.serveCachedAnswer(user, input, hit, degraded, highStakes);
           return;
         }
       }
@@ -141,6 +147,7 @@ export class ChatService {
           : undefined,
         voiceExamples: voice?.examples.map((e) => ({ prompt: e.prompt, content: e.content })),
         language: input.language,
+        highStakes,
       });
 
       // Layer prior turns between the system message and the freshly built user message so the
@@ -193,6 +200,7 @@ export class ChatService {
           sourceVersionIds,
           model: llm.name,
           confidence: null,
+          highStakes,
           citations: built.citations.map((c) => ({
             ordinal: c.ordinal,
             chunkId: c.chunkId,
@@ -209,6 +217,7 @@ export class ChatService {
         promptTokens: usage.promptTokens,
         completionTokens: usage.completionTokens,
         conversationId: persisted.conversationId,
+        highStakes,
       });
 
       // Populate the answer + persistent semantic cache, but only for a grounded answer (≥1
@@ -255,6 +264,7 @@ export class ChatService {
         answer: built.text,
         citationCount: built.citations.length,
         insufficientKnowledge: facts.length === 0,
+        highStakes,
       });
 
       yield {
@@ -268,6 +278,7 @@ export class ChatService {
         insufficientKnowledge: facts.length === 0,
         degraded,
         recommendation,
+        highStakes,
       };
     } catch (error) {
       this.logger.error("chat answer failed", {
@@ -289,6 +300,7 @@ export class ChatService {
     input: ChatRequestInput,
     hit: CachedAnswer,
     degraded: boolean,
+    highStakes: boolean,
   ): AsyncGenerator<ChatStreamEvent> {
     yield { type: "delta", text: hit.text };
 
@@ -302,6 +314,7 @@ export class ChatService {
         sourceVersionIds: hit.sourceVersionIds,
         model: hit.model,
         confidence: null,
+        highStakes,
         citations: hit.citations.map((c) => ({
           ordinal: c.ordinal,
           chunkId: c.chunkId,
@@ -317,6 +330,7 @@ export class ChatService {
       promptTokens: 0,
       completionTokens: 0,
       conversationId: persisted.conversationId,
+      highStakes,
     });
 
     this.logger.info("chat answer served from cache", {
@@ -333,6 +347,7 @@ export class ChatService {
       answer: hit.text,
       citationCount: hit.citations.length,
       insufficientKnowledge: false,
+      highStakes,
     });
 
     yield {
@@ -349,6 +364,7 @@ export class ChatService {
       insufficientKnowledge: false,
       degraded,
       recommendation,
+      highStakes,
     };
   }
 

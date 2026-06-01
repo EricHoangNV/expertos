@@ -47,6 +47,18 @@ describe("buildAnswerPrompt", () => {
     expect(system).toContain("INSUFFICIENT KNOWLEDGE");
   });
 
+  it("omits the high-stakes scoping rule by default", () => {
+    expect(systemOf(BASE)).not.toContain("HIGH-STAKES TOPIC");
+  });
+
+  it("adds the high-stakes educational-scope rule when flagged (NT.4)", () => {
+    const system = systemOf({ ...BASE, highStakes: true });
+    expect(system).toContain("HIGH-STAKES TOPIC");
+    expect(system).toContain("educational context");
+    // The model must not write its own disclaimer — the UI surfaces it.
+    expect(system).toContain("the interface adds the disclaimer");
+  });
+
   it("defaults to English and switches to Vietnamese when asked", () => {
     expect(systemOf(BASE)).toContain("Write the answer in English.");
     expect(systemOf({ ...BASE, language: "vi" })).toContain(
