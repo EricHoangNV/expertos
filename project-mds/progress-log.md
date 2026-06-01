@@ -1665,3 +1665,28 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - `AnswerView` is now the single answer-rendering component — any future change to citation rendering (e.g. an M8 knowledge-passage deep link off `documentVersionId`+`chunkId`) belongs there, not in either page.
 - History is master/detail, not a chat-embedded sidebar; if "continue this conversation" is wanted, the chat page needs to accept an incoming `conversationId` (URL param or shared state) and pre-load its transcript before streaming the next turn.
 - Still no page tests in `apps/web` (repo-wide convention; gates are typecheck/lint/build/knip).
+
+## Consumer-web document upload UI (deferred web-UI; M5)
+**Date:** 2026-06-01
+**Ref:** PRD §"Document-assisted Q&A" (M5.1/M5.2) — the `POST /uploads` API shipped in M5 with no web consumer; the last open deferred consumer surface (flagged in the prior log entry's "Notes for next iteration").
+
+**What was done:**
+- New `apps/web/src/lib/upload-client.ts` — `uploadFile(token, file, mode, conversationId?)` POSTs multipart form-data to `/uploads` (the file part + `mode`/`conversationId` text fields that the API's `uploadCreateSchema` validates). Leaves `Content-Type` unset so the browser writes the multipart boundary. Surfaces the API's `{message}` error body verbatim for rejections (415 unsupported type, 413 too large, 422 malware scan, 400 spoof) via a small `errorMessage(res)` helper, falling back to the status code. Exports `UPLOAD_ACCEPT` (extensions + MIME hint for the native picker, mirroring server `UPLOAD_TYPES`).
+- New `UploadPanel` component on `apps/web/app/chat/page.tsx` — mode `Select` (Temporary / Persistent), a native `<input type="file" accept={UPLOAD_ACCEPT}>` that uploads on change (reset via a bumped `key` after each upload), and a list of uploaded files showing filename + mode badge + `formatBytes` size + a green "{n} searchable chunks" / amber "stored — not searchable yet" badge (the `chunkCount === 0` PDF/DOCX-parser-pending case). Wired into the render between the error badge and the question field; receives the chat's current `conversationId`. Shows a "send a message first" hint when mode is temporary and no conversation exists yet (temporary uploads are only retrievable for the current conversation).
+
+**Key decisions:**
+- Placed the upload UI on the chat page rather than a standalone page — uploads are query-time and conversation-attached (temporary uploads fold into retrieval only for the current `conversationId`; persistent uploads index into the user's private knowledge regardless).
+- Reused `Card`/`Badge`/`Field`/`Select` DS primitives + `.col/.row/.gap2/.wrap/.muted` utilities + a native `<input type="file">` (the `@expertos/ui` package exports no file-input primitive) — no new CSS/components.
+- Surfaced `chunkCount` so the user can distinguish a stored-but-unsearchable format (parser not landed: PDF/DOCX) from an indexed one — the server is still the authority on type/size/safety, so the picker's `accept` only narrows the native dialog.
+- Multipart text fields (`mode`, `conversationId`) ride alongside the file in `FormData`; NestJS's `FileInterceptor` (multer) populates `req.body` with them, so the existing `@Body(ZodValidationPipe(uploadCreateSchema))` validates them unchanged — no API change needed.
+- Purely additive frontend; no API/shared/backend code touched.
+
+**Files changed:**
+- `apps/web/src/lib/upload-client.ts` — NEW: `uploadFile` multipart client + `UPLOAD_ACCEPT` + `errorMessage` helper.
+- `apps/web/app/chat/page.tsx` — added `UploadPanel` + `formatBytes`; imported `uploadFile`/`UPLOAD_ACCEPT` and the `UploadedFileDto`/`UploadMode` types; rendered the panel above the question field.
+
+**Notes for next iteration:**
+- The deferred consumer-web UI backlog is now **empty** (account/usage, chat feedback + insufficient/degraded notes, history/search/saved-answers, and now uploads all shipped).
+- An uploaded file's chunks fold into retrieval automatically (M5.4 — `RetrievalService.retrieveUploads`); a temporary upload made *before* the first message won't attach to a conversation (no `conversationId` yet) — the UI hints to send a message first. If a "draft conversation id minted client-side before the first turn" concept is ever added, the upload could attach earlier.
+- No "remove/list my uploads" management surface yet — `UploadPanel` only lists files uploaded in the current session (no `GET /uploads` list endpoint exists). If users need to see/delete past uploads, that needs a new API read/delete path first (then a panel or an account-page section).
+- Still no page tests in `apps/web` (repo-wide convention; gates are typecheck/lint/build/knip).

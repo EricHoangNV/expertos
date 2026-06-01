@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Card, Field, Input, Select, Textarea } from "@expertos/ui";
-import type { ChatCitationDto, ConsultationRecommendationDto } from "@expertos/shared";
+import type {
+  ChatCitationDto,
+  ConsultationRecommendationDto,
+  UploadedFileDto,
+  UploadMode,
+} from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
 import { AnswerView } from "../../src/components/answer-view";
 import {
@@ -14,6 +19,7 @@ import {
   type ExpertVoice,
 } from "../../src/lib/chat-client";
 import { createSavedAnswer } from "../../src/lib/history-client";
+import { uploadFile, UPLOAD_ACCEPT } from "../../src/lib/upload-client";
 
 interface UiMessage {
   role: "user" | "assistant";
@@ -256,6 +262,111 @@ function SaveAnswer({ messageId }: { messageId: string }) {
   );
 }
 
+/** Human-readable file size for the uploaded-file list (binary units, matching the API's limit). */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kib = bytes / 1024;
+  if (kib < 1024) return `${kib.toFixed(1)} KiB`;
+  return `${(kib / 1024).toFixed(1)} MiB`;
+}
+
+/**
+ * Query-time document upload (M5, PRD §"Document-assisted Q&A"). The user picks a file and a
+ * retention mode, then uploads it to the API (`POST /uploads`) which validates type/size, scans for
+ * malware, parses+chunks+embeds, and stores it. A `persistent` file is indexed into the user's
+ * private knowledge so any later question can retrieve it; a `temporary` file is scoped to the
+ * current conversation and expires — so it is only retrievable once the chat has a conversation
+ * (i.e. after the first message), which is surfaced as a hint. The server is the authority on
+ * type/safety; a rejected upload shows the API's message verbatim. `chunkCount === 0` means the
+ * file was stored but a parser for its format has not landed yet (PDF/DOCX), so it isn't searchable.
+ */
+function UploadPanel({ conversationId }: { conversationId: string | undefined }) {
+  const { getIdToken } = useAuth();
+  const [mode, setMode] = useState<UploadMode>("temporary");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [files, setFiles] = useState<UploadedFileDto[]>([]);
+  // Bumped after each upload to reset the native file input (it has no controlled value).
+  const [inputKey, setInputKey] = useState(0);
+
+  const upload = useCallback(
+    async (file: File) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const token = await getIdToken();
+        if (!token) {
+          setError("Please sign in to upload a document.");
+          return;
+        }
+        const uploaded = await uploadFile(token, file, mode, conversationId);
+        setFiles((prev) => [uploaded, ...prev]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Upload failed.");
+      } finally {
+        setBusy(false);
+        setInputKey((k) => k + 1);
+      }
+    },
+    [getIdToken, mode, conversationId],
+  );
+
+  return (
+    <Card className="card-pad">
+      <Badge tone="info">Documents</Badge>
+      <p className="muted">
+        Add a document for this chat. Persistent files are saved to your private knowledge and used
+        in future questions; temporary files apply to this conversation only and expire.
+      </p>
+      <Field label="Mode" htmlFor="upload-mode">
+        <Select
+          id="upload-mode"
+          value={mode}
+          onChange={(e) => setMode(e.target.value as UploadMode)}
+          disabled={busy}
+        >
+          <option value="temporary">Temporary (this conversation)</option>
+          <option value="persistent">Persistent (saved to my knowledge)</option>
+        </Select>
+      </Field>
+      <input
+        key={inputKey}
+        type="file"
+        accept={UPLOAD_ACCEPT}
+        disabled={busy}
+        aria-label="Choose a document to upload"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void upload(file);
+        }}
+      />
+      {busy && <span className="muted">Uploading…</span>}
+      {mode === "temporary" && !conversationId && (
+        <span className="muted">
+          Send a message first — temporary files attach to this conversation.
+        </span>
+      )}
+      {error && <Badge tone="red">{error}</Badge>}
+      {files.length > 0 && (
+        <div className="col gap1">
+          {files.map((f) => (
+            <div key={f.id} className="row gap2 wrap">
+              <span>{f.filename}</span>
+              <Badge tone={f.mode === "persistent" ? "green" : "info"}>{f.mode}</Badge>
+              <span className="muted">{formatBytes(f.sizeBytes)}</span>
+              {f.chunkCount > 0 ? (
+                <Badge tone="green">{f.chunkCount} searchable chunks</Badge>
+              ) : (
+                <Badge tone="amber">stored — not searchable yet</Badge>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function ChatPage() {
   const { user, getIdToken } = useAuth();
   const [experts, setExperts] = useState<ExpertVoice[]>([]);
@@ -420,6 +531,8 @@ export default function ChatPage() {
       </div>
 
       {error && <Badge tone="red">{error}</Badge>}
+
+      <UploadPanel conversationId={conversationId} />
 
       <Field label="Your question" htmlFor="draft">
         <Textarea
