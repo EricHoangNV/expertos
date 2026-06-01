@@ -153,8 +153,8 @@ describe("ChatService.answerStream", () => {
       messageId: "m-1",
       insufficientKnowledge: false,
       citations: [
-        { ordinal: 1, chunkId: "c1", documentVersionId: "dv1", quote: "fact one" },
-        { ordinal: 2, chunkId: "c2", documentVersionId: "dv1", quote: "fact two" },
+        { ordinal: 1, chunkId: "c1", documentVersionId: "dv1", quote: "fact one", kind: "knowledge" },
+        { ordinal: 2, chunkId: "c2", documentVersionId: "dv1", quote: "fact two", kind: "knowledge" },
       ],
     });
   });

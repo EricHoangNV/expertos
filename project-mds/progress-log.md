@@ -683,3 +683,36 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Persisted-ordinal caveat:** `ConversationService.persistTurn` stores each citation row's `ordinal` as its loop index `i+1`, which diverges from the true marker ordinal for a filtered non-contiguous list. Harmless today (no read path re-hydrates citation ordinals; the wire DTO carries the true ordinal). When M4.2 adds a citation read path, persist/carry the true marker ordinal (pass an explicit ordinal into `persistTurn` or store `ResolvedCitation.ordinal`).
 - **Mixed comma-group `[1,99]`** is kept verbatim when any member resolves (the out-of-range `99` stays visible in that rare form); the citation list never includes it. The echo provider emits separate `[n]` brackets so this is a real-LLM edge only.
 - All gates green via `pnpm` (typecheck/test/lint/build/knip); the mocked unit tests didn't need `PRISMA_CLIENT_ENGINE_TYPE=binary` (LEARNINGS §2 still applies to any Prisma-Client-backed run).
+
+## M4.2 — Sources drawer + click-to-passage + document_version_id provenance
+**Date:** 2026-06-01
+**Ref:** PRD Task Manifest M4.2 (§"Design System", §"Citations")
+
+**What was done:**
+- Promoted `kind: "knowledge"|"upload"` from the internal `ResolvedCitation` onto the wire `ChatCitationDto` (now it has a consumer). `ChatService.toCitationDto` sets it on the `done` event.
+- Fixed the M4.1-flagged persisted-ordinal bug: `TurnCitation` now carries `ordinal`, `chat.service` passes `c.ordinal`, and `ConversationService.persistTurn` writes the **true marker ordinal** instead of the loop index — a sparse citation list (lone `[2]`) now stores ordinal 2.
+- Added the citation read path: `ChatMessageDto` gains required `citations: ChatCitationDto[]`; `ConversationService.get` re-hydrates them via a new private `loadCitations(tx, assistantMessageIds)` (single `citation.findMany`, grouped by message, ascending by ordinal), deriving `kind` from `uploadChunkId` presence and coalescing the shared nullable id columns to `""`.
+- Web `AssistantAnswer` component (`apps/web/app/chat/page.tsx`): renders answer prose with `[n]` markers as clickable `.cite` chips **only after the stream completes and the marker resolves** (render-after-resolve); below it a sources drawer lists each resolved source with quote + `document_version_id` provenance; clicking an inline marker highlights + `scrollIntoView`s the matching `.source` row (click-to-passage), keyboard-accessible.
+- New `.sources`/`.source`/`.source.active` design-system styles in `packages/ui/src/ds.css` (token-only; crimson active highlight via `--red-300`/`--red-50`/`--sh-focus`).
+- Tests: +3 net in `apps/api` (persist-true-ordinal sparse list; `get` re-hydrates citations with derived `kind`; upload-kind + null-quote read path; empty-assistant skip-lookup). `conversation.service.ts`/`chat.service.ts` back to 100%.
+
+**Key decisions:**
+- **Built the read path now, not just the live drawer.** It makes the persisted-ordinal fix testable end-to-end and gives the (not-yet-built) M3.2 history UI the same sources drawer for free via `ConversationDetailDto.messages[].citations`. API-first is the established precedent (M2.3/M3.2–3.4).
+- **Derive `kind` from `uploadChunkId`, no new column.** The `citations` table already has `chunk_id` vs `upload_chunk_id`; deriving `kind` on read is forward-compatible with M5 and avoids a migration. Nullable id columns coalesce to `""` (knowledge rows are always non-null; the guard only matters for the M5 upload shape).
+- **Render-after-resolve enforced in the web component, not the data.** `built.text` (persisted) already strips unresolvable markers, but the *live* `m.content` is the raw stream; `renderAnswer` only upgrades a `[n]` to a live `.cite` when `done` AND the ordinal resolves, so a hallucinated `[9]` shown mid-stream degrades to plain text rather than a fake source. This is the structural realization of OD#7.
+- **Styles went into `ds.css`** (the design-system home, exempt from the hex/px lint) rather than an app-local CSS file — keeps tokens centralized and reusable by the admin/history drawers; the `Sources` heading reuses the existing global `.label`.
+
+**Files changed:**
+- `packages/shared/src/chat.ts` — `ChatCitationDto.kind` added; `ChatMessageDto.citations` added (required array).
+- `apps/api/src/chat/chat.service.ts` — `toCitationDto` sets `kind`; persistTurn citations now carry `ordinal`.
+- `apps/api/src/chat/conversation.service.ts` — `TurnCitation.ordinal`; persistTurn writes the true ordinal; `get` re-hydrates citations; new `loadCitations` helper; `ChatCitationDto` import.
+- `apps/api/src/chat/conversation.service.test.ts` — sparse-ordinal persist test; `get` citation re-hydration + upload-kind/null-quote + empty-assistant tests; `makeTx` gains `citation.findMany`.
+- `apps/api/src/chat/chat.service.test.ts` — `kind: "knowledge"` locked into the done-event assertion.
+- `apps/web/app/chat/page.tsx` — `AssistantAnswer` component, `renderAnswer` marker→cite renderer, sources drawer, click-to-passage.
+- `packages/ui/src/ds.css` — `.sources`/`.source`/`.source.active` + a `.cite[role="button"]` reset.
+
+**Notes for next iteration:**
+- **M4.3 is a sign-off, not code.** The OD#7 engineering behavior is fully built (deferred citations → resolvability guarantee → render-after-resolve UI). What remains is the Eng+Design review verdict onto this behavior.
+- **M5 upload-citation seam is pre-wired:** `ChatCitationDto.kind` + `loadCitations`'s `uploadChunkId ? "upload" : "knowledge"` derivation + the `.cite.upload` / `.source` styles already exist. M5 just needs to persist `uploadChunkId` and surface info-blue.
+- **Web has no jest** (`passWithNoTests`) — the `AssistantAnswer`/`renderAnswer` UI is covered by typecheck/lint/build only; a Playwright path for click-to-passage joins the M11.1 E2E matrix.
+- **Provenance is currently a text line** (`source: <document_version_id>`); a real click-to-open-document deep link wires off `documentVersionId` + `chunkId` when the M8 knowledge viewer exists.

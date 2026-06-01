@@ -22,7 +22,10 @@ function makeTx() {
       update: jest.fn(),
     },
     message: { findMany: jest.fn(), create: jest.fn() },
-    citation: { create: jest.fn().mockResolvedValue({ id: "cit" }) },
+    citation: {
+      create: jest.fn().mockResolvedValue({ id: "cit" }),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     $queryRawUnsafe: jest.fn(),
   };
 }
@@ -42,8 +45,8 @@ const TURN: ConversationTurn = {
     model: "echo-dev",
     confidence: null,
     citations: [
-      { chunkId: "c1", documentVersionId: "dv1", content: "Use the portal." },
-      { chunkId: "c2", documentVersionId: "dv2", content: "Deadline is April." },
+      { ordinal: 1, chunkId: "c1", documentVersionId: "dv1", content: "Use the portal." },
+      { ordinal: 2, chunkId: "c2", documentVersionId: "dv2", content: "Deadline is April." },
     ],
   },
 };
@@ -163,6 +166,28 @@ describe("ConversationService.persistTurn", () => {
     expect(tx.citation.create.mock.calls[1][0].data).toMatchObject({ ordinal: 2, chunkId: "c2" });
   });
 
+  it("persists the true marker ordinal, not the loop index, for a sparse citation list (M4.2)", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue({ id: "conv-1" });
+    tx.message.create.mockResolvedValue({ id: "assist-sparse" });
+    const { service } = makeService(tx);
+
+    // The model cited only `[2]` — the M4.1 builder keeps that ordinal rather than renumbering to 1.
+    await service.persistTurn(USER, {
+      ...TURN,
+      conversationId: "conv-1",
+      assistant: {
+        ...TURN.assistant,
+        content: "See the deadline [2].",
+        citations: [{ ordinal: 2, chunkId: "c2", documentVersionId: "dv2", content: "April." }],
+      },
+    });
+
+    expect(tx.citation.create).toHaveBeenCalledTimes(1);
+    // ordinal 2 (the real marker), NOT 1 (the loop index) — keeps it aligned with the prose.
+    expect(tx.citation.create.mock.calls[0][0].data).toMatchObject({ ordinal: 2, chunkId: "c2" });
+  });
+
   it("creates a new conversation with voice attribution and an auto-derived title", async () => {
     const tx = makeTx();
     tx.conversation.create.mockResolvedValue({ id: "conv-new" });
@@ -271,7 +296,7 @@ describe("ConversationService.list", () => {
 });
 
 describe("ConversationService.get", () => {
-  it("returns the conversation with its chronological transcript", async () => {
+  it("returns the conversation transcript with re-hydrated citations on assistant messages", async () => {
     const tx = makeTx();
     tx.conversation.findUnique.mockResolvedValue(CONV_ROW);
     tx.message.findMany.mockResolvedValue([
@@ -284,8 +309,19 @@ describe("ConversationService.get", () => {
       {
         id: "m2",
         role: "assistant",
-        content: "a1",
+        content: "a1 [2]",
         createdAt: new Date("2026-06-01T10:01:00.000Z"),
+      },
+    ]);
+    // A sparse citation: the assistant cited only `[2]`, and `uploadChunkId` is null → knowledge.
+    tx.citation.findMany.mockResolvedValue([
+      {
+        messageId: "m2",
+        ordinal: 2,
+        chunkId: "c2",
+        documentVersionId: "dv2",
+        uploadChunkId: null,
+        quote: "April.",
       },
     ]);
     const { service } = makeService(tx);
@@ -293,12 +329,78 @@ describe("ConversationService.get", () => {
     const result = await service.get(USER, "conv-1");
 
     expect(result.id).toBe("conv-1");
-    expect(result.title).toBe("how do I file taxes");
     expect(result.messages).toEqual([
-      { id: "m1", role: "user", content: "q1", createdAt: "2026-06-01T10:00:00.000Z" },
-      { id: "m2", role: "assistant", content: "a1", createdAt: "2026-06-01T10:01:00.000Z" },
+      { id: "m1", role: "user", content: "q1", createdAt: "2026-06-01T10:00:00.000Z", citations: [] },
+      {
+        id: "m2",
+        role: "assistant",
+        content: "a1 [2]",
+        createdAt: "2026-06-01T10:01:00.000Z",
+        citations: [
+          {
+            ordinal: 2,
+            chunkId: "c2",
+            documentVersionId: "dv2",
+            quote: "April.",
+            kind: "knowledge",
+          },
+        ],
+      },
     ]);
+    // Citations are looked up only for the assistant message id, ascending by marker ordinal.
+    expect(tx.citation.findMany.mock.calls[0][0]).toMatchObject({
+      where: { messageId: { in: ["m2"] } },
+      orderBy: { ordinal: "asc" },
+    });
     expect(tx.message.findMany.mock.calls[0][0].orderBy).toEqual({ createdAt: "asc" });
+  });
+
+  it("derives an upload citation kind and tolerates null chunk ids on the read path", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue(CONV_ROW);
+    tx.message.findMany.mockResolvedValue([
+      {
+        id: "m2",
+        role: "assistant",
+        content: "from your file [1]",
+        createdAt: new Date("2026-06-01T10:01:00.000Z"),
+      },
+    ]);
+    tx.citation.findMany.mockResolvedValue([
+      {
+        messageId: "m2",
+        ordinal: 1,
+        chunkId: null,
+        documentVersionId: null,
+        uploadChunkId: "uc1",
+        // A null quote (no stored preview) collapses to undefined on the DTO.
+        quote: null,
+      },
+    ]);
+    const { service } = makeService(tx);
+
+    const result = await service.get(USER, "conv-1");
+
+    expect(result.messages[0].citations).toEqual([
+      { ordinal: 1, chunkId: "", documentVersionId: "", quote: undefined, kind: "upload" },
+    ]);
+  });
+
+  it("returns empty citations and skips the citation read when there are no assistant messages", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue(CONV_ROW);
+    tx.message.findMany.mockResolvedValue([
+      { id: "m1", role: "user", content: "q1", createdAt: new Date("2026-06-01T10:00:00.000Z") },
+    ]);
+    const { service } = makeService(tx);
+
+    const result = await service.get(USER, "conv-1");
+
+    expect(result.messages).toEqual([
+      { id: "m1", role: "user", content: "q1", createdAt: "2026-06-01T10:00:00.000Z", citations: [] },
+    ]);
+    // No assistant messages → the citation lookup is skipped entirely.
+    expect(tx.citation.findMany).not.toHaveBeenCalled();
   });
 
   it("throws NotFound when the conversation is not the acting user's", async () => {

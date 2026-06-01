@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button, Card, Cite, Field, Select, Textarea } from "@expertos/ui";
 import type { ChatCitationDto } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
@@ -27,6 +28,115 @@ function updateLast(messages: UiMessage[], fn: (m: UiMessage) => UiMessage): UiM
   const copy = messages.slice();
   copy[copy.length - 1] = fn(copy[copy.length - 1]);
   return copy;
+}
+
+/** Single `[n]` citation marker in answer prose. */
+const MARKER = /\[(\d+)\]/g;
+
+/**
+ * Renders an assistant answer with its `[n]` markers turned into clickable `.cite` chips — but
+ * only once the stream has completed and the marker resolves to a real citation (M4.2
+ * render-after-resolve: a marker is never a live `.cite` mid-stream or when it points nowhere).
+ * Clicking a marker invokes `onCite` for click-to-passage. An unresolvable bracketed number is
+ * left as plain text so a hallucinated `[9]` can never masquerade as a verified source.
+ */
+function renderAnswer(
+  content: string,
+  byOrdinal: Map<number, ChatCitationDto>,
+  onCite: (ordinal: number) => void,
+): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let key = 0;
+  for (const match of content.matchAll(MARKER)) {
+    const start = match.index ?? 0;
+    const ordinal = Number(match[1]);
+    const citation = byOrdinal.get(ordinal);
+    if (start > cursor) nodes.push(content.slice(cursor, start));
+    if (citation) {
+      nodes.push(
+        <Cite
+          key={`cite-${key++}`}
+          label={ordinal}
+          resolved
+          variant={citation.kind}
+          role="button"
+          tabIndex={0}
+          aria-label={`Source ${ordinal}`}
+          onClick={() => onCite(ordinal)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onCite(ordinal);
+            }
+          }}
+        />,
+      );
+    } else {
+      nodes.push(match[0]);
+    }
+    cursor = start + match[0].length;
+  }
+  if (cursor < content.length) nodes.push(content.slice(cursor));
+  return nodes;
+}
+
+/**
+ * One assistant turn: the answer prose with inline citation markers plus a sources drawer
+ * (M4.2). The drawer lists each resolved source with its quote and `document_version_id`
+ * provenance; clicking an inline marker (or the answer's `.cite`) highlights and scrolls to the
+ * matching source row (click-to-passage). Markers are only interactive after the stream finishes.
+ */
+function AssistantAnswer({ message }: { message: UiMessage }) {
+  const [activeOrdinal, setActiveOrdinal] = useState<number | null>(null);
+  const rowRefs = useRef(new Map<number, HTMLDivElement>());
+
+  const byOrdinal = useMemo(() => {
+    const map = new Map<number, ChatCitationDto>();
+    for (const citation of message.citations) map.set(citation.ordinal, citation);
+    return map;
+  }, [message.citations]);
+
+  const focusSource = useCallback((ordinal: number) => {
+    setActiveOrdinal(ordinal);
+    rowRefs.current.get(ordinal)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, []);
+
+  const resolved = message.done && message.citations.length > 0;
+
+  return (
+    <>
+      <p>
+        {message.content
+          ? resolved
+            ? renderAnswer(message.content, byOrdinal, focusSource)
+            : message.content
+          : message.done
+            ? ""
+            : "…"}
+      </p>
+      {resolved && (
+        <div className="sources">
+          <span className="label">Sources</span>
+          {message.citations.map((citation) => (
+            <div
+              key={citation.ordinal}
+              ref={(el) => {
+                if (el) rowRefs.current.set(citation.ordinal, el);
+              }}
+              className={citation.ordinal === activeOrdinal ? "source active" : "source"}
+            >
+              <Cite label={citation.ordinal} resolved variant={citation.kind} />
+              <div className="source-body">
+                {citation.quote && <span className="source-quote">{citation.quote}</span>}
+                <span className="source-prov">source: {citation.documentVersionId}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 
 export default function ChatPage() {
@@ -149,17 +259,10 @@ export default function ChatPage() {
             {m.role === "assistant" && m.expertName && (
               <Badge tone="amber">{renditionLabel(m.expertName)}</Badge>
             )}
-            <p>{m.content || (m.done ? "" : "…")}</p>
-            {m.done && m.citations.length > 0 && (
-              <div>
-                <strong>Sources</strong>
-                {m.citations.map((c) => (
-                  <div key={c.ordinal}>
-                    <Cite label={c.ordinal} resolved variant="knowledge" />
-                    <span>{c.quote}</span>
-                  </div>
-                ))}
-              </div>
+            {m.role === "assistant" ? (
+              <AssistantAnswer message={m} />
+            ) : (
+              <p>{m.content}</p>
             )}
           </Card>
         ))}

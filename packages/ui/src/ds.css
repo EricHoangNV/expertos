@@ -177,6 +177,24 @@ button { font-family: inherit; cursor: pointer; }
 .cite:hover { background: var(--red-600); color: #fff; border-color: var(--red-600); }
 .cite.upload { background: var(--info-50); color: var(--info-600); border-color: #CFE0F1; }
 .cite.upload:hover { background: var(--info-600); color: #fff; }
+/* Clickable marker (click-to-passage, M4.2): keep the crimson/info chip, add a keyboard focus ring. */
+.cite[role="button"] { cursor: pointer; }
+.cite[role="button"]:focus-visible { outline: none; box-shadow: var(--sh-focus); }
+
+/* ---- Sources drawer (citation provenance — M4.2) ---- */
+.sources { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s4); }
+.source {
+  display: flex; gap: var(--s3); align-items: flex-start;
+  padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface); scroll-margin-top: var(--s4);
+  transition: border-color .14s, background .14s, box-shadow .14s;
+}
+.source.active { border-color: var(--red-300); background: var(--red-50); box-shadow: var(--sh-focus); }
+.source .source-body { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+.source .source-quote { font-size: 13px; color: var(--ink-700); }
+.source .source-prov {
+  font-family: var(--font-mono); font-size: 11px; color: var(--ink-400); word-break: break-all;
+}
 
 /* ============================================================
    Forms

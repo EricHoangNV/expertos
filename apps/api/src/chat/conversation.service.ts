@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { estimateTokens } from "@expertos/ai";
 import type { ChatMessage } from "@expertos/ai";
 import type {
+  ChatCitationDto,
   ConversationDetailDto,
   ConversationListQueryInput,
   ConversationSearchQueryInput,
@@ -90,6 +91,12 @@ interface ConversationSearchRow {
 
 /** A resolved source for a finished answer — the prompt builder's citation list, in marker order. */
 interface TurnCitation {
+  /**
+   * The true marker the model wrote (M4.1's `ResolvedCitation.ordinal`), NOT a loop index. The M4.1
+   * builder may return a sparse list (e.g. a lone `[2]`), so persisting the marker is what lets the
+   * M4.2 read path re-hydrate citations whose ordinal still matches the answer prose.
+   */
+  ordinal: number;
   chunkId: string;
   documentVersionId: string;
   content: string;
@@ -207,13 +214,14 @@ export class ConversationService {
         select: { id: true },
       });
 
-      for (let i = 0; i < turn.assistant.citations.length; i++) {
-        const citation = turn.assistant.citations[i];
+      for (const citation of turn.assistant.citations) {
         await tx.citation.create({
           data: {
             tenantId: user.tenantId,
             messageId: assistant.id,
-            ordinal: i + 1,
+            // Persist the true marker ordinal, not the loop index — a sparse citation list (M4.1)
+            // must keep `ordinal` aligned with the `[n]` markers in the persisted answer text.
+            ordinal: citation.ordinal,
             chunkId: citation.chunkId,
             documentVersionId: citation.documentVersionId,
             quote: citation.content.slice(0, QUOTE_PREVIEW_CHARS),
@@ -263,6 +271,10 @@ export class ConversationService {
         orderBy: { createdAt: "asc" },
         select: { id: true, role: true, content: true, createdAt: true },
       });
+      const citationsByMessage = await this.loadCitations(
+        tx,
+        messages.filter((m) => m.role === "assistant").map((m) => m.id),
+      );
       return {
         ...toConversationSummary(row),
         messages: messages.map((m) => ({
@@ -270,6 +282,7 @@ export class ConversationService {
           role: m.role as "user" | "assistant",
           content: m.content,
           createdAt: m.createdAt.toISOString(),
+          citations: citationsByMessage.get(m.id) ?? [],
         })),
       };
     });
@@ -313,6 +326,49 @@ export class ConversationService {
       tx.$queryRawUnsafe<ConversationSearchRow[]>(SEARCH_SQL, query.q, query.limit, query.offset),
     );
     return (rows as ConversationSearchRow[]).map(toConversationSearchResult);
+  }
+
+  /**
+   * Re-hydrates the persisted citations for a set of assistant messages (M4.2 read path), grouped
+   * by message id and ascending by marker ordinal. The stored `ordinal` is the true `[n]` marker
+   * (M4.1 — possibly sparse), carried verbatim so a history view renders the same sources drawer
+   * the live turn showed. `kind` is derived from which chunk the row resolved to: an `uploadChunkId`
+   * marks a user-uploaded source (info-blue, M5), otherwise it is published knowledge (crimson).
+   */
+  private async loadCitations(
+    tx: Prisma.TransactionClient,
+    assistantMessageIds: string[],
+  ): Promise<Map<string, ChatCitationDto[]>> {
+    const byMessage = new Map<string, ChatCitationDto[]>();
+    if (assistantMessageIds.length === 0) {
+      return byMessage;
+    }
+    const rows = await tx.citation.findMany({
+      where: { messageId: { in: assistantMessageIds } },
+      orderBy: { ordinal: "asc" },
+      select: {
+        messageId: true,
+        ordinal: true,
+        chunkId: true,
+        documentVersionId: true,
+        uploadChunkId: true,
+        quote: true,
+      },
+    });
+    for (const r of rows) {
+      const list = byMessage.get(r.messageId) ?? [];
+      list.push({
+        ordinal: r.ordinal,
+        // Knowledge citations always carry both ids; the `?? ""` guards the nullable columns the
+        // schema shares with M5 upload citations (which provenance via `uploadChunkId` instead).
+        chunkId: r.chunkId ?? "",
+        documentVersionId: r.documentVersionId ?? "",
+        quote: r.quote ?? undefined,
+        kind: r.uploadChunkId ? "upload" : "knowledge",
+      });
+      byMessage.set(r.messageId, list);
+    }
+    return byMessage;
   }
 
   private async requireConversation(

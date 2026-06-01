@@ -38,7 +38,7 @@
 
 #### M4 — Citations
 - [x] M4.1 Citation builder with chunk-resolvability guarantee (never emit an unresolvable citation)
-- [ ] M4.2 Sources drawer + click-to-passage + `document_version_id` provenance (crimson `.cite` markers, render-after-resolve — §"Design System")
+- [x] M4.2 Sources drawer + click-to-passage + `document_version_id` provenance (crimson `.cite` markers, render-after-resolve — §"Design System")
 - [ ] M4.3 Resolve Open Decision #7 (streaming vs citation-resolvability UX)
 
 #### M5 — Document uploads

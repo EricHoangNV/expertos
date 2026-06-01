@@ -33,6 +33,13 @@ export interface ChatMessageDto {
   content: string;
   /** ISO-8601 timestamp. */
   createdAt: string;
+  /**
+   * Resolved citations for an assistant answer (M4.2), in marker order — empty for user messages
+   * and for answers that cited nothing. Re-hydrated from the persisted citation rows so a history
+   * view can render the same sources drawer the live turn showed; each carries its true marker
+   * `ordinal` (the read path preserves it, so a non-contiguous list like a lone `[2]` is faithful).
+   */
+  citations: ChatCitationDto[];
 }
 
 /**
@@ -41,12 +48,18 @@ export interface ChatMessageDto {
  * the client can render a numbered source list once generation completes (Open Decision #7).
  */
 export interface ChatCitationDto {
-  /** 1-indexed marker number. */
+  /** 1-indexed marker number (the marker the model wrote — NOT renumbered, so it can be sparse). */
   ordinal: number;
   chunkId: string;
   documentVersionId: string;
   /** Source snippet for the sources drawer. */
   quote?: string;
+  /**
+   * Source class for the `.cite` colour treatment (M4.2 §"Design System"): published expert
+   * knowledge renders crimson (`knowledge`), user uploads render info-blue (`upload`, M5). Derived
+   * from which chunk the citation resolved to, so the drawer can colour-distinguish them.
+   */
+  kind: "knowledge" | "upload";
 }
 
 /**

@@ -127,6 +127,7 @@ export class ChatService {
           model: this.llm.name,
           confidence: null,
           citations: built.citations.map((c) => ({
+            ordinal: c.ordinal,
             chunkId: c.chunkId,
             documentVersionId: c.documentVersionId,
             content: c.content,
@@ -193,5 +194,6 @@ function toCitationDto(citation: ResolvedCitation): ChatCitationDto {
     chunkId: citation.chunkId,
     documentVersionId: citation.documentVersionId,
     quote: citation.content.slice(0, CITATION_PREVIEW_CHARS),
+    kind: citation.kind,
   };
 }
