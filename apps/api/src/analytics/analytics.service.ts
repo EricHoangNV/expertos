@@ -17,6 +17,8 @@ import type {
   UsageByFeatureDto,
   UsageByModelDto,
   UsagePeriodDto,
+  ValidationAnalyticsDto,
+  ValidationAnalyticsQueryInput,
 } from "@expertos/shared";
 import type { Prisma } from "@expertos/db";
 import { RlsService } from "../auth/rls.service";
@@ -92,6 +94,34 @@ interface PeriodRow {
 /** Raw window-wide distinct-active-users row. */
 interface ActiveUsersRow {
   active_users: bigint | number;
+}
+
+/** Raw new-user-cohort row (M10.4): cohort size + activated/returned FILTERed counts. */
+interface CohortRow {
+  new_users: bigint | number;
+  activated: bigint | number;
+  returned: bigint | number;
+}
+
+/** Raw engagement row (M10.4): active users, total questions, median questions per active user. */
+interface EngagementRow {
+  active_users: bigint | number;
+  total_questions: bigint | number;
+  /** `percentile_cont` → double precision (numeric string over the wire). */
+  median_questions: string | number | null;
+}
+
+/** Raw willingness-to-pay row (M10.4): distinct paying / trialing users on a non-free plan. */
+interface WtpRow {
+  paying: bigint | number;
+  trialing: bigint | number;
+}
+
+/** Raw funnel-revenue row (M10.4): booked count, summed revenue, distinct buyers. */
+interface FunnelRevenueRow {
+  bookings: bigint | number;
+  revenue: bigint | number;
+  booking_users: bigint | number;
 }
 
 /** Raw concierge SLA-adherence aggregate row (FILTERed counts + an average response time). */
@@ -310,6 +340,97 @@ export class AnalyticsService {
     });
   }
 
+  /**
+   * Build the platform product-validation scorecard for the trailing `query.days` window (M10.4, PRD
+   * §"Open Decisions" #1). The OD#1 go/no-go instrument — per the resolution it **surfaces raw
+   * numbers, not thresholds** (targets are set post-launch with real data). Same admin cross-tenant
+   * read pattern as {@link usage}/{@link funnel}/{@link concierge} (the `is_admin` GUC inside
+   * {@link RlsService.run} grants the platform-wide read, so no `tenant_id` predicate appears).
+   *
+   *  - **activation + early retention** — one cohort raw aggregate over the users who signed up in the
+   *    window: how many reached ≥1 cited answer within 24h of signup (`activated`) and how many came
+   *    back to ask again 1–7 days later (`returned`). The cohort EXISTS-joins
+   *    conversations→messages→citations; `count() FILTER (WHERE …)` has no Prisma Client expression.
+   *  - **engagement** — a raw per-user CTE: distinct active users, total questions, and the median
+   *    questions per active user (`percentile_cont` has no Prisma Client expression).
+   *  - **willingness to pay** — `totalUsers` (Prisma) + a raw distinct-count of paying/trialing users
+   *    on a non-free plan. Cumulative (current-state stock), so unbounded by the window.
+   *  - **funnel** — recommendations (Prisma count) + a raw booked-revenue aggregate (count, summed
+   *    cents, distinct buyers) over funnel-attributed consultations.
+   *
+   * Every rate is computed here as a fraction in `[0, 1]` ({@link ratio}); revenue stays in cents.
+   */
+  async validation(
+    user: AuthUser,
+    query: ValidationAnalyticsQueryInput,
+  ): Promise<ValidationAnalyticsDto> {
+    const since = windowStart(query.days, new Date());
+
+    return this.rls.run(user, async (tx) => {
+      // Activation + early retention over the new-user cohort (one raw aggregate).
+      const cohortRows = await tx.$queryRawUnsafe<CohortRow[]>(COHORT_SQL, since);
+      const cohort = cohortRows[0];
+      const newUsers = Number(cohort?.new_users ?? 0);
+      const activatedUsers = Number(cohort?.activated ?? 0);
+      const returnedUsers = Number(cohort?.returned ?? 0);
+
+      // Engagement (active users, questions, median per active user).
+      const engRows = await tx.$queryRawUnsafe<EngagementRow[]>(ENGAGEMENT_SQL, since);
+      const eng = engRows[0];
+      const activeUsers = Number(eng?.active_users ?? 0);
+      const totalQuestions = Number(eng?.total_questions ?? 0);
+      const medianQuestions = eng?.median_questions == null ? 0 : Number(eng.median_questions);
+
+      // Willingness to pay (cumulative): all users vs paying/trialing on a non-free plan.
+      const totalUsers = await tx.user.count({ where: { role: "user" } });
+      const wtpRows = await tx.$queryRawUnsafe<WtpRow[]>(WTP_SQL);
+      const wtp = wtpRows[0];
+      const payingUsers = Number(wtp?.paying ?? 0);
+      const trialingUsers = Number(wtp?.trialing ?? 0);
+
+      // Funnel: recommendations + funnel-attributed booked revenue.
+      const recommendations = await tx.consultationRecommendation.count({
+        where: { createdAt: { gte: since } },
+      });
+      const revRows = await tx.$queryRawUnsafe<FunnelRevenueRow[]>(FUNNEL_REVENUE_SQL, since);
+      const rev = revRows[0];
+      const bookings = Number(rev?.bookings ?? 0);
+      const bookedRevenueCents = Number(rev?.revenue ?? 0);
+      const bookingUsers = Number(rev?.booking_users ?? 0);
+
+      return {
+        windowDays: query.days,
+        since: since.toISOString(),
+        activation: {
+          newUsers,
+          activatedUsers,
+          activationRate: ratio(activatedUsers, newUsers),
+        },
+        engagement: {
+          activeUsers,
+          totalQuestions,
+          medianQuestionsPerActiveUser: medianQuestions,
+          returnedUsers,
+          returnRate: ratio(returnedUsers, newUsers),
+        },
+        willingnessToPay: {
+          totalUsers,
+          payingUsers,
+          trialingUsers,
+          freeToPaidRate: ratio(payingUsers, totalUsers),
+        },
+        funnel: {
+          recommendations,
+          bookings,
+          recommendationToBookingRate: ratio(bookings, recommendations),
+          bookedRevenueCents,
+          bookingUsers,
+          revenuePerBookingUserCents: bookingUsers > 0 ? Math.round(bookedRevenueCents / bookingUsers) : 0,
+        },
+      };
+    });
+  }
+
   /** Per-feature rollup, highest spend first. */
   private async byFeature(
     tx: Prisma.TransactionClient,
@@ -436,6 +557,17 @@ function byCostDesc(a: { costMicros: number }, b: { costMicros: number }): numbe
   return b.costMicros - a.costMicros;
 }
 
+/**
+ * A conversion rate as a fraction in `[0, 1]`, rounded to 4 decimal places (the dashboard renders the
+ * %). Returns 0 when the denominator is non-positive (so an empty platform reads 0, never NaN).
+ */
+function ratio(part: number, whole: number): number {
+  if (whole <= 0) {
+    return 0;
+  }
+  return Math.round((part / whole) * 10000) / 10000;
+}
+
 /** A single-line, collapsed-whitespace snippet of chunk text, capped with an ellipsis. */
 function excerpt(text: string): string {
   const flat = text.replace(/\s+/g, " ").trim();
@@ -494,3 +626,93 @@ const SLA_SQL = `
     avg(extract(epoch FROM (answered_at - created_at))) FILTER (WHERE answered_at IS NOT NULL) AS avg_response_seconds
   FROM human_review_requests
   WHERE created_at >= $1`;
+
+/**
+ * New-user-cohort activation + early retention (M10.4). `$1` = window start (inclusive). The cohort is
+ * users (role `user`) who signed up in the window; per cohort member two EXISTS probes:
+ *  - **activated** — received ≥1 cited answer (a citation on a message in one of their conversations)
+ *    within 24h of signing up.
+ *  - **returned** — asked another question (a `user`-role message) 1–7 days after signing up.
+ * `count() FILTER (WHERE …)` has no Prisma Client expression, so this is raw (constant SQL, `$1`
+ * bound). RLS scopes every table (admin GUC → all tenants); no `tenant_id` predicate appears. `count`s
+ * are `bigint` → coerced in the mapper.
+ */
+const COHORT_SQL = `
+  SELECT
+    count(*) AS new_users,
+    count(*) FILTER (WHERE activated) AS activated,
+    count(*) FILTER (WHERE returned) AS returned
+  FROM (
+    SELECT
+      u.id,
+      EXISTS (
+        SELECT 1 FROM conversations c
+        JOIN messages m ON m.conversation_id = c.id
+        JOIN citations ci ON ci.message_id = m.id
+        WHERE c.user_id = u.id
+          AND m.created_at <= u.created_at + interval '24 hours'
+      ) AS activated,
+      EXISTS (
+        SELECT 1 FROM conversations c
+        JOIN messages m ON m.conversation_id = c.id
+        WHERE c.user_id = u.id
+          AND m.role = 'user'
+          AND m.created_at >= u.created_at + interval '24 hours'
+          AND m.created_at <= u.created_at + interval '7 days'
+      ) AS returned
+    FROM users u
+    WHERE u.role = 'user' AND u.created_at >= $1
+  ) t`;
+
+/**
+ * Engagement over the window (M10.4). `$1` = window start (inclusive). A per-user CTE counts each
+ * user's questions (their `user`-role messages); the outer aggregate yields distinct active users,
+ * total questions, and the median questions per active user (`percentile_cont` has no Prisma Client
+ * expression). RLS scopes the tables (admin GUC → all tenants). `count`/`sum` are `bigint`; the median
+ * is double precision (or null when nobody was active) — coerced in the mapper.
+ */
+const ENGAGEMENT_SQL = `
+  WITH per_user AS (
+    SELECT c.user_id AS uid, count(*) AS q
+    FROM messages m
+    JOIN conversations c ON c.id = m.conversation_id
+    WHERE m.role = 'user' AND m.created_at >= $1
+    GROUP BY c.user_id
+  )
+  SELECT
+    count(*) AS active_users,
+    coalesce(sum(q), 0) AS total_questions,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY q) AS median_questions
+  FROM per_user`;
+
+/**
+ * Willingness to pay (M10.4) — cumulative, NOT windowed (a current-state stock). Distinct users with
+ * an `active` vs `trialing` subscription on a non-free plan. RLS scopes `subscriptions` (admin GUC →
+ * all tenants); `plans` is global reference data. `count`s are `bigint` → coerced in the mapper.
+ */
+const WTP_SQL = `
+  SELECT
+    count(DISTINCT s.user_id) FILTER (WHERE s.status = 'active') AS paying,
+    count(DISTINCT s.user_id) FILTER (WHERE s.status = 'trialing') AS trialing
+  FROM subscriptions s
+  JOIN plans p ON p.id = s.plan_id
+  WHERE p.key <> 'free'`;
+
+/**
+ * Funnel-attributed booked consultation revenue over the window (M10.4). `$1` = window start
+ * (inclusive). Booked/confirmed/completed consultations that arose from an in-chat recommendation:
+ * count, summed revenue, and distinct buyers (the revenue-per-user denominator). `count(DISTINCT …)`
+ * + the EXISTS attribution have no clean Prisma Client expression, so this is raw (constant SQL, `$1`
+ * bound). RLS scopes the tables (admin GUC → all tenants). `count`/`sum` are `bigint` → coerced.
+ */
+const FUNNEL_REVENUE_SQL = `
+  SELECT
+    count(*) AS bookings,
+    coalesce(sum(amount_cents), 0) AS revenue,
+    count(DISTINCT user_id) AS booking_users
+  FROM consultations
+  WHERE created_at >= $1
+    AND status IN ('booked', 'confirmed', 'completed')
+    AND EXISTS (
+      SELECT 1 FROM consultation_recommendations r WHERE r.consultation_id = consultations.id
+    )`;

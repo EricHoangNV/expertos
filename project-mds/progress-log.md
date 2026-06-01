@@ -2246,3 +2246,38 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - Verdict tone helper kept local to the page (the concierge-reviews page has its own); no shared dependency introduced.
 
 **Gates:** typecheck ✅, test ✅ (100% gate), lint ✅ (incl. stylelint), deadcode/knip ✅, build ✅ (7 workspaces).
+
+## M10.4 — Instrument all validation metrics (validation scorecard)
+**Date:** 2026-06-01
+**Ref:** PRD Task Manifest M10.4 / §"Open Decisions" #1 (Validation success criteria & kill line — RESOLVED: log all metrics now, no thresholds)
+
+**What was done:**
+- New admin analytics report `GET /admin/analytics/validation` — the OD#1 go/no-go scorecard. The fourth admin analytics read alongside usage (M10.1), funnel (M10.2), and concierge (M10.3), same admin cross-tenant RLS pattern.
+- `AnalyticsService.validation` folds the four validation dimensions the PRD names into one read:
+  - **Activation** — new-user cohort (role=user signed up in window) reaching ≥1 cited answer within 24h of signup (`activatedUsers`/`activationRate`).
+  - **Engagement** — distinct active users, total questions, median questions/active user, and new-cohort return rate (asked again 1–7 days after signup).
+  - **Willingness to pay** — cumulative: paying/trialing users on a non-free plan vs all users (`freeToPaidRate`).
+  - **Funnel** — recommendation→booking conversion + booked consultation revenue per buyer.
+- Shared DTOs (`ValidationAnalyticsDto` + sub-DTOs + `validationAnalyticsQuerySchema`), admin client `getValidationAnalytics`, admin page `apps/admin/app/validation/page.tsx` (Stat-card scorecard), nav link "Validation" in the Admin group.
+- Tests: +4 api (`validation` describe: full scorecard, empty platform, null-median/4-dp rounding, window-binding) +4 shared (query schema). 997 total.
+
+**Key decisions:**
+- Per the OD#1 resolution, the report surfaces **raw numbers + the headline rates** (activation/return/free-to-paid/conversion as fractions in [0,1]) — no thresholds; the PM sets targets post-launch. Median is server-computed (`percentile_cont`) since it can't be derived client-side from counts; for consistency the other rates are computed server-side too via a `ratio()` helper (0 when the denominator is empty, never NaN).
+- "Session 1" activation approximated as "within 24h of signup" (the schema has no session concept) — deterministic and documented on the DTO + SQL.
+- Willingness-to-pay kept **cumulative** (a current-state stock), unlike the windowed activation/engagement/funnel — mirrors the concierge knowledge-quality cumulative pattern. WTP raw SQL takes no window arg.
+- Funnel block computed here (not reusing M10.2) to produce the validation-specific ratios; named `bookingUsers`/`revenuePerBookingUserCents` to avoid confusion with WTP's subscriber `payingUsers`.
+- All raw SQL parameterized (`$1` bound dates; WTP fully constant), constant SQL strings — consistent with the M11.2 security-review criteria. Cohort/engagement/funnel reads use raw SQL only where Prisma has no expression (`count() FILTER`, `percentile_cont`, `count(DISTINCT …)`); recommendations + total-users counts stay Prisma.
+- Did NOT touch the operator's uncommitted infra/model-pricing WIP (deployment prep) — left out of this commit.
+
+**Files changed:**
+- `packages/shared/src/analytics.ts` — validation DTOs + query schema.
+- `packages/shared/src/index.ts` — exports.
+- `packages/shared/src/analytics.test.ts` — query schema tests.
+- `apps/api/src/analytics/analytics.service.ts` — `validation()` method + 4 raw row interfaces + `ratio()` helper + 4 SQL constants.
+- `apps/api/src/analytics/analytics.controller.ts` — `GET /admin/analytics/validation`.
+- `apps/api/src/analytics/analytics.service.test.ts` — validation tests + `user.count`/`recommendation.count` mocks.
+- `apps/admin/src/lib/admin-client.ts` — `getValidationAnalytics`.
+- `apps/admin/app/validation/page.tsx` — new scorecard page.
+- `apps/admin/src/components/AdminFrame.tsx` — "Validation" nav link.
+
+**Gates:** typecheck ✅, test ✅ (100% gate; new code fully covered), lint ✅ (incl. stylelint), deadcode/knip ✅, build ✅ (7 workspaces, /validation page renders).

@@ -2,6 +2,7 @@
 
 ## Current State
 - Completed:
+  - M10.4: Validation scorecard (activation/engagement/willingness-to-pay/funnel) — admin analytics
   - M10.3: Concierge volume/SLA/verdict metrics + knowledge-quality signals (admin analytics)
   - M9.3: Concierge async delivery (visible update vs silent) + transactional email
   - M9.4: Reviewer-feedback flywheel + escalate-to-consultation
@@ -52,12 +53,11 @@
   - M1.3: Vietnamese retrieval quality + NFC normalization
   - M1.2: Hybrid retrieval (vector + keyword RRF fusion)
   - M1.1: Versioned ingestion pipeline
-- Tests: 989 pass / 0 fail / 0 skip (shared 175, ui 29, db 9, ai 149, api 627)
+- Tests: 997 pass / 0 fail / 0 skip (shared 179, ui 29, db 9, ai 149, api 631)
 - Build: passing — `pnpm build` (turbo) builds all 7 workspaces.
 - Gates: typecheck ✅, test ✅ (coverage gate met, 100%), lint ✅ (incl. stylelint), build ✅, deadcode (knip) ✅
 - Next tasks (priority order):
   1. **M11.1** — Playwright E2E (needs live stack)
   2. **M11.3** — Load smoke (needs live stack)
-  3. **M10.4** — Kill-line instrument (awaits OD#1)
-  4. **M11.4 / NT** — Product/legal sign-offs
-  5. Remaining Phase-0 Open Decisions (#1, #3, product halves of #2/#6)
+  3. **M11.4 / NT** — Product/legal sign-offs (NT.3 data-retention, NT.4 disclaimers)
+  4. Remaining Phase-0 Open Decisions (#3, product halves of #2/#6)

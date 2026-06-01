@@ -19,6 +19,7 @@ import type {
   UsageAnalyticsDto,
   FunnelAnalyticsDto,
   ConciergeAnalyticsDto,
+  ValidationAnalyticsDto,
   FailedQueryDto,
   AdminAuditLogDto,
   AdminFairUseFlagDto,
@@ -208,6 +209,17 @@ export function getConciergeAnalytics(
 ): Promise<ConciergeAnalyticsDto> {
   const query = days != null ? `?days=${days}` : "";
   return request<ConciergeAnalyticsDto>(`/admin/analytics/concierge${query}`, token);
+}
+
+// M10.4 — Admin product-validation scorecard
+
+/** Platform-wide validation scorecard (activation + engagement + willingness-to-pay + funnel). */
+export function getValidationAnalytics(
+  token: string,
+  days?: number,
+): Promise<ValidationAnalyticsDto> {
+  const query = days != null ? `?days=${days}` : "";
+  return request<ValidationAnalyticsDto>(`/admin/analytics/validation${query}`, token);
 }
 
 // M8.3 — Admin plan-entitlement matrix editor

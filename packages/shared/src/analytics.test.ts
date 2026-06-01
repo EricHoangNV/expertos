@@ -1,4 +1,8 @@
-import { funnelAnalyticsQuerySchema, usageAnalyticsQuerySchema } from "./analytics";
+import {
+  funnelAnalyticsQuerySchema,
+  usageAnalyticsQuerySchema,
+  validationAnalyticsQuerySchema,
+} from "./analytics";
 
 describe("usageAnalyticsQuerySchema", () => {
   it("defaults to a trailing 30-day window", () => {
@@ -35,5 +39,24 @@ describe("funnelAnalyticsQuerySchema", () => {
 
   it("rejects a non-integer window", () => {
     expect(funnelAnalyticsQuerySchema.safeParse({ days: 2.5 }).success).toBe(false);
+  });
+});
+
+describe("validationAnalyticsQuerySchema", () => {
+  it("defaults to a trailing 30-day window", () => {
+    expect(validationAnalyticsQuerySchema.parse({})).toEqual({ days: 30 });
+  });
+
+  it("coerces a query-string days value", () => {
+    expect(validationAnalyticsQuerySchema.parse({ days: "90" })).toEqual({ days: 90 });
+  });
+
+  it("rejects a non-positive or over-cap window", () => {
+    expect(validationAnalyticsQuerySchema.safeParse({ days: 0 }).success).toBe(false);
+    expect(validationAnalyticsQuerySchema.safeParse({ days: 366 }).success).toBe(false);
+  });
+
+  it("rejects a non-integer window", () => {
+    expect(validationAnalyticsQuerySchema.safeParse({ days: 3.5 }).success).toBe(false);
   });
 });

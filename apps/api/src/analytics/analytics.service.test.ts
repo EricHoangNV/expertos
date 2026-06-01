@@ -15,8 +15,12 @@ const ADMIN: AuthUser = {
 function makeTx() {
   return {
     usageLog: { groupBy: jest.fn().mockResolvedValue([]) },
+    user: { count: jest.fn().mockResolvedValue(0) },
     conversation: { count: jest.fn().mockResolvedValue(0) },
-    consultationRecommendation: { groupBy: jest.fn().mockResolvedValue([]) },
+    consultationRecommendation: {
+      groupBy: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+    },
     consultation: { groupBy: jest.fn().mockResolvedValue([]) },
     humanReviewRequest: { groupBy: jest.fn().mockResolvedValue([]) },
     reviewResponse: {
@@ -467,5 +471,136 @@ describe("AnalyticsService.concierge", () => {
       (c: unknown[]) => (c[0] as { where: { lastFlaggedAt?: unknown } }).where.lastFlaggedAt != null,
     );
     expect(recentCall?.[0].where).toEqual({ lastFlaggedAt: { gte: since } });
+  });
+});
+
+describe("AnalyticsService.validation", () => {
+  it("folds activation, engagement, willingness-to-pay, and funnel into one scorecard", async () => {
+    const tx = makeTx();
+    // Raw reads, in order: cohort, engagement, wtp, funnel-revenue.
+    tx.$queryRawUnsafe
+      .mockResolvedValueOnce([{ new_users: 20n, activated: 12n, returned: 8n }])
+      .mockResolvedValueOnce([
+        { active_users: 16n, total_questions: 64n, median_questions: "3.5" },
+      ])
+      .mockResolvedValueOnce([{ paying: 5n, trialing: 2n }])
+      .mockResolvedValueOnce([{ bookings: 4n, revenue: 60000n, booking_users: 3n }]);
+    tx.user.count.mockResolvedValue(50); // total users (cumulative)
+    tx.consultationRecommendation.count.mockResolvedValue(10);
+    const { service, run } = makeService(tx);
+
+    const report = await service.validation(ADMIN, { days: 30 });
+
+    expect(run).toHaveBeenCalledWith(ADMIN, expect.any(Function));
+    expect(report.windowDays).toBe(30);
+    // Activation: 12/20 = 0.6.
+    expect(report.activation).toEqual({
+      newUsers: 20,
+      activatedUsers: 12,
+      activationRate: 0.6,
+    });
+    // Engagement: bigints coerced, median from numeric string, 8/20 = 0.4 return.
+    expect(report.engagement).toEqual({
+      activeUsers: 16,
+      totalQuestions: 64,
+      medianQuestionsPerActiveUser: 3.5,
+      returnedUsers: 8,
+      returnRate: 0.4,
+    });
+    // Willingness to pay (cumulative): 5/50 = 0.1.
+    expect(report.willingnessToPay).toEqual({
+      totalUsers: 50,
+      payingUsers: 5,
+      trialingUsers: 2,
+      freeToPaidRate: 0.1,
+    });
+    // Funnel: 4/10 = 0.4 conversion; 60000 / 3 buyers = 20000 cents each.
+    expect(report.funnel).toEqual({
+      recommendations: 10,
+      bookings: 4,
+      recommendationToBookingRate: 0.4,
+      bookedRevenueCents: 60000,
+      bookingUsers: 3,
+      revenuePerBookingUserCents: 20000,
+    });
+  });
+
+  it("returns zeros (no NaN) for an empty platform", async () => {
+    const tx = makeTx();
+    // All raw reads come back empty; user.count + recommendation.count default to 0.
+    const { service } = makeService(tx);
+
+    const report = await service.validation(ADMIN, { days: 7 });
+
+    expect(report.windowDays).toBe(7);
+    expect(report.activation).toEqual({ newUsers: 0, activatedUsers: 0, activationRate: 0 });
+    expect(report.engagement).toEqual({
+      activeUsers: 0,
+      totalQuestions: 0,
+      medianQuestionsPerActiveUser: 0,
+      returnedUsers: 0,
+      returnRate: 0,
+    });
+    expect(report.willingnessToPay).toEqual({
+      totalUsers: 0,
+      payingUsers: 0,
+      trialingUsers: 0,
+      freeToPaidRate: 0,
+    });
+    expect(report.funnel).toEqual({
+      recommendations: 0,
+      bookings: 0,
+      recommendationToBookingRate: 0,
+      bookedRevenueCents: 0,
+      bookingUsers: 0,
+      revenuePerBookingUserCents: 0,
+    });
+  });
+
+  it("coerces a null median (active CTE empty) to 0 and rounds rates to 4 decimals", async () => {
+    const tx = makeTx();
+    tx.$queryRawUnsafe
+      .mockResolvedValueOnce([{ new_users: 3n, activated: 1n, returned: 0n }])
+      // active_users 0 → percentile_cont returns null.
+      .mockResolvedValueOnce([{ active_users: 0n, total_questions: 0n, median_questions: null }])
+      .mockResolvedValueOnce([{ paying: 1n, trialing: 0n }])
+      .mockResolvedValueOnce([{ bookings: 0n, revenue: 0n, booking_users: 0n }]);
+    tx.user.count.mockResolvedValue(7);
+    tx.consultationRecommendation.count.mockResolvedValue(0);
+    const { service } = makeService(tx);
+
+    const report = await service.validation(ADMIN, { days: 30 });
+
+    expect(report.engagement.medianQuestionsPerActiveUser).toBe(0);
+    // 1/3 → 0.3333 (rounded to 4 dp).
+    expect(report.activation.activationRate).toBe(0.3333);
+    // 1/7 → 0.1429.
+    expect(report.willingnessToPay.freeToPaidRate).toBe(0.1429);
+    // No recommendations → conversion 0 (not NaN); no buyers → revenue/user 0.
+    expect(report.funnel.recommendationToBookingRate).toBe(0);
+    expect(report.funnel.revenuePerBookingUserCents).toBe(0);
+  });
+
+  it("binds the window start into the cohort/engagement/funnel reads but not the cumulative WTP read", async () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+
+    const report = await service.validation(ADMIN, { days: 1 });
+
+    // days = 1 → start of today (UTC midnight).
+    const since = tx.$queryRawUnsafe.mock.calls[0][1] as Date;
+    expect(since).toBeInstanceOf(Date);
+    expect(since.getUTCHours()).toBe(0);
+    expect(report.since).toBe(since.toISOString());
+    // Cohort ($1), engagement ($1), and funnel-revenue ($1) all bind the window start.
+    expect(tx.$queryRawUnsafe.mock.calls[0][1]).toBe(since); // cohort
+    expect(tx.$queryRawUnsafe.mock.calls[1][1]).toBe(since); // engagement
+    expect(tx.$queryRawUnsafe.mock.calls[3][1]).toBe(since); // funnel revenue
+    // WTP is cumulative — the raw read takes no window arg.
+    expect(tx.$queryRawUnsafe.mock.calls[2]).toHaveLength(1);
+    // Recommendations are windowed via Prisma.
+    expect(tx.consultationRecommendation.count.mock.calls[0][0].where).toEqual({
+      createdAt: { gte: since },
+    });
   });
 });

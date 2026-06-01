@@ -3,12 +3,15 @@ import {
   usageAnalyticsQuerySchema,
   funnelAnalyticsQuerySchema,
   conciergeAnalyticsQuerySchema,
+  validationAnalyticsQuerySchema,
   type ConciergeAnalyticsDto,
   type ConciergeAnalyticsQueryInput,
   type FunnelAnalyticsDto,
   type FunnelAnalyticsQueryInput,
   type UsageAnalyticsDto,
   type UsageAnalyticsQueryInput,
+  type ValidationAnalyticsDto,
+  type ValidationAnalyticsQueryInput,
 } from "@expertos/shared";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { Roles } from "../auth/roles.decorator";
@@ -55,5 +58,15 @@ export class AnalyticsController {
     query: ConciergeAnalyticsQueryInput,
   ): Promise<ConciergeAnalyticsDto> {
     return this.service.concierge(user, query);
+  }
+
+  /** Validation scorecard: activation + engagement + willingness-to-pay + funnel conversion (M10.4). */
+  @Get("validation")
+  validation(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(validationAnalyticsQuerySchema))
+    query: ValidationAnalyticsQueryInput,
+  ): Promise<ValidationAnalyticsDto> {
+    return this.service.validation(user, query);
   }
 }

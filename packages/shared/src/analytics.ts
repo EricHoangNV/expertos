@@ -244,3 +244,98 @@ export interface ConciergeAnalyticsDto {
   /** Knowledge-quality signals from chunk flagging (cumulative; see the module note). */
   knowledge: ConciergeKnowledgeQualityDto;
 }
+
+/**
+ * Product-validation analytics wire types (M10.4, PRD §"Open Decisions" #1 — "Validation success
+ * criteria & kill line"). The consolidated go/no-go scorecard the PM reviews to answer the core
+ * hypothesis ("will users pay to talk to a digital Expert X"). Per the OD#1 resolution it **surfaces
+ * raw numbers, not thresholds** — targets are set post-launch once real usage exists.
+ *
+ * One platform-wide read (admin cross-tenant RLS, same shape as {@link UsageAnalyticsDto}) folding the
+ * four validation dimensions the PRD names:
+ *  - **activation** — did new users reach a cited answer early (≥1 cited answer within 24h of signup)?
+ *  - **engagement** — are active users asking questions, and does the new cohort come back (1–7 days)?
+ *  - **willingness to pay** — what share of users hold a paid subscription (free → paid)?
+ *  - **funnel** — recommendation → booking conversion + booked consultation revenue per buyer.
+ *
+ * The activation/engagement/funnel dimensions are **windowed** by `windowDays`; willingness-to-pay is
+ * **cumulative** (a current-state stock — paying users vs all users — like the concierge
+ * knowledge-quality flag counts). Every rate is a fraction in `[0, 1]` (the dashboard renders the %),
+ * `0` when its denominator is empty; revenue stays in integer cents.
+ */
+export const validationAnalyticsQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(30),
+});
+export type ValidationAnalyticsQueryInput = z.infer<typeof validationAnalyticsQuerySchema>;
+
+/** Activation: did the new-user cohort reach a cited answer early? (Windowed by signup date.) */
+export interface ValidationActivationDto {
+  /** Users (role `user`) who signed up in the window — the cohort denominator. */
+  newUsers: number;
+  /** Of those, how many received ≥1 cited answer within 24h of signing up. */
+  activatedUsers: number;
+  /** `activatedUsers / newUsers`, a fraction in `[0, 1]` (0 when no new users). */
+  activationRate: number;
+}
+
+/** Engagement + early retention over the window. */
+export interface ValidationEngagementDto {
+  /** Distinct users who asked ≥1 question (a `user`-role message) in the window. */
+  activeUsers: number;
+  /** Total questions (user-role messages) asked in the window. */
+  totalQuestions: number;
+  /** Median questions per active user over the window (0 when no active users). */
+  medianQuestionsPerActiveUser: number;
+  /** New-cohort users who came back 1–7 days after signup (asked a question again). */
+  returnedUsers: number;
+  /** `returnedUsers / newUsers`, a fraction in `[0, 1]` (0 when no new users). */
+  returnRate: number;
+}
+
+/** Willingness to pay — cumulative current-state platform stock (NOT windowed). */
+export interface ValidationWtpDto {
+  /** All users (role `user`) on the platform — the conversion denominator. */
+  totalUsers: number;
+  /** Users with an `active` subscription on a non-free plan. */
+  payingUsers: number;
+  /** Users with a `trialing` subscription on a non-free plan. */
+  trialingUsers: number;
+  /** `payingUsers / totalUsers`, a fraction in `[0, 1]` (0 when no users). */
+  freeToPaidRate: number;
+}
+
+/** Funnel conversion + booked consultation revenue per buyer over the window. */
+export interface ValidationFunnelDto {
+  /** Recommendations surfaced in the window. */
+  recommendations: number;
+  /** Funnel-attributed consultations that reached booked/confirmed/completed in the window. */
+  bookings: number;
+  /** `bookings / recommendations`, a fraction in `[0, 1]` (0 when no recommendations). */
+  recommendationToBookingRate: number;
+  /** Booked-and-beyond consultation revenue attributed to the funnel (cents). */
+  bookedRevenueCents: number;
+  /** Distinct users who paid for a funnel-attributed consultation (the revenue-per-user denominator). */
+  bookingUsers: number;
+  /** `bookedRevenueCents / bookingUsers`, integer cents (0 when no buyers). */
+  revenuePerBookingUserCents: number;
+}
+
+/**
+ * The admin product-validation report (`GET /admin/analytics/validation`, M10.4). Activation,
+ * engagement, and funnel cover the trailing `windowDays`; willingness-to-pay is cumulative (see the
+ * module note above).
+ */
+export interface ValidationAnalyticsDto {
+  /** Days covered by the windowed dimensions (activation / engagement / funnel). */
+  windowDays: number;
+  /** Start of the window (UTC ISO; start-of-day of the earliest day covered). */
+  since: string;
+  /** Activation: new-user cohort reaching a cited answer early. */
+  activation: ValidationActivationDto;
+  /** Engagement + early retention. */
+  engagement: ValidationEngagementDto;
+  /** Willingness to pay (cumulative). */
+  willingnessToPay: ValidationWtpDto;
+  /** Funnel conversion + revenue per buyer. */
+  funnel: ValidationFunnelDto;
+}

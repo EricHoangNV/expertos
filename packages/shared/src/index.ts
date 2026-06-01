@@ -125,6 +125,7 @@ export {
   usageAnalyticsQuerySchema,
   funnelAnalyticsQuerySchema,
   conciergeAnalyticsQuerySchema,
+  validationAnalyticsQuerySchema,
 } from "./analytics";
 export type {
   UsageAnalyticsQueryInput,
@@ -140,6 +141,12 @@ export type {
   ConciergeFlaggedChunkDto,
   ConciergeKnowledgeQualityDto,
   ConciergeAnalyticsDto,
+  ValidationAnalyticsQueryInput,
+  ValidationActivationDto,
+  ValidationEngagementDto,
+  ValidationWtpDto,
+  ValidationFunnelDto,
+  ValidationAnalyticsDto,
 } from "./analytics";
 export { failedQueryListQuerySchema } from "./failed-queries";
 export type { FailedQueryListQueryInput, FailedQueryDto } from "./failed-queries";
