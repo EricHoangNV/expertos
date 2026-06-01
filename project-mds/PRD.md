@@ -36,10 +36,10 @@
 - [x] M3.4 Insufficient-knowledge path + graceful next step; answer feedback (👍/👎 + reason)
 - [x] M3.5 Resolve Open Decision #8 (context-window / cost ceiling policy)
 
-#### M4 — Citations
+#### M4 — Citations — COMPLETE
 - [x] M4.1 Citation builder with chunk-resolvability guarantee (never emit an unresolvable citation)
 - [x] M4.2 Sources drawer + click-to-passage + `document_version_id` provenance (crimson `.cite` markers, render-after-resolve — §"Design System")
-- [ ] M4.3 Resolve Open Decision #7 (streaming vs citation-resolvability UX)
+- [x] M4.3 Resolve Open Decision #7 (streaming vs citation-resolvability UX)
 
 #### M5 — Document uploads
 - [ ] M5.1 Query-time upload (PDF, XLSX, CSV, DOCX, MD, txt) with file-type/size validation + malware scan
@@ -93,7 +93,7 @@
 - [ ] OD#4 Unit economics: cost per answer vs price — blocks M6 seed matrix (PM + Eng, Phase 0)
 - [ ] OD#5 Concierge Mode B legal/brand ruling — blocks M9 (Legal + PM, **before M9**)
 - [ ] OD#6 Eval golden-set ownership, size, refresh — blocks M2 / M4 (Eng lead, Phase 0)
-- [ ] OD#7 Streaming vs citation-resolvability UX — blocks M3 / M4 (Eng + Design, early M3)
+- [x] OD#7 Streaming vs citation-resolvability UX — blocks M3 / M4 (Eng + Design, early M3) — RESOLVED in M4.3 (stream prose, defer markers; render-after-resolve, server-side resolvability, click-to-passage; see §"Open Decisions" #7)
 - [x] OD#8 Conversation context-window / cost ceiling policy — blocks M3 (Eng, early M3) — RESOLVED in M3.5 (token-budget window, deterministic/offline; LLM summarization deferred; see §"Open Decisions" #8)
 - [x] OD#9 Vietnamese retrieval quality — blocks M1 (Eng, M1) — RESOLVED in M1.3 (cross-lingual default + mandatory NFC normalization; see §"Open Decisions" #9)
 - [ ] OD#10 TidyCal webhook reliability / missed-event recovery — blocks M7 (Eng, M7)
@@ -499,7 +499,7 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 | 4 | **Unit economics: cost per answer vs. price** | Cost is logged, not modeled. Multi-call RAG on premium models + "high fair-use cap → degrade" can cost more per heavy user than the plan supports. | M6 seed matrix | PM + Eng | Phase 0 |
 | 5 | **Concierge Mode B (silent review) legal/brand ruling** | A human silently editing an answer attributed to a named expert is the highest-liability mechanism in the app; rules differ by jurisdiction (VN + EU/US). | M9 | Legal + PM | **before M9** |
 | 6 | **Eval golden-set ownership, size, refresh** | The harness is specified; the dataset isn't. A thin/stale golden set gives false confidence. | M2 / M4 | Eng lead | Phase 0 |
-| 7 | **Streaming vs. citation-resolvability UX** | Verifying every citation before display conflicts with token streaming — citations could flash then vanish, or buffering kills the streaming feel. | M3 / M4 | Eng + Design | early M3 |
+| 7 | **Streaming vs. citation-resolvability UX** | Verifying every citation before display conflicts with token streaming — citations could flash then vanish, or buffering kills the streaming feel. | M3 / M4 | Eng + Design | ✅ RESOLVED (M4.3) |
 | 8 | **Conversation context-window / cost ceiling policy** | Long multi-turn chats grow the prompt unbounded — a correctness and cost risk. | M3 | Eng | ✅ RESOLVED (M3.5) |
 | 9 | **Vietnamese retrieval quality (not just voice tone)** | i18n affects embeddings, chunking, and retrieval — deeper than answer styling. | M1 | Eng | ✅ RESOLVED (M1.3) |
 | 10 | **TidyCal webhook reliability / missed-event recovery** | Booking confirmation depends on the webhook; a missed event leaves a booking in limbo. | M7 | Eng | M7 |
@@ -517,6 +517,13 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 **6. Eval golden-set ownership, size, refresh** — make the golden set a real, owned dataset: a **named** owner (not "the team"); size target per expert and per topic; refresh cadence (especially when knowledge is re-published — versions change → expected answers may change); how **failed/low-confidence queries** (admin inspector) and concierge **"Bad"** flags feed back into it.
 
 **7. Streaming vs. citation-resolvability UX** — likely resolution (confirm + spec): **stream the prose, render citation markers only after post-generation validation**, so a citation never appears then disappears; specify the placeholder/loading behavior for citations during streaming.
+
+> **RESOLVED (M4.3).** The likely resolution above is **confirmed and adopted** — Eng + Design sign-off onto the behavior already built across M3.1 → M4.1 → M4.2 (no new code; this is the design ruling the three milestones were built to satisfy). Decisions:
+> 1. **Stream the prose, defer the markers.** The token stream renders as plain prose; while a turn is in flight any `[n]` the model emits stays **inert plain text**, never a live `.cite` chip. Markers become interactive only after the stream's terminal `done` event. The placeholder/loading behavior for citations during streaming is therefore "the literal `[n]` text in the prose" — there is no spinner, skeleton, or provisional chip that could later vanish or renumber. (Web: `renderAnswer` in `apps/web/app/chat/page.tsx` gates on `resolved = message.done && message.citations.length > 0`; pre-`done` it renders `message.content` verbatim.)
+> 2. **Resolvability is enforced once, server-side, on the complete answer.** The `@expertos/ai` `buildCitations({ answer, citations })` builder (M4.1) runs after the delta loop in `ChatService.answerStream`, strips unresolvable markers from the persisted text, and emits on `done` only the de-duped sources a surviving marker actually cited (keeping the model's true ordinal — never renumbering). The client never re-validates; it trusts the `done` payload. This is why a marker can never flash-then-disappear: it is never shown as a citation until the validated list exists.
+> 3. **Render-after-resolve is also the rule on re-hydrated history.** The same gate applies to a conversation loaded from history — `ConversationService.get` re-hydrates `ChatMessageDto.citations` (M4.2 read path), so a stored answer renders its markers as `.cite` chips only where the persisted ordinal resolves; a dangling `[n]` can never appear because the persisted text was already sanitized at write time.
+> 4. **Click-to-passage, not hover-preview, is the resolved interaction.** A resolved marker (and the matching sources-drawer row) is keyboard- and click-activable; activating it scrolls to and highlights (`.source.active`) the source row showing the quote + `document_version_id` provenance. This was chosen over an inline hover popover so the citation UX is identical on the live turn and in history, and is accessible without pointer hover.
+> 5. **No buffering trade-off was needed.** Because validation is post-stream and markers are deferred rather than rendered-then-corrected, the streaming feel is preserved (prose streams token-by-token) **and** the integrity guarantee holds (no citation is ever shown before it resolves) — the two goals the decision framed as conflicting do not actually conflict under this split. If a future real LLM supports trustworthy mid-stream citation grammar, revisit; until then deferral is the safe default.
 
 **8. Conversation context-window / cost ceiling policy** — truncation/summarization strategy for long chats: max turns/tokens carried before summarizing earlier turns; whether summarization is itself an LLM call and on which model; interaction with the concierge "inject corrected answer into context" mechanism (don't summarize away a human correction).
 

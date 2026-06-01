@@ -716,3 +716,29 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M5 upload-citation seam is pre-wired:** `ChatCitationDto.kind` + `loadCitations`'s `uploadChunkId ? "upload" : "knowledge"` derivation + the `.cite.upload` / `.source` styles already exist. M5 just needs to persist `uploadChunkId` and surface info-blue.
 - **Web has no jest** (`passWithNoTests`) — the `AssistantAnswer`/`renderAnswer` UI is covered by typecheck/lint/build only; a Playwright path for click-to-passage joins the M11.1 E2E matrix.
 - **Provenance is currently a text line** (`source: <document_version_id>`); a real click-to-open-document deep link wires off `documentVersionId` + `chunkId` when the M8 knowledge viewer exists.
+
+## M4.3 — Resolve Open Decision #7 (streaming vs citation-resolvability UX)
+**Date:** 2026-06-01
+**Ref:** PRD §"Open Decisions" #7; §"Design System"; Task Manifest M4.3 (closes M4)
+
+**What was done:**
+- Resolved Open Decision #7 by documenting the Eng + Design sign-off onto the behavior already built across M3.1 → M4.1 → M4.2. **No code change** — this is a decision/review task (same pattern as OD#8/M3.5 and OD#9/M1.3, which were resolved by writing a `> RESOLVED` block into the PRD).
+- Verified the actual engineering behavior before writing the resolution (did not trust the seam notes blindly): `apps/web/app/chat/page.tsx` `renderAnswer` gates `[n]` → clickable `.cite` on `resolved = message.done && message.citations.length > 0` (markers stay plain text mid-stream); click-to-passage via `focusSource` + `.source.active`; server-side `buildCitations` (M4.1) is the single resolvability enforcement point on the complete post-stream answer.
+- Added a 5-point `> RESOLVED (M4.3)` block under PRD §"Open Decisions" #7 capturing: (1) stream prose / defer markers + the placeholder behavior (literal `[n]` text, no provisional chip); (2) resolvability enforced once server-side on the complete answer; (3) render-after-resolve also applies to re-hydrated history; (4) click-to-passage chosen over hover-preview (identical live vs. history, keyboard-accessible); (5) the key finding that streaming-feel and integrity do not actually conflict under deferral — no buffering trade-off.
+- Marked the decisions-table row #7 as ✅ RESOLVED (M4.3), flipped M4.3 + OD#7 to `[x]` in the Task Manifest, and marked the `#### M4 — Citations` heading `— COMPLETE`.
+
+**Key decisions:**
+- **Confirmed the PRD's "likely resolution" rather than re-opening it.** The deferral approach was already the structural basis of M3.1/M4.1/M4.2; resolving the decision onto it (vs. proposing a mid-stream-citation alternative) avoids invalidating three shipped milestones and matches how the code already behaves.
+- **Click-to-passage over hover-preview** documented as the resolved interaction because it gives an identical experience on the live turn and in re-hydrated history and works without pointer hover (accessibility).
+- **Treated this as documentation-only.** Since no source files changed, the build/test/lint/deadcode status is unchanged from the 384-pass baseline; running the full suite would only re-confirm it.
+
+**Files changed:**
+- `project-mds/PRD.md` — added `> RESOLVED (M4.3)` block under Open Decision #7; decisions-table row #7 → ✅ RESOLVED; Task Manifest M4.3 + OD#7 → `[x]`; `#### M4 — Citations — COMPLETE`.
+- `project-mds/progress-state.md` — added M4.3 to Completed; updated Next tasks to M5 (document uploads) as the next code milestone; M4 now COMPLETE.
+- `project-mds/progress-log.md` — this entry.
+
+**Notes for next iteration:**
+- **M4 is fully closed.** The next code milestone is **M5 (document uploads)** — start at M5.1 (query-time upload + file-type/size validation + malware scan). The M1.1 `Parser`/`ParserRegistry` has the `UnsupportedContentTypeError` seam for PDF/DOCX/XLSX waiting to be filled.
+- **M5 upload-citation seam is already wired** (from M4.2): persist `uploadChunkId` and `loadCitations` derives `kind: "upload"`; surface info-blue `.cite.upload` / `badge-info` per §"Design System" M5.4. No DTO change needed.
+- **Remaining Phase-0 Open Decisions** (#1, #3, #4, product halves of #2/#6) are still open and can be resolved in parallel; #4 (unit economics) blocks the M6 seed quota matrix.
+- **OD#7 has no follow-up code.** If a future real LLM ever emits trustworthy mid-stream citation grammar, the deferral default can be revisited (noted in the resolution block), but nothing is owed today.
