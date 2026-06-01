@@ -81,7 +81,7 @@
 
 #### M11 — Hardening
 - [ ] M11.1 Full E2E path matrix (Playwright) — see §"Testing Strategy"
-- [ ] M11.2 Security tests (authz/RLS negative, prompt-injection regression, rate-limit) + `/cso` audit
+- [~] M11.2 Security tests (authz/RLS negative, prompt-injection regression, rate-limit) + `/cso` audit — **prompt-injection regression DONE** (`packages/ai/src/prompt/answer-prompt.ts` UNTRUSTED-INPUT instruction-hierarchy rule + `neutralizeInjection` forged-`[n]`-marker defang on untrusted SOURCES/QUESTION; `prompt-injection.test.ts` 6 deterministic fixtures); **remaining:** authz/RLS negative tests (needs M11 Testcontainers live-DB pass), rate-limit tests, `/cso` audit
 - [ ] M11.3 Performance / caching tuning + load smoke test
 - [ ] M11.4 Non-Technical Requirements sign-offs cleared (see manifest section below) — blocking before launch
 - [ ] M11.5 Design-system conformance audit (`/design-review`): token usage (no hardcoded colors/px), citation render-after-resolve, upload-vs-knowledge color distinction, badge tones, hit-target/size minimums (§"Design System")
