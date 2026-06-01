@@ -2,9 +2,10 @@
  * Idempotent seed: the GLOBAL tenant, the launch plans + prices, the entitlement
  * catalog, and the plan×feature matrix (PRD §"Paywall, Entitlements & Feature Gating").
  *
- * Runs as the schema owner (bypasses RLS). Quota cells are placeholders pending Open
- * Decision #4 (unit economics) and are admin-tunable without a deploy — this seed only
- * sets the defaults. Re-running is safe (upsert by natural key).
+ * Runs as the schema owner (bypasses RLS). The `ask_question` quota cells are now CALIBRATED
+ * against the Open Decision #4 unit-economics model (M6.5) — see the MATRIX comment and the
+ * worked margin analysis in PRD §"Open Decisions" #4. All cells remain admin-tunable without a
+ * deploy (M8.3); this seed only sets the launch defaults. Re-running is safe (upsert by natural key).
  */
 import { PrismaClient } from "../generated/client";
 import { GLOBAL_TENANT_ID } from "../src/rls";
@@ -38,6 +39,20 @@ const PLANS = [
 // plan key → feature key → entitlement. `limit: null` on a metered feature = no hard cap;
 // `softLimit` is the fair-use threshold past which the answer degrades to a cheaper model
 // instead of blocking (Premium "high fair-use cap → degrade, don't block"). Both admin-tunable.
+//
+// `ask_question` calibration (Open Decision #4 / M6.5; model in `observability/model-pricing.ts`):
+//   modeled answer ≈ 3,000 prompt + 600 completion tokens →
+//     standard model (Free/Plus)  ≈ $0.0008/answer   premium model (Premium) ≈ $0.018/answer
+//     degraded "mini" model        ≈ $0.0008/answer   (≈20× cheaper than premium — the degrade win)
+//   • Free 10/mo  → ≈ $0.008/mo model cost. Bounded for abuse; volume isn't the constraint here,
+//     conversion is (the hook is "all expert voices", not answer count).
+//   • Plus 200/mo hard cap @ $4.99 → ≈ $0.16/mo (~4% of net) on the standard tier. Comfortable
+//     margin; a "moderate allowance" cap per the PRD pricing table (Plus does not degrade).
+//   • Premium softLimit 500/mo @ $9.99 → premium-model spend capped at ≈ $9.00 (≈500 × $0.018),
+//     then degrade to the mini model (≈ $0.0008/answer) for the rest. So the WORST-CASE premium
+//     user is ≈ break-even, never deeply cost-negative — the degrade threshold is what protects
+//     margin (a hard 500-cap premium-model user would otherwise approach the whole plan price).
+//     Cache hits cost $0 but early-volume hit-rate is low, so margin is NOT assumed from caching.
 type Cell = {
   enabled: boolean;
   limit?: number | null;
@@ -46,7 +61,7 @@ type Cell = {
 };
 const MATRIX: Record<string, Record<string, Cell>> = {
   free: {
-    ask_question: { enabled: true, limit: 5, window: "month" },
+    ask_question: { enabled: true, limit: 10, window: "month" },
     document_upload: { enabled: false },
     all_expert_voices: { enabled: true },
     cited_answers: { enabled: true },
@@ -55,7 +70,7 @@ const MATRIX: Record<string, Record<string, Cell>> = {
     consultation_booking: { enabled: true },
   },
   plus: {
-    ask_question: { enabled: true, limit: 100, window: "month" },
+    ask_question: { enabled: true, limit: 200, window: "month" },
     document_upload: { enabled: true },
     all_expert_voices: { enabled: true },
     cited_answers: { enabled: true },
@@ -64,7 +79,7 @@ const MATRIX: Record<string, Record<string, Cell>> = {
     consultation_booking: { enabled: true },
   },
   premium: {
-    ask_question: { enabled: true, limit: null, softLimit: 1000, window: "month" },
+    ask_question: { enabled: true, limit: null, softLimit: 500, window: "month" },
     document_upload: { enabled: true },
     all_expert_voices: { enabled: true },
     cited_answers: { enabled: true },

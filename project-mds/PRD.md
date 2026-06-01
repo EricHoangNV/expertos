@@ -47,12 +47,12 @@
 - [x] M5.3 Spreadsheet handling (sheets/tables/headers, row/col refs, real numeric values, sheet/table citations)
 - [x] M5.4 Distinct upload citations (info-blue `.cite.upload` / `badge-info`, per §"Design System"); tenant/user upload isolation
 
-#### M6 — Subscription system
+#### M6 — Subscription system — COMPLETE
 - [x] M6.1 Entitlement catalog + `plan_entitlements` matrix + `@RequiresEntitlement` guard + `/me/entitlements` (§"Paywall, Entitlements & Feature Gating")
 - [x] M6.2 `PaymentProvider` abstraction (Stripe driver): checkout / customer portal / idempotent webhooks → entitlement sync + transaction ledger
 - [x] M6.3 Transparent usage indicator (`.bar` quota meter; `.bar.warn` amber); fair-use thresholds + degrade-don't-block
 - [x] M6.4 Caching layers (semantic → retrieval → answer)
-- [ ] M6.5 Resolve Open Decision #4 (unit economics → seed quota matrix)
+- [x] M6.5 Resolve Open Decision #4 (unit economics → seed quota matrix)
 
 #### M7 — Consultation funnel
 - [ ] M7.1 Rule-based recommendation hooks (admin-configurable: topic, depth, low confidence, high intent)
@@ -90,7 +90,7 @@
 - [ ] OD#1 Validation success criteria & kill line — blocks M10 / go-no-go (PM, Phase 0)
 - [ ] OD#2 Voice-fidelity acceptance bar — blocks M2 (PM + Expert, Phase 0)
 - [ ] OD#3 Voice profile cold-start workflow — blocks M2 (Eng + Expert, Phase 0)
-- [ ] OD#4 Unit economics: cost per answer vs price — blocks M6 seed matrix (PM + Eng, Phase 0)
+- [x] OD#4 Unit economics: cost per answer vs price — blocks M6 seed matrix (PM + Eng, Phase 0) — RESOLVED in M6.5 (per-token cost model in `observability/model-pricing.ts` → real `cost_micros` on every usage row; calibrated seed quota matrix: Free 10/mo, Plus 200/mo hard cap, Premium softLimit 500/mo→degrade so worst-case ≈ break-even; see §"Open Decisions" #4)
 - [ ] OD#5 Concierge Mode B legal/brand ruling — blocks M9 (Legal + PM, **before M9**)
 - [ ] OD#6 Eval golden-set ownership, size, refresh — blocks M2 / M4 (Eng lead, Phase 0)
 - [x] OD#7 Streaming vs citation-resolvability UX — blocks M3 / M4 (Eng + Design, early M3) — RESOLVED in M4.3 (stream prose, defer markers; render-after-resolve, server-side resolvability, click-to-passage; see §"Open Decisions" #7)
@@ -370,7 +370,7 @@ Gated action / quota reached
 - Local **revenue ledger** (`transactions`) populated from webhooks: amount, currency, plan, user, type (subscription/one-off/refund), provider, provider_ref, status, occurred_at.
 - Admin dashboards: revenue overview (MRR, new vs churned, by plan, by period), transaction list/search, refunds, and a **reconciliation view** (our ledger vs provider) that flags mismatches — so finance can see revenue without logging into Stripe.
 
-**Phase-1 launch pricing & default entitlement seed** (prices fixed; quota cells are placeholders pending Open Decision #4 unit economics + PM sign-off; all admin-tunable)
+**Phase-1 launch pricing & default entitlement seed** (prices fixed; `ask_question` quota cells now calibrated to the Open Decision #4 unit-economics model — M6.5; all admin-tunable)
 
 | | **Free** | **Plus** | **Premium** |
 |---|---|---|---|
@@ -384,7 +384,7 @@ Gated action / quota reached
 | Consultation recommend + book | ✓ (revenue funnel) | ✓ | ✓ + included credit |
 | Concierge human review (Mode A opt-in) | ✕ | ✕ / sampled | ✓ (configurable SLA) |
 
-¹ Question allowances are placeholders — set via Open Decision #4 (cost-per-answer vs. price) before finalizing, then admin-tunable without a deploy.
+¹ Question allowances calibrated via Open Decision #4 (cost-per-answer vs. price, resolved in M6.5): Free 10/mo, Plus 200/mo (hard cap), Premium high cap → degrade past a 500/mo soft threshold. Admin-tunable without a deploy.
 
 Key files: `apps/api/src/entitlements/` (catalog + guard + decorator + `/me/entitlements`), `apps/api/src/billing/` (`PaymentProvider` interface + Stripe driver + idempotent webhooks → entitlement sync + transaction ledger), `apps/api/src/revenue/` (reporting/reconciliation queries), `apps/admin/` plan-entitlement matrix editor + revenue dashboards.
 
@@ -496,7 +496,7 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 | 1 | **Validation success criteria & kill line** | The #1 risk ("will users pay to talk to a digital Expert X") has no number; without a target no one can say if the loop worked. | M10 / go-no-go | PM | Phase 0 |
 | 2 | **Voice-fidelity acceptance bar** | Voice is *the product*; current tests only protect facts (voice-on ≈ voice-off), not "does this sound like the expert." | M2 | PM + Expert | Phase 0 |
 | 3 | **Voice profile cold-start workflow** | ~50 seeded examples is referenced but not how they're produced or how many are "enough." On the critical path for every expert. | M2 | Eng + Expert | Phase 0 |
-| 4 | **Unit economics: cost per answer vs. price** | Cost is logged, not modeled. Multi-call RAG on premium models + "high fair-use cap → degrade" can cost more per heavy user than the plan supports. | M6 seed matrix | PM + Eng | Phase 0 |
+| 4 | **Unit economics: cost per answer vs. price** | Cost is logged, not modeled. Multi-call RAG on premium models + "high fair-use cap → degrade" can cost more per heavy user than the plan supports. | M6 seed matrix | PM + Eng | ✅ RESOLVED (M6.5) |
 | 5 | **Concierge Mode B (silent review) legal/brand ruling** | A human silently editing an answer attributed to a named expert is the highest-liability mechanism in the app; rules differ by jurisdiction (VN + EU/US). | M9 | Legal + PM | **before M9** |
 | 6 | **Eval golden-set ownership, size, refresh** | The harness is specified; the dataset isn't. A thin/stale golden set gives false confidence. | M2 / M4 | Eng lead | Phase 0 |
 | 7 | **Streaming vs. citation-resolvability UX** | Verifying every citation before display conflicts with token streaming — citations could flash then vanish, or buffering kills the streaming feel. | M3 / M4 | Eng + Design | ✅ RESOLVED (M4.3) |
@@ -511,6 +511,13 @@ Unresolved questions surfaced in PRD review — each cheaper to settle now than 
 **3. Voice profile cold-start workflow** — the repeatable process to stand up a new expert's voice from zero: source of examples (structured interview / past transcripts / published writing / mix); **minimum viable example count** to pass the §2 bar and how that's verified; **effort estimate per expert** (this is the unit of scaling the business); whether the Conversation-to-Knowledge + concierge flywheel is expected to improve the profile post-launch and how that's reviewed.
 
 **4. Unit economics: cost per answer vs. price** — model an answer's cost (embedding, retrieval, optional rerank, generation in+out tokens, any concierge human time) and the **worst-case premium user/month** under "high fair-use cap → degrade": at what volume does a premium user go cost-negative, and does the degrade threshold protect margin? Feed into the **Phase-1 seed matrix** (the "Questions/month" cells are still placeholders) and the degrade trigger; cross-check the assumed cache-hit rate against realistic low early volume.
+
+> **RESOLVED (M6.5).** Cost is now *modeled*, not just logged, and the seed matrix is calibrated to it. Decisions:
+> 1. **A per-token cost model lives in `apps/api/src/observability/model-pricing.ts`** (`costMicrosFor(model, prompt, completion)`), keyed by the `model` string callers already log. `UsageLogService.record` stamps a real `cost_micros` on every usage row when the caller omits one (conversion: `micros/token = USD-per-1M-tokens × 100`, since `cost_micros` = millionths of a USD cent). This closes the "cost is logged, not modeled" gap — M10 analytics + billing reconciliation now have a margin signal, and a cache hit lands at an explicit `cost_micros = 0` (the cache/degrade win is visible in the ledger, not hidden as null).
+> 2. **The modeled answer** ≈ 3,000 prompt + 600 completion tokens (system + ~8 retrieved chunks + voice + windowed history + question; ~500–600 out). Representative prod prices (USD / 1M tokens): standard $0.15/$0.60, premium $3/$15, degraded "mini" $0.05/$0.40, embedding $0.02. So a **standard answer ≈ $0.0008**, a **premium answer ≈ $0.018** (~20× standard), a **degraded answer ≈ $0.0008**. Embeds (~2 short ones/turn) are negligible. No rerank in Phase 1; concierge human time is an M9 cost, out of scope here.
+> 3. **Worst-case premium user / does degrade protect margin?** Yes. Premium = $9.99/mo (net ≈ $9.39 after a ~$0.60 Stripe fee). A premium user goes cost-negative on the premium model at roughly **$9.39 / $0.018 ≈ 520 answers/mo**. The seed sets the **fair-use `softLimit` at 500/mo**: up to 500 answers run on the premium model (≈ $9.00), then **degrade** to the mini model (≈ $0.0008/answer) for the rest — so the heaviest premium user is ≈ **break-even, never deeply cost-negative**, and the median user (tens of answers) keeps a strong margin. The degrade threshold, not a hard cap, is what protects margin (PRD §Paywall "high fair-use cap → degrade, don't block").
+> 4. **Seed quota matrix (calibrated, admin-tunable — `packages/db/prisma/seed.ts`):** Free **10**/mo (model cost ≈ $0.008/mo — volume isn't the constraint for Free; conversion is, and the hook is "all expert voices"), Plus **200**/mo hard cap (≈ $0.16/mo ≈ 4% of net — a comfortable "moderate allowance"; Plus does not degrade), Premium **`limit: null` + `softLimit: 500`**/mo (degrade past the threshold). The earlier placeholders (Free 5 / Plus 100 / Premium softLimit 1000) are retired.
+> 5. **Cache-hit rate is NOT assumed for margin.** Early volume is low, so the cache hit-rate is low; the margin math above holds at a **0% hit rate**. Caching (M6.4) is pure upside — any hit costs $0 and improves the blended number, but the plan is solvent without it. When real volume + the real LLM/embedding driver land, update the rates + the modeled answer size in `model-pricing.ts` (the single source) and re-tune the soft threshold via the M8.3 matrix editor — no deploy needed for the threshold itself.
 
 **5. Concierge Mode B legal/brand ruling — hard gate at start of M9** — obtain the legal + brand ruling on silently reviewing/editing answers attributed to a named expert **before M9 is built**: disclosure obligations across jurisdictions (VN + EU/US); accountability for a human-edited answer presented as the expert's; confirm ToS/privacy wording (PRD §Security) covers Mode B specifically; **fallback plan** — can the product launch with **Mode A only**, and is M9 sequenced so that's a clean fallback, not a rebuild? (Promoted from the M11 checklist to an M9-start gate.)
 

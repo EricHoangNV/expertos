@@ -1046,3 +1046,37 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 **Notes for next iteration:**
 - See the "M6.4 cache seam" note in progress-state.md. Biggest open follow-up: **publish-time invalidation** (M8) — clearing the in-process caches + the tenant's `semantic_cache` rows when a `document_version` is published/unpublished (TTL is the only invalidation today). And the embedding-cosine approximate match (real embedder / M11).
 - M6.5 (OD#4 unit economics → seed quota matrix) is the last open M6 item; the degraded model's cost envelope feeds the cache margin story.
+
+## M6.5 — Resolve Open Decision #4 (unit economics → seed quota matrix)
+**Date:** 2026-06-01
+**Ref:** PRD §"Paywall, Entitlements & Feature Gating" + §"Open Decisions" #4; Task Manifest M6.5 (closes M6)
+
+**What was done:**
+- Turned OD#4's "cost is logged, not modeled" gap into a real per-token cost model and calibrated the seed `ask_question` quotas against it.
+- New `apps/api/src/observability/model-pricing.ts` — `costMicrosFor(model, prompt, completion)` keyed by the `model` string callers already log. Tiers (USD/1M tokens): standard $0.15/$0.60, premium $3/$15, degraded mini $0.05/$0.40, embedding $0.02. Offline `echo-dev`/`echo-dev-mini`/`hashing-dev` priced onto those tiers; representative prod ids (`gpt-4o`, `gpt-4o-mini`, `claude-sonnet-4`, `text-embedding-3-small`) included; unknown model → standard tier (never silently free). Conversion `micros/token = USD-per-1M × 100` documented in the file header.
+- `UsageLogService.record` now derives `cost_micros` from the token counts when the caller omits one and a `model` is named (explicit cost still wins). Every existing usage caller (chat / retrieval / ingestion / voice / upload) passed model+tokens but never a cost — they all start getting costed with no caller change. A named-model cache hit (0 tokens) → explicit `cost_micros = 0`; no model named → null.
+- Calibrated `packages/db/prisma/seed.ts` MATRIX: Free `ask_question` 10/mo (was 5), Plus 200/mo hard cap (was 100), Premium `limit:null` + `softLimit` 500/mo (was 1000). Added a worked margin comment in the seed.
+- Documented the resolution in PRD: `> RESOLVED (M6.5)` block under §"Open Decisions" #4 (cost model, modeled-answer cost, worst-case premium analysis, seed numbers, cache-hit caveat), the decisions-table row (#4 → ✅ RESOLVED), the manifest (`[x]` M6.5 + OD#4), the pricing-table footnote ¹, and marked the M6 heading COMPLETE.
+- Tests: `model-pricing.test.ts` ×6, `usage-log.service.test.ts` +4. Total 548 → 558 (api 344 → 354).
+
+**Key decisions:**
+- **Model the cost, don't just bless the numbers.** OD#4 is PM+Eng; the engineering half is the model. Building `model-pricing.ts` + deriving `cost_micros` answers OD#4's literal question ("at what volume does a premium user go cost-negative?") with code, and hands M10/M8.3 a margin signal — strictly more useful than only editing three integers.
+- **softLimit 500 (degrade), not a higher hard cap.** A premium answer ≈ $0.018 → cost-negative ≈ 520 premium-model answers/mo (net ≈ $9.39). 500-then-degrade caps premium-model spend at ≈ $9.00 and drops to ≈ $0.0008/answer beyond, so the worst-case premium user is ≈ break-even, never deeply negative. A hard 500-cap-on-premium-model user would otherwise approach the whole plan price; the degrade mechanism is what makes "high fair-use cap" solvent.
+- **Margin holds at a 0% cache-hit rate.** Early volume → low hit rate, so the seed math deliberately doesn't bank on caching (M6.4 is pure upside).
+- **Unknown model → standard tier, not free.** A missing price entry under-reports margin rather than hiding cost entirely (safer default for a cost guard).
+- Per-plan premium-model *routing* left unbuilt (only standard + degraded providers exist); the $3/$15 premium tier is a modeling assumption the cost table already prices once that model id is logged.
+
+**Files changed:**
+- `apps/api/src/observability/model-pricing.ts` — NEW: the single cost-model source (`costMicrosFor` + tiers + model map).
+- `apps/api/src/observability/usage-log.service.ts` — derive `cost_micros` from token counts when omitted + a model is named.
+- `apps/api/src/observability/model-pricing.test.ts` — NEW: 6 tests.
+- `apps/api/src/observability/usage-log.service.test.ts` — +4 cost-derivation tests.
+- `packages/db/prisma/seed.ts` — calibrated `ask_question` quotas (Free 10 / Plus 200 / Premium softLimit 500) + worked margin comment + header note.
+- `project-mds/PRD.md` — OD#4 RESOLVED block + decisions-table row + manifest `[x]` + pricing footnote + M6 heading COMPLETE.
+
+**Notes for next iteration:**
+- See the "M6.5 cost-model seam" note in progress-state.md. When the real LLM/embedding driver lands, update model ids + rates + the modeled answer size in `model-pricing.ts` only — usage rows reprice automatically.
+- The seed `softLimit`/`limit` are admin-tunable via the **M8.3 plan-entitlement matrix editor** (not yet built) — no deploy needed to re-tune once that ships.
+- `cost_micros` is now the margin signal for M10 analytics + the M8.3 reconciliation view (sum per user/window vs `plan_prices.amountCents`).
+- **M6 is COMPLETE.** Next milestone is M7 (consultation funnel) or M8 (admin/expert portals — and the matrix editor that operationalises these quotas).
+- Sandbox note: the whole-monorepo `pnpm test` intermittently SIGSEGVs jest workers under memory pressure (0 assertion failures, only "suite failed to run") — confirmed all suites pass run individually / per-package; the standalone `pnpm --filter @expertos/api test` passed 354/354.

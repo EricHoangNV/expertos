@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { StructuredLogger } from "./logger.service";
+import { costMicrosFor } from "./model-pricing";
 
 /**
  * One billable/observable unit of work — an LLM call, an embedding batch, a retrieval.
@@ -39,6 +40,16 @@ export class UsageLogService {
 
   async record(user: AuthUser, entry: UsageLogEntry): Promise<void> {
     try {
+      // Model the cost from the token counts when the caller didn't supply one (Open Decision #4,
+      // M6.5): every call that names a `model` gets a real `cost_micros` so margin analysis (M10)
+      // and billing reconciliation have a signal. A cache hit (model named, 0 tokens) lands at cost 0
+      // — the degrade/cache margin win is then visible in the ledger, not hidden as null.
+      const costMicros =
+        entry.costMicros ??
+        (entry.model !== undefined
+          ? costMicrosFor(entry.model, entry.promptTokens ?? 0, entry.completionTokens ?? 0)
+          : null);
+
       await this.rls.run(user, (tx) =>
         tx.usageLog.create({
           data: {
@@ -48,7 +59,7 @@ export class UsageLogService {
             model: entry.model ?? null,
             promptTokens: entry.promptTokens ?? null,
             completionTokens: entry.completionTokens ?? null,
-            costMicros: entry.costMicros ?? null,
+            costMicros,
             conversationId: entry.conversationId ?? null,
           },
         }),
