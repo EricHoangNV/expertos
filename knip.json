@@ -26,7 +26,7 @@
       "project": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"]
     },
     "apps/api": {
-      "entry": ["src/main.ts"],
+      "entry": ["src/main.ts", "src/ingestion/ingest.cli.ts"],
       "project": ["src/**/*.ts"]
     }
   },

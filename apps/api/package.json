@@ -6,11 +6,13 @@
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
+    "ingest": "node dist/ingestion/ingest.cli.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src --ext .ts",
     "test": "jest --coverage"
   },
   "dependencies": {
+    "@expertos/ai": "workspace:*",
     "@expertos/db": "workspace:*",
     "@expertos/shared": "workspace:*",
     "@nestjs/common": "10.3.10",

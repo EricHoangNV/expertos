@@ -23,6 +23,13 @@ export interface LlmProvider {
 export interface EmbeddingProvider {
   readonly name: string;
   readonly dimensions: number;
+  /**
+   * Embed each input text. The returned array MUST be index-aligned and the same length
+   * as `texts` (the i-th vector is the embedding of `texts[i]`), and every vector MUST
+   * have {@link dimensions} elements. Callers store vectors against chunks positionally
+   * and rely on this contract — a driver that batches/dedupes/drops inputs must restore
+   * the original order and count before returning.
+   */
   embed(texts: string[]): Promise<number[][]>;
 }
 

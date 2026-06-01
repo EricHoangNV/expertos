@@ -214,3 +214,39 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 **Notes**
 - Component `.tsx` files are intentionally not unit-tested: ui `jest.config.cjs` collects coverage only from `src/**/*.ts` (helpers), so the 90% gate stays on `cx.ts`. Component rendering is covered by app-level E2E later (M11).
 - knip stays clean because `index.ts` is the package entry (its exports are the public API).
+
+---
+
+## M1.1 — Versioned expert-knowledge ingestion pipeline
+**Date:** 2026-06-01
+**Ref:** PRD.md Task Manifest M1.1 / §"Phased Delivery Roadmap" (M1) / §"Critical Files" (`packages/ai`, `apps/api/src/ingestion`)
+
+**What was done:**
+- Built the seed/CLI-loaded ingestion pipeline behind stable contracts: validate → parse → chunk → summarize → embed → persist as immutable `document_versions` + `chunks`.
+- `packages/ai` (pure, offline, 100% cov): `chunkText`/`estimateTokens` (overlapping word-window chunker); `Summarizer` interface + `ExtractiveSummarizer` (deterministic default) + `LlmSummarizer` (LlmProvider-backed); `HashingEmbeddingProvider` (deterministic FNV-1a bag-of-words → L2-normalized 1536-dim vector, Unicode tokenizer covers Vietnamese). Added ordering+length guarantee JSDoc to the `EmbeddingProvider` contract.
+- `packages/shared`: Zod `ingestionInputSchema` (sourceUri/title/scope/language/contentType/changeSummary) + `contentScopeSchema`/`languageSchema` (declared independently of `@expertos/db`, like `roleSchema`).
+- `apps/api/src/ingestion`: `Parser` contract + `toText`; `TextParser` (plain/markdown) + `CsvParser` (RFC-4180 quoting → `header: value` records); `ParserRegistry` (normalizes MIME, throws `UnsupportedContentTypeError` — the seam where M5's PDF/XLSX parsers slot in); `DocumentVersionRepository` (find-or-create document by `(tenant,scope,sourceUri)`, append immutable version, write chunks, embedding via raw `UPDATE chunks SET embedding=$1::vector` with fixed-precision literal); `IngestionService` orchestrator (records `ingest.embed` usage, logs); `IngestionModule` (DI tokens for swappable embedder/summarizer); `ingest.cli.ts` manifest loader (`pnpm --filter @expertos/api ingest <manifest.json>`); `ingestion.defaults.ts` (shared default provider factories — one composition root for module + CLI).
+- Wired `IngestionModule` into `AppModule`; added `@expertos/ai` dep to `apps/api`; registered the CLI as a knip entry; added `ingest` script.
+
+**Key decisions:**
+- **Offline-deterministic providers** (`HashingEmbeddingProvider`, `ExtractiveSummarizer`) as the M1.1 defaults: the sandbox has no network/API keys and the 90% coverage gate forbids untestable code paths. They're legitimate dev/seed drivers; the real OpenAI driver lands later behind the unchanged `EmbeddingProvider`/`Summarizer` contracts. Documented as the swap seam.
+- **Publish-on-ingest by default** (version+chunks `published`, sets `Document.publishedVersionId`) so seeded knowledge is immediately retrievable for M1.2; `publish:false` leaves a draft for the M8 expert-review gate. Versioning keyed on `sourceUri` so re-ingesting appends a new immutable snapshot.
+- **HTTP upload deliberately out of scope** (M5 does query-time upload, M8 the admin UI). M1.1 is CLI/seed only, matching the manifest.
+- Persistence isolated in `DocumentVersionRepository` (the single `RlsService` DB choke point); the orchestrator stays DB-free and fully fakeable.
+
+**Review (multi-agent workflow):** Ran a 3-dimension (correctness/security/design) review with adversarial per-finding verification. 11 raw findings → 3 confirmed:
+- **HIGH (fixed):** `IngestionModule` injected `RlsService` (via the repo) but didn't `import: [AuthModule]`, and `AuthModule` isn't `@Global` → `UnknownDependenciesException` at bootstrap. Direct-construction unit tests never build the DI container so they missed it. Fixed + verified with a throwaway `createApplicationContext` smoke (`ctx.get(IngestionService)` resolves). → LEARNINGS #5.
+- **LOW (fixed):** embedding/summary positional alignment relied on an undocumented provider guarantee → documented it on the interface + added an `embeddings.length === contents.length` guard (with test).
+- **LOW (fixed):** CLI hand-wired the pipeline parallel to the module (drift risk) → extracted `ingestion.defaults.ts` shared by both.
+
+**Files changed:**
+- `packages/ai/src/ingestion/{chunk,summarize}.ts`, `packages/ai/src/embedding/hashing-embedding-provider.ts`, `packages/ai/src/providers.ts` (embed JSDoc), `packages/ai/src/index.ts` (+tests)
+- `packages/shared/src/ingestion.ts`, `packages/shared/src/index.ts` (+test)
+- `apps/api/src/ingestion/{parser,parser-registry,ingestion.tokens,ingestion.defaults,document-version.repository,ingestion.service,ingestion.module,ingest.cli}.ts`, `parsers/{text,csv}-parser.ts` (+tests)
+- `apps/api/src/app.module.ts`, `apps/api/package.json`, `knip.json`
+
+**Notes for next iteration:**
+- **M1.2 (next):** the `VectorStore.query` pgvector driver — `$queryRaw` cosine-distance (`embedding <=> $1::vector`) over `chunks` filtered by `status='published'`, `tenant_id`, `scope`, `language` (HNSW index `chunks_embedding_idx` already exists). Embed the query with the same `HashingEmbeddingProvider` so dev retrieval is consistent end-to-end. This is the first reader of M1.1-ingested chunks — a good place to add an integration smoke once a DB is available.
+- The CLI/repository can't be run end-to-end in this sandbox (Prisma library engine SIGILLs at query time — LEARNINGS #2; no DB). All pure logic is unit-tested; DB wiring verified via the bootstrap smoke.
+- When the real embedding model is wired, override it in `ingestion.defaults.ts` **and** the `EMBEDDING_PROVIDER` token so the API and the CLI seed loader write into the same vector space; consider migrating the CLI to `NestFactory.createApplicationContext` for a single DI composition root.
+- `approvedBy` is left null for system/CLI ingestion (no FK), set it to the expert's user id when the M8 review gate approves a version.

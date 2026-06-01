@@ -84,6 +84,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@expertos/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@expertos/db':
         specifier: workspace:*
         version: link:../../packages/db
