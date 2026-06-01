@@ -1515,3 +1515,41 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M8.5 (expert portal) is the last open M8 item.** Build it on this session's precedent: same `AdminFrame` + `admin-client` shape; reuse `listVoiceProfiles`/`voiceProfileAction` (the M2.3 routes scope an expert to their own profiles service-side) + the M8.1 `/knowledge` routes; add consultation-conversion views over the M7 funnel + an admin surface for the manual TidyCal reconcile / unmatched `booking_webhook_events`.
 - Seam-tested with a mocked tx; the real expert writes + the cross-tenant admin RLS visibility join the M11 Testcontainers list.
 - Full `apps/api` suite ran clean this session: 59 suites / 514 tests. Totals: 807 pass (shared 138, ui 3, db 9, ai 143, api 514).
+
+## M8.5 — Expert portal (first-class `expert` role)
+**Date:** 2026-06-01
+**Ref:** PRD §"Admin & Expert portals" → "Expert portal (first-class `expert` role)"; Task Manifest M8.5
+
+**What was done:**
+- Closed M8 (M8.5 was the last open item). Two of the four deliverables — approve **voice** + approve **knowledge** — already worked through the existing expert-scoped `/voice-profiles` (M2.3, `assertOwnership`) and `/knowledge` (M8.1, `@Roles("expert")`) routes whose admin pages were built earlier. M8.5 added the two genuinely missing read surfaces and made the portal role-aware.
+- **API:** new `apps/api/src/expert/` module — `ExpertPortalService` behind `@Roles("expert")` `GET /expert/conversions` + `GET /expert/answers`; `ExpertModule` registered in `AppModule`.
+  - `conversions(user, requestedExpertId)` → `ExpertConversionsDto`: recommendations by trigger + by response, consultations by status, booked-and-beyond revenue, and a recent feed. Prisma `groupBy` (Int `_sum.amountCents` is a plain `number`, no BigInt coercion).
+  - `answers(user, requestedExpertId, query)` → `ExpertAnswerReviewDto[]`: raw-SQL `LATERAL` feed mirroring the M8.3 failed-query inspector (assistant message + prompting question + latest feedback verdict + empty-`source_version_ids` insufficient-knowledge proxy), newest first, paginated.
+- **Role-aware admin portal:** `auth-context` fetches `GET /me` after sign-in to expose the API `role`; `AdminFrame` splits nav into an **Expert** group (Knowledge, Drafts, Voice profiles, AI answers, Conversions) shown to expert+admin, and an **Admin** group (Revenue, Entitlements, Funnel rules, Flagged answers, Users, Experts, Audit log) shown only once `/me` resolves to admin.
+- **Pages:** `apps/admin/app/conversions/page.tsx` (Stat cards + by-trigger/response/status breakdowns + recent feed; admin gets a `listExperts` picker) and `apps/admin/app/answers/page.tsx` (answer-review card feed w/ feedback badges + "Load more").
+- **Shared:** new `packages/shared/src/expert.ts` — `expertAnswerListQuerySchema`, `ExpertConversionsDto`/`ExpertConversionItemDto`/`ExpertAnswerReviewDto`, `ConsultationStatusValue`, `RecommendationFunnelResponse`.
+- New admin-client fns: `getMe`, `getExpertConversions`, `getExpertAnswers`; new `consultationStatusTone`/`funnelResponseTone` in `status-tone.ts`.
+
+**Key decisions:**
+- **Elevated-but-bounded read** is the architectural crux. The funnel rows belong to end users and are `user_scoped` under RLS, so a non-admin expert can't see them under their own context. The service runs reads in an elevated context (`runReviewer` = `applyRlsContext({tenantId: user.tenantId, isAdmin: true})`, the `BookingService.runAsSystem` precedent) and re-establishes isolation with **explicit** `tenant_id` + `conversation.expert_id` predicates in every query. Safe-by-construction: resolve the expert first and short-circuit to empty when none resolves, so every data query always carries a concrete `expert_id` and can never widen to the tenant.
+- A dedicated expert module with explicit predicates over relaxing the admin-only failed-query inspector to `@Roles("expert")` — that inspector has no voice scope, so an expert would see every tenant's flagged answers. The voice-scoping *is* the point of the expert portal.
+- Admin reviews a chosen expert via the roster picker; no platform-wide expert-portal view (that's M10 analytics).
+- `runReviewer` injects `PRISMA` directly rather than using `RlsService.run`, because `RlsService.run` derives `is_admin` from `user.role` — an expert there would be tenant+user-scoped and couldn't see customers.
+
+**Files changed:**
+- `packages/shared/src/expert.ts` (new) + `packages/shared/src/index.ts` (exports) — wire DTOs + schema.
+- `apps/api/src/expert/expert-portal.service.ts` (new) — the read choke point + elevated/bounded RLS.
+- `apps/api/src/expert/expert-portal.controller.ts` (new) — `@Roles("expert")` routes; optional `?expertId=` via `ParseUUIDPipe({optional:true})`.
+- `apps/api/src/expert/expert.module.ts` (new) + `apps/api/src/app.module.ts` (register).
+- `apps/admin/src/lib/auth-context.tsx` — `role` state fetched from `/me`.
+- `apps/admin/src/components/AdminFrame.tsx` — role-aware Expert/Admin nav groups.
+- `apps/admin/src/lib/admin-client.ts` — `getMe` (local `MeDto`), `getExpertConversions`, `getExpertAnswers`.
+- `apps/admin/src/lib/status-tone.ts` — `consultationStatusTone`, `funnelResponseTone`.
+- `apps/admin/app/conversions/page.tsx` (new), `apps/admin/app/answers/page.tsx` (new).
+- Tests: `apps/api/src/expert/expert-portal.service.test.ts` (+12), `packages/shared/src/expert.test.ts` (+5).
+
+**Notes for next iteration:**
+- **M8 is fully complete.** Next gated milestone is **M9 (Concierge Mode)** behind **OD#5** (Mode B legal/brand ruling) — resolve it or fall back to Mode-A-only. The M8.5 expert portal is the host for the **M9.2 concierge review queue**: build it on the `ExpertPortalService` elevated-but-bounded pattern (flagged low-confidence answers scoped to the expert's voice) and add it to the role-aware Expert nav group.
+- **Deferred admin surface:** the manual TidyCal reconcile (`POST /consultation-bookings/reconcile`, admin-only) + unmatched `booking_webhook_events` (`matched=false`) still have no UI — a small admin page closes the OD#10 loop.
+- Seam-tested with a mocked tx; the real elevated cross-user read + the `LATERAL` join join the M11 Testcontainers list (raw-SQL caveat shared with the failed-query inspector / `PgVectorStore`).
+- Full `apps/api` suite ran clean this session: **60 suites / 526 tests**. Totals: **824 pass** (shared 143, ui 3, db 9, ai 143, api 526).

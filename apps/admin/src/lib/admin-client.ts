@@ -33,6 +33,8 @@ import type {
   AdminExpertUpdateInput,
   VoiceProfileCreateInput,
   VoiceProfileUpdateInput,
+  ExpertConversionsDto,
+  ExpertAnswerReviewDto,
 } from "@expertos/shared";
 
 /**
@@ -431,4 +433,46 @@ export function voiceProfileAction(
   return request<VoiceProfileAdminDto>(`/voice-profiles/${id}/${action}`, token, {
     method: "POST",
   });
+}
+
+// ── session identity (role gating) ──────────────────────────────────────────
+
+/** The authenticated principal echoed by `GET /me` — the portal reads `role` to gate its nav. */
+interface MeDto {
+  id: string;
+  email: string;
+  displayName: string | null;
+  role: Role;
+}
+
+/** Resolve the signed-in principal (used to gate the portal nav by role). */
+export function getMe(token: string): Promise<MeDto> {
+  return request<MeDto>("/me", token);
+}
+
+// ── M8.5 — expert portal (conversions + AI-answer review) ───────────────────
+
+/**
+ * Consultation-conversion summary for the expert's voice. A non-admin expert is scoped to their own
+ * voice (omit `expertId`); an admin targets a specific expert by id.
+ */
+export function getExpertConversions(
+  token: string,
+  expertId?: string,
+): Promise<ExpertConversionsDto> {
+  const query = expertId != null && expertId !== "" ? `?expertId=${expertId}` : "";
+  return request<ExpertConversionsDto>(`/expert/conversions${query}`, token);
+}
+
+/** A page of AI answers rendered in the expert's voice, newest first, for review. */
+export function getExpertAnswers(
+  token: string,
+  params?: { expertId?: string; limit?: number; offset?: number },
+): Promise<ExpertAnswerReviewDto[]> {
+  const search = new URLSearchParams();
+  if (params?.expertId != null && params.expertId !== "") search.set("expertId", params.expertId);
+  if (params?.limit != null) search.set("limit", String(params.limit));
+  if (params?.offset != null) search.set("offset", String(params.offset));
+  const query = search.toString();
+  return request<ExpertAnswerReviewDto[]>(`/expert/answers${query ? `?${query}` : ""}`, token);
 }

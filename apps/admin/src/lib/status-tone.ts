@@ -2,9 +2,11 @@ import type {
   BadgeTone,
 } from "@expertos/ui";
 import type {
+  ConsultationStatusValue,
   FairUseFlagStatusValue,
   KnowledgeDraftStatusValue,
   PublishStatusValue,
+  RecommendationFunnelResponse,
   Role,
 } from "@expertos/shared";
 
@@ -62,6 +64,39 @@ const ROLE_TONES: Record<Role, BadgeTone> = {
 
 export function roleTone(role: Role): BadgeTone {
   return ROLE_TONES[role];
+}
+
+/**
+ * Consultation lifecycle tones (M8.5 expert conversions): `completed` reads as success (green),
+ * `confirmed`/`booked` as progress (info), the initial `recommended` as neutral (ink), and
+ * `canceled`/`no_show` as a lost conversion (red).
+ */
+const CONSULTATION_TONES: Record<ConsultationStatusValue, BadgeTone> = {
+  recommended: "ink",
+  booked: "info",
+  confirmed: "info",
+  completed: "green",
+  canceled: "red",
+  no_show: "red",
+};
+
+export function consultationStatusTone(status: ConsultationStatusValue): BadgeTone {
+  return CONSULTATION_TONES[status];
+}
+
+/**
+ * Funnel-response tones (M8.5 expert conversions): `book` is the conversion (green), `maybe_later`
+ * a soft signal (amber), `ask_another` neutral (info), and the not-yet-answered `pending` ink.
+ */
+const FUNNEL_RESPONSE_TONES: Record<RecommendationFunnelResponse, BadgeTone> = {
+  pending: "ink",
+  book: "green",
+  maybe_later: "amber",
+  ask_another: "info",
+};
+
+export function funnelResponseTone(response: RecommendationFunnelResponse): BadgeTone {
+  return FUNNEL_RESPONSE_TONES[response];
 }
 
 /** Human label for a status (replaces `_` with a space so `expert_review` reads naturally). */

@@ -15,6 +15,7 @@ import { BillingModule } from "./billing/billing.module";
 import { RevenueModule } from "./revenue/revenue.module";
 import { FeedbackInspectorModule } from "./feedback-inspector/feedback-inspector.module";
 import { AdminModule } from "./admin/admin.module";
+import { ExpertModule } from "./expert/expert.module";
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AdminModule } from "./admin/admin.module";
     RevenueModule,
     FeedbackInspectorModule,
     AdminModule,
+    ExpertModule,
   ],
   controllers: [HealthController],
   providers: [HealthService],

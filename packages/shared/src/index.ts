@@ -120,6 +120,15 @@ export type {
 } from "./revenue";
 export { failedQueryListQuerySchema } from "./failed-queries";
 export type { FailedQueryListQueryInput, FailedQueryDto } from "./failed-queries";
+export { expertAnswerListQuerySchema } from "./expert";
+export type {
+  ConsultationStatusValue,
+  RecommendationFunnelResponse,
+  ExpertConversionItemDto,
+  ExpertConversionsDto,
+  ExpertAnswerListQueryInput,
+  ExpertAnswerReviewDto,
+} from "./expert";
 export {
   adminAuditListQuerySchema,
   FAIR_USE_FLAG_STATUSES,
