@@ -30,10 +30,19 @@ export class ParserRegistry {
   }
 
   resolve(contentType: string): Parser {
-    const parser = this.byType.get(normalize(contentType));
+    const parser = this.tryResolve(contentType);
     if (!parser) {
       throw new UnsupportedContentTypeError(contentType);
     }
     return parser;
+  }
+
+  /**
+   * Like {@link resolve} but returns `null` instead of throwing when no parser is registered —
+   * for callers (M5.2 upload indexing) that treat an unparseable-but-allowlisted format as "store
+   * now, index when its parser lands" rather than an error.
+   */
+  tryResolve(contentType: string): Parser | null {
+    return this.byType.get(normalize(contentType)) ?? null;
   }
 }

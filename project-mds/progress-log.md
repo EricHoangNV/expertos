@@ -786,3 +786,31 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M5.2** adds `mode` to the request + divergent retention (temporary: `retentionDays`/`expiresAt`, not indexed) vs indexing (persistent: run M1.1 ingestion → `upload_chunks` under `user_private`/`tenant_customer`). The DTO already carries `mode`, so it's non-breaking. This is where the real PDF/DOCX/XLSX parsers land in `ParserRegistry`. `InMemoryStorageProvider` keeps bytes by key, but `StorageProvider` needs a `get`/`download` method (+ the real GCS driver) for a parse step to read them back.
 - **Uploads are not yet readable by retrieval/chat** — `upload_chunks` is empty until M5.2; `RetrievalService`/`ChatService` must fold in the user's uploaded chunks (M5.2+), and `Citation.uploadChunkId` populated so `ChatCitationDto.kind` derives `"upload"` (info-blue `.cite.upload`, M5.4 — the read-path seam is already in place from M4.2).
 - Real DB write path is seam-tested with a mocked tx (M11 Testcontainers caveat, same as the other stores). multer resolves from `@nestjs/platform-express`'s context at runtime (verified), not hoisted to apps/api.
+
+---
+
+## M5.2 — Temporary vs persistent upload modes (retention + indexing strategy per mode)
+
+**PRD:** Phase 1 / M5 / M5.2 (§"Document-assisted Q&A"). **Date:** 2026-06-01.
+
+**What shipped.** Upload mode (`temporary` | `persistent`) now drives a divergent retention + indexing strategy, and `UploadService.upload` graduated from store-only (M5.1) to store-and-index.
+
+- **Shared (`packages/shared/src/upload.ts`):** `uploadCreateSchema` gains `mode` (zod enum, `.default("temporary")` → omitting it is non-breaking, keeps M5.1 behavior). New `UploadMode` type. `UploadedFileDto` gains `chunkCount` (how many searchable chunks were indexed — `0` signals a not-yet-parseable binary) and `expiresAt` (set for temporary, null for persistent).
+- **Indexing seam (`ParserRegistry.tryResolve → Parser|null`):** returns null instead of throwing `UnsupportedContentTypeError`, so the upload path can treat an allowlisted-but-unparseable format (PDF/DOCX/XLSX) as "store now, index when its parser lands (M5.3)" rather than an error. `resolve` now delegates to `tryResolve`.
+- **`UploadService` (`apps/api/src/uploads/upload.service.ts`):** after validate→scan→conversation-ownership, it parses (reusing the ingestion `ParserRegistry`)→chunks (`chunkText`)→embeds (`createDefaultEmbeddingProvider`, the *same* model as ingestion/retrieval, behind new `UPLOAD_PARSER_REGISTRY`/`UPLOAD_EMBEDDING_PROVIDER` tokens) **before** storing bytes (an embed failure stores nothing — no orphan). Then one `RlsService.run` creates the `uploaded_files` row **and** its `upload_chunks` atomically, embeddings written via raw `UPDATE upload_chunks SET embedding=$1::vector` (the `DocumentVersionRepository` pattern; `upload_chunks` is `tenant_only` RLS). Pure `retentionFor(mode)` maps mode→`{scope, expiresAt}`: temporary→`temporary_upload`+`expiresAt=now+TEMPORARY_RETENTION_DAYS(7)d`+`retentionDays=7`; persistent→`user_private`+null/null. Embedding cost recorded (`upload.embed`) only when chunks are produced.
+- **Module wiring:** `UploadModule` provides the two new tokens from the ingestion factories; `UsageLogService` injected (global ObservabilityModule).
+
+**Decisions.**
+1. **Both modes parse into `upload_chunks`** — the divergence is **scope + retention**, not whether-parsed. PRD framing: temporary = transient chunks scoped to the session (excluded from searchable knowledge), persistent = indexed into user-private knowledge. So a temporary CSV *does* produce chunks; they're just session-scoped + expiring.
+2. **Retrieval/chat folding deferred to M5.4.** M5.2 *writes* `upload_chunks`; nothing *reads* them yet. M5.4 extends `RetrievalService`/`ChatService` to fold in a user's uploads (temporary = this question only) + distinct info-blue upload citations + per-user isolation (isolate via the `user_scoped` `uploaded_files` join, since `upload_chunks` is `tenant_only`). The M4.2 read path (`ChatCitationDto.kind`, `loadCitations` deriving `kind` from `uploadChunkId`) is already in place.
+3. **Binary parsers (PDF/DOCX/XLSX) land in M5.3.** `tryResolve` is the store-now/index-later seam; today those types store with `chunkCount: 0`. This avoids regressing M5.1 (which stores binary uploads fine) while being honest (the DTO reports 0 chunks).
+4. **No `StorageProvider.get` added (yet).** M5.2 parses from the in-hand validated buffer (already in memory, already scanned) rather than re-reading from storage. M5.3's binary-backfill is what needs `get`/`download` + the real GCS driver.
+5. **No migration** — schema already had `mode`/`scope`/`retention_days`/`expires_at` on `uploaded_files` and the `upload_chunks` table + HNSW index (from M5.1's init schema).
+
+**Gates.** typecheck ✅ · test ✅ (409 pass: shared 64, ui 3, db 9, ai 126, api 207 — +5 upload.service tests) · lint ✅ · build ✅ · knip ✅. `upload.service.ts` = 100%/96.77%/100%/100% (only the pre-existing defensive `?? ""` fallback + the embed-mismatch guard uncovered — the accepted defensive-throw pattern, mirroring `ingestion.service.ts`).
+
+**Notes for next iteration (M5.3 / M5.4):**
+- **M5.3 (spreadsheet handling):** register real PDF/DOCX/XLSX parsers at the `ParserRegistry` seam (where `tryResolve` returns null today). For XLSX: sheets/tables/headers, real numeric values, and populate `upload_chunks.sheet_name`/`cell_ref` for sheet/cell citations. Add `StorageProvider.get`/`download` + the real GCS driver for any backfill (re-read stored bytes); M5.2 only parses the in-hand buffer.
+- **M5.4 (upload citations + retrieval folding):** `upload_chunks` is now populated but unread — fold into retrieval, populate `Citation.uploadChunkId` (M4.2 read path already derives `kind: "upload"` → info-blue `.cite.upload`/`badge-info`), and isolate per-user via the `uploaded_files` join (`upload_chunks` is `tenant_only`, not `user_scoped`).
+- **Web upload UI** can now offer a temporary/persistent picker and surface `chunkCount`/`expiresAt` from the DTO (deferred with the rest of the consumer-web surface).
+- Real DB write path (file row + chunks + raw embedding) is seam-tested with a mocked tx — M11 Testcontainers caveat, same as the other raw-SQL stores.

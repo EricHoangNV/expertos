@@ -49,6 +49,15 @@ export const UPLOAD_TYPES: Readonly<Record<string, UploadTypeSpec>> = {
  */
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
+/**
+ * Default retention window (days) for a `temporary` upload (M5.2). A temporary file's chunks are
+ * scoped to the asking user's session and are not part of the searchable knowledge base, so the row
+ * carries an `expires_at = created_at + this` that a future sweeper job uses to reclaim it. Kept as
+ * a single named constant so the retention policy lives in one place when it becomes env-driven;
+ * `persistent` uploads do not expire and store `null`.
+ */
+export const TEMPORARY_RETENTION_DAYS = 7;
+
 /** Strip MIME parameters (`; charset=utf-8`), lowercase, trim — mirrors the parser registry. */
 export function normalizeContentType(contentType: string): string {
   return contentType.split(";")[0].trim().toLowerCase();

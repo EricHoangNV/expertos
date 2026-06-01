@@ -8,16 +8,26 @@ import {
   UnprocessableEntityException,
   UnsupportedMediaTypeException,
 } from "@nestjs/common";
-import type { UploadCreateInput, UploadedFileDto } from "@expertos/shared";
+import type { UploadCreateInput, UploadedFileDto, UploadMode } from "@expertos/shared";
+import { chunkText, type EmbeddingProvider } from "@expertos/ai";
 import type { Prisma } from "@expertos/db";
 import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { StructuredLogger } from "../observability/logger.service";
-import { MALWARE_SCANNER, STORAGE_PROVIDER } from "./upload.tokens";
+import { UsageLogService } from "../observability/usage-log.service";
+import { toVectorLiteral } from "../database/vector";
+import { ParserRegistry } from "../ingestion/parser-registry";
+import {
+  MALWARE_SCANNER,
+  STORAGE_PROVIDER,
+  UPLOAD_EMBEDDING_PROVIDER,
+  UPLOAD_PARSER_REGISTRY,
+} from "./upload.tokens";
 import type { StorageProvider } from "./storage-provider";
 import type { MalwareScanner } from "./malware-scanner";
 import {
   MAX_UPLOAD_BYTES,
+  TEMPORARY_RETENTION_DAYS,
   UPLOAD_TYPES,
   normalizeContentType,
   type UploadTypeSpec,
@@ -32,7 +42,18 @@ export interface UploadFilePart {
   buffer: Buffer;
 }
 
-/** Prisma `select` that yields exactly an {@link UploadedFileDto} (plus `mode`). */
+/** A processed upload chunk ready to persist (text + embedding). */
+interface IndexedChunk {
+  index: number;
+  content: string;
+  tokenCount: number;
+  embedding: number[];
+}
+
+/** The content scope an upload's chunks are stored under, derived from its {@link UploadMode}. */
+type UploadScope = "temporary_upload" | "user_private";
+
+/** Prisma `select` that yields the columns an {@link UploadedFileDto} needs. */
 const UPLOADED_FILE_SELECT = {
   id: true,
   filename: true,
@@ -42,6 +63,7 @@ const UPLOADED_FILE_SELECT = {
   scanned: true,
   scanClean: true,
   conversationId: true,
+  expiresAt: true,
   createdAt: true,
 } satisfies Prisma.UploadedFileSelect;
 
@@ -50,28 +72,37 @@ interface UploadedFileRow {
   filename: string;
   contentType: string;
   sizeBytes: number;
-  mode: "temporary" | "persistent";
+  mode: UploadMode;
   scanned: boolean;
   scanClean: boolean | null;
   conversationId: string | null;
+  expiresAt: Date | null;
   createdAt: Date;
 }
 
 /**
- * Owns query-time document upload (M5.1, PRD §"Document-assisted Q&A"). The flow is:
- * validate type/size → magic-byte check → malware scan → store bytes → persist `uploaded_files`.
+ * Owns query-time document upload (M5.1/M5.2, PRD §"Document-assisted Q&A"). The flow is:
+ * validate type/size → magic-byte check → malware scan → parse+chunk+embed → store bytes →
+ * persist `uploaded_files` + its `upload_chunks` atomically.
  *
  * Uploads are an untrusted trust boundary (PRD §"Security"): the declared content type, filename
  * and bytes are all attacker-controlled, so the file is allowlisted, its extension cross-checked,
  * its leading bytes sniffed, and its content scanned for malware before anything is stored — an
- * infected or spoofed file is rejected and never written. `uploaded_files` is `user_scoped` under
- * Postgres RLS (directive §4.21), so persistence runs inside {@link RlsService.run} and a peer's
- * uploads are invisible; an attached `conversationId` is re-checked for ownership the same way
- * bookmarking does (directive §26), because `conversations` is the real per-user boundary.
+ * infected or spoofed file is rejected and never written. `uploaded_files` is `user_scoped` and
+ * `upload_chunks` `tenant_only` under Postgres RLS (directive §4.21), so persistence runs inside
+ * {@link RlsService.run} and a peer's uploads are invisible; an attached `conversationId` is
+ * re-checked for ownership the same way bookmarking does (directive §26).
  *
- * Storage and scanning sit behind swappable contracts ({@link StorageProvider},
- * {@link MalwareScanner}); the defaults are offline/deterministic. Temporary-vs-persistent
- * retention + indexing is M5.2, so M5.1 stores every file under the DB default (`temporary`).
+ * **Mode (M5.2)** selects retention + indexing strategy:
+ * - `temporary` (default) — chunks scoped `temporary_upload` (excluded from the searchable
+ *   knowledge base; session-scoped) and the row is stamped with an `expiresAt` so a sweeper can
+ *   reclaim it after {@link TEMPORARY_RETENTION_DAYS}.
+ * - `persistent` — chunks scoped `user_private`, no expiry, so later questions can retrieve them.
+ *
+ * Both modes run the file through the same parse→chunk→embed pipeline as ingestion (reusing the
+ * `ParserRegistry` + embedding factory so upload vectors share the expert-knowledge space). A
+ * format whose parser has not landed yet (PDF/DOCX/XLSX binary parsing is M5.3) is stored but
+ * produces zero chunks — `UploadedFileDto.chunkCount` reports `0` so the caller can tell.
  */
 @Injectable()
 export class UploadService {
@@ -79,6 +110,10 @@ export class UploadService {
     private readonly rls: RlsService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
     @Inject(MALWARE_SCANNER) private readonly scanner: MalwareScanner,
+    @Inject(UPLOAD_PARSER_REGISTRY) private readonly parsers: ParserRegistry,
+    @Inject(UPLOAD_EMBEDDING_PROVIDER)
+    private readonly embeddings: EmbeddingProvider,
+    private readonly usage: UsageLogService,
     private readonly logger: StructuredLogger,
   ) {}
 
@@ -121,10 +156,17 @@ export class UploadService {
       throw new UnprocessableEntityException("file failed malware scan");
     }
 
-    // Verify conversation ownership before storing bytes, so a rejected attach leaves no orphan.
+    // Verify conversation ownership before any storage, so a rejected attach leaves no orphan.
     const conversationId = input.conversationId
       ? await this.requireOwnedConversation(user, input.conversationId)
       : null;
+
+    const mode = input.mode;
+    const { scope, expiresAt } = retentionFor(mode);
+
+    // Parse+chunk+embed up front: a failure here stores nothing (no orphan bytes/row). An
+    // unparseable-but-allowlisted format (M5.3 binary parsers) yields [] — stored, not indexed.
+    const chunks = await this.buildIndexedChunks(file.buffer, contentType);
 
     const gcsUri = await this.storage.put({
       key: `uploads/${user.id}/${randomUUID()}/${filename}`,
@@ -132,12 +174,16 @@ export class UploadService {
       contentType,
     });
 
-    const row = await this.rls.run(user, (tx) =>
-      tx.uploadedFile.create({
+    const row = await this.rls.run(user, async (tx) => {
+      const created = await tx.uploadedFile.create({
         data: {
           tenantId: user.tenantId,
           userId: user.id,
           conversationId,
+          scope,
+          mode,
+          retentionDays: mode === "temporary" ? TEMPORARY_RETENTION_DAYS : null,
+          expiresAt,
           filename,
           contentType,
           sizeBytes,
@@ -146,16 +192,98 @@ export class UploadService {
           scanClean: true,
         },
         select: UPLOADED_FILE_SELECT,
-      }),
-    );
+      });
+      await this.persistChunks(tx, user, created.id, scope, chunks);
+      return created;
+    });
+
+    if (chunks.length > 0) {
+      const totalTokens = chunks.reduce((sum, c) => sum + c.tokenCount, 0);
+      await this.usage.record(user, {
+        featureKey: "upload.embed",
+        model: this.embeddings.name,
+        promptTokens: totalTokens,
+        conversationId: conversationId ?? undefined,
+      });
+    }
 
     this.logger.info("file uploaded", {
       uploadedFileId: row.id,
       kind: spec.kind,
+      mode,
+      scope,
+      chunkCount: chunks.length,
       sizeBytes,
       storage: this.storage.name,
     });
-    return toUploadedFileDto(row as UploadedFileRow);
+    return toUploadedFileDto(row as UploadedFileRow, chunks.length);
+  }
+
+  /**
+   * Parse → chunk → embed the file into searchable chunks. Returns `[]` (stored, not indexed) when
+   * no parser is registered for the type yet (PDF/DOCX/XLSX — M5.3) or the file parses to no text.
+   * The embedder is the same factory ingestion/retrieval use, so the vectors are comparable.
+   */
+  private async buildIndexedChunks(
+    buffer: Buffer,
+    contentType: string,
+  ): Promise<IndexedChunk[]> {
+    const parser = this.parsers.tryResolve(contentType);
+    if (!parser) {
+      return [];
+    }
+    const parsed = await parser.parse(buffer);
+    const textChunks = chunkText(parsed.text);
+    if (textChunks.length === 0) {
+      return [];
+    }
+
+    const contents = textChunks.map((chunk) => chunk.content);
+    const embeddings = await this.embeddings.embed(contents);
+    // The EmbeddingProvider contract guarantees one vector per input, in order — assert it so a
+    // misbehaving driver can't silently misalign a vector with the wrong chunk.
+    if (embeddings.length !== contents.length) {
+      throw new Error(
+        `embedding provider returned ${embeddings.length} vectors for ${contents.length} chunks`,
+      );
+    }
+
+    return textChunks.map((chunk, i) => ({
+      index: chunk.index,
+      content: chunk.content,
+      tokenCount: chunk.tokenCount,
+      embedding: embeddings[i],
+    }));
+  }
+
+  /**
+   * Persist `upload_chunks` for a stored file. The embedding (`vector(1536)`) is written via raw
+   * SQL because Prisma can't map the `Unsupported("vector")` column — same as the ingestion store.
+   */
+  private async persistChunks(
+    tx: Prisma.TransactionClient,
+    user: AuthUser,
+    uploadedFileId: string,
+    scope: UploadScope,
+    chunks: IndexedChunk[],
+  ): Promise<void> {
+    for (const chunk of chunks) {
+      const row = await tx.uploadChunk.create({
+        data: {
+          tenantId: user.tenantId,
+          scope,
+          uploadedFileId,
+          chunkIndex: chunk.index,
+          content: chunk.content,
+        },
+        select: { id: true },
+      });
+      await tx.$executeRawUnsafe(
+        "UPDATE upload_chunks SET embedding = $1::vector WHERE id = $2::uuid",
+        toVectorLiteral(chunk.embedding),
+        row.id,
+      );
+    }
   }
 
   /** Reject a filename whose extension isn't one the declared content type legitimately uses. */
@@ -205,6 +333,24 @@ export class UploadService {
 }
 
 /**
+ * Map an upload {@link UploadMode} to its storage scope + expiry (M5.2). `temporary` chunks are
+ * session-scoped (`temporary_upload`, excluded from searchable knowledge) and the row expires after
+ * {@link TEMPORARY_RETENTION_DAYS}; `persistent` chunks are `user_private` and never expire.
+ */
+function retentionFor(mode: UploadMode): {
+  scope: UploadScope;
+  expiresAt: Date | null;
+} {
+  if (mode === "persistent") {
+    return { scope: "user_private", expiresAt: null };
+  }
+  const expiresAt = new Date(
+    Date.now() + TEMPORARY_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+  );
+  return { scope: "temporary_upload", expiresAt };
+}
+
+/**
  * Sanitize an untrusted filename for storage + echo-back (directive §1.2): take the basename
  * (strip any path), drop control chars and characters dangerous in a path/markup context, collapse
  * whitespace, NFC-normalize, and length-bound. Falls back to `upload` if nothing survives.
@@ -221,16 +367,21 @@ function sanitizeFilename(raw: string): string {
   return cleaned.length > 0 ? cleaned : "upload";
 }
 
-function toUploadedFileDto(row: UploadedFileRow): UploadedFileDto {
+function toUploadedFileDto(
+  row: UploadedFileRow,
+  chunkCount: number,
+): UploadedFileDto {
   return {
     id: row.id,
     filename: row.filename,
     contentType: row.contentType,
     sizeBytes: row.sizeBytes,
     mode: row.mode,
+    chunkCount,
     scanned: row.scanned,
     scanClean: row.scanClean,
     conversationId: row.conversationId,
+    expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
   };
 }
