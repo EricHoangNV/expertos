@@ -18,6 +18,16 @@ CI/CD pipeline is deferred to Phase 2 (PRD §"Phased Delivery Roadmap").
 | `iam.tf`        | least-privilege runtime service account |
 | `outputs.tf`    | service URLs, registry path, SQL connection name, bucket |
 
+## Quick start (dev environment)
+
+```bash
+./infra/dev-setup.sh <gcp-project-id> [region]
+```
+
+This automates steps 1–2 below: Terraform apply, pgvector, app_user, DATABASE_URL
+secret, Docker auth. You'll still need to add Firebase/AI/Stripe secrets manually
+(the script prints the exact commands).
+
 ## 1. Provision infrastructure
 
 ```bash

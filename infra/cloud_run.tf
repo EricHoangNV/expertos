@@ -49,6 +49,11 @@ resource "google_cloud_run_v2_service" "api" {
           }
         }
       }
+
+      env {
+        name  = "NODE_ENV"
+        value = "production"
+      }
     }
 
     # Mounts the instance's Unix socket at /cloudsql/<connection_name> via the

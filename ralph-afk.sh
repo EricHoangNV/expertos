@@ -10,6 +10,14 @@ source "$SCRIPT_DIR/.env"
 SANDBOX_NAME="claude-expertos"
 SANDBOX_LOG_DIR="/home/agent/.claude/projects/-Volumes-OWC-Express-1M2-Development-expertos"
 
+cleanup() {
+  echo "Stopping sandbox..."
+  docker sandbox stop "$SANDBOX_NAME" 2>/dev/null
+  [ -n "${tail_pid:-}" ] && kill "$tail_pid" 2>/dev/null
+  [ -n "${agent_pid:-}" ] && kill "$agent_pid" 2>/dev/null
+}
+trap cleanup EXIT
+
 # Notify function: echo to both console and Slack
 # Splits long messages into multiple Slack posts (3500 char chunks)
 notify() {
@@ -66,6 +74,9 @@ notify "🚀 Starting AFK mode ($MODE) with $iterations iterations..."
 
 for ((i=1; i<=iterations; i++)); do
   notify "🔄 Starting iteration $i of $iterations..."
+
+  # Ensure sandbox is running (it may have been stopped after a previous iteration)
+  docker sandbox start "$SANDBOX_NAME" 2>/dev/null
 
   # Inject git credentials into sandbox for push access (credential-store, not cache —
   # cache daemon dies between docker exec calls)
@@ -261,6 +272,8 @@ ${LATEST_VERDICTS}
   kill $agent_pid 2>/dev/null
   wait $agent_pid 2>/dev/null
   [ -n "${tail_pid:-}" ] && kill $tail_pid 2>/dev/null
+  tail_pid=""
+  agent_pid=""
   sleep 1
 
   # Get Claude's final summary from the session log and send to Slack
@@ -295,6 +308,9 @@ $commits"
   fi
 
   notify "✅ Iteration $i completed"
+
+  # Stop sandbox to free resources between iterations
+  docker sandbox stop "$SANDBOX_NAME" 2>/dev/null
 done
 
 notify "⚠️ Reached $iterations iterations without seeing <promise>COMPLETE</promise>."

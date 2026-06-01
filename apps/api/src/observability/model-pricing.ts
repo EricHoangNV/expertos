@@ -57,15 +57,18 @@ const EMBEDDING: ModelRate = {
  * caller changes when a real driver swaps in — only this map does.
  */
 const MODEL_PRICING: Record<string, ModelRate> = {
-  // Offline dev providers in this codebase (priced onto the prod tiers for realistic local logs).
-  "echo-dev": STANDARD, // default answer LLM (M3.1)
-  "echo-dev-mini": MINI, // degraded fair-use LLM (M6.3)
-  "hashing-dev": EMBEDDING, // offline embedding provider (M1)
-  // Representative prod model ids the LLM/embedding swap points will use.
+  // Offline dev providers (priced onto prod tiers for realistic local logs).
+  "echo-dev": STANDARD,
+  "echo-dev-mini": MINI,
+  "hashing-dev": EMBEDDING,
+  // Default providers (OpenAI).
   "gpt-4o-mini": STANDARD,
   "gpt-4o": PREMIUM,
-  "claude-sonnet-4": PREMIUM,
   "text-embedding-3-small": EMBEDDING,
+  // Backup providers (Anthropic + Google).
+  "claude-haiku-4-5": STANDARD,
+  "claude-sonnet-4-6": PREMIUM,
+  "text-embedding-004": EMBEDDING,
 };
 
 /** Unknown model → priced at the standard tier so an unrecognised model is never silently free. */
