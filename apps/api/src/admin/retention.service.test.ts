@@ -23,6 +23,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const POLICY: RetentionPolicy = {
   conversationDays: 730,
   usageLogDays: 730,
+  consultationTranscriptDays: 365,
+  conciergeRecordDays: 365,
   now: () => NOW_MS,
 };
 
@@ -31,6 +33,17 @@ function makeTx() {
     uploadedFile: { count: jest.fn(), deleteMany: jest.fn() },
     conversation: { count: jest.fn(), deleteMany: jest.fn() },
     usageLog: { count: jest.fn(), deleteMany: jest.fn() },
+    consultationNote: { count: jest.fn(), deleteMany: jest.fn() },
+    reviewResponse: { count: jest.fn(), updateMany: jest.fn() },
+  };
+}
+
+/** The relation filter the consultation-transcript sweep targets, for a given cutoff. */
+function transcriptWhere(cutoff: Date) {
+  return {
+    consultation: {
+      OR: [{ scheduledAt: { lt: cutoff } }, { scheduledAt: null, createdAt: { lt: cutoff } }],
+    },
   };
 }
 
@@ -50,6 +63,8 @@ describe("RetentionService.preview", () => {
     tx.uploadedFile.count.mockResolvedValue(3);
     tx.conversation.count.mockResolvedValue(5);
     tx.usageLog.count.mockResolvedValue(7);
+    tx.consultationNote.count.mockResolvedValue(9);
+    tx.reviewResponse.count.mockResolvedValue(11);
     const { service, run } = makeService(tx);
 
     const result = await service.preview(ADMIN);
@@ -60,18 +75,24 @@ describe("RetentionService.preview", () => {
       temporaryUploads: 3,
       expiredConversations: 5,
       oldUsageLogs: 7,
+      consultationTranscripts: 9,
+      conciergeRecords: 11,
     });
     // Dry run never writes.
     expect(tx.uploadedFile.deleteMany).not.toHaveBeenCalled();
     expect(tx.conversation.deleteMany).not.toHaveBeenCalled();
     expect(tx.usageLog.deleteMany).not.toHaveBeenCalled();
+    expect(tx.consultationNote.deleteMany).not.toHaveBeenCalled();
+    expect(tx.reviewResponse.updateMany).not.toHaveBeenCalled();
   });
 
-  it("filters temporary uploads on stamped expiry and conversations/usage on policy cutoffs", async () => {
+  it("filters every category on its own cutoff (stamped expiry, policy windows, consultation date)", async () => {
     const tx = makeTx();
     tx.uploadedFile.count.mockResolvedValue(0);
     tx.conversation.count.mockResolvedValue(0);
     tx.usageLog.count.mockResolvedValue(0);
+    tx.consultationNote.count.mockResolvedValue(0);
+    tx.reviewResponse.count.mockResolvedValue(0);
     const { service } = makeService(tx);
 
     await service.preview(ADMIN);
@@ -85,15 +106,27 @@ describe("RetentionService.preview", () => {
     expect(tx.usageLog.count).toHaveBeenCalledWith({
       where: { occurredAt: { lt: new Date(NOW_MS - 730 * DAY_MS) } },
     });
+    expect(tx.consultationNote.count).toHaveBeenCalledWith({
+      where: transcriptWhere(new Date(NOW_MS - 365 * DAY_MS)),
+    });
+    expect(tx.reviewResponse.count).toHaveBeenCalledWith({
+      where: { createdAt: { lt: new Date(NOW_MS - 365 * DAY_MS) }, originalAnswer: { not: "[redacted]" } },
+    });
   });
 });
 
 describe("RetentionService.sweep", () => {
-  it("deletes per category, audits the counts in-tx, and reports them", async () => {
+  function primeSweep(tx: ReturnType<typeof makeTx>, counts = { up: 0, cv: 0, ul: 0, ct: 0, cr: 0 }) {
+    tx.uploadedFile.deleteMany.mockResolvedValue({ count: counts.up });
+    tx.conversation.deleteMany.mockResolvedValue({ count: counts.cv });
+    tx.usageLog.deleteMany.mockResolvedValue({ count: counts.ul });
+    tx.consultationNote.deleteMany.mockResolvedValue({ count: counts.ct });
+    tx.reviewResponse.updateMany.mockResolvedValue({ count: counts.cr });
+  }
+
+  it("deletes/anonymizes per category, audits the counts in-tx, and reports them", async () => {
     const tx = makeTx();
-    tx.uploadedFile.deleteMany.mockResolvedValue({ count: 2 });
-    tx.conversation.deleteMany.mockResolvedValue({ count: 4 });
-    tx.usageLog.deleteMany.mockResolvedValue({ count: 6 });
+    primeSweep(tx, { up: 2, cv: 4, ul: 6, ct: 8, cr: 10 });
     const { service, record, info } = makeService(tx);
 
     const result = await service.sweep(ADMIN);
@@ -103,6 +136,8 @@ describe("RetentionService.sweep", () => {
       temporaryUploads: 2,
       expiredConversations: 4,
       oldUsageLogs: 6,
+      consultationTranscripts: 8,
+      conciergeRecords: 10,
     });
     expect(tx.uploadedFile.deleteMany).toHaveBeenCalledWith({
       where: { mode: "temporary", expiresAt: { lt: new Date(NOW_MS) } },
@@ -114,8 +149,12 @@ describe("RetentionService.sweep", () => {
         temporaryUploads: 2,
         expiredConversations: 4,
         oldUsageLogs: 6,
+        consultationTranscripts: 8,
+        conciergeRecords: 10,
         conversationDays: 730,
         usageLogDays: 730,
+        consultationTranscriptDays: 365,
+        conciergeRecordDays: 365,
       },
     });
     expect(info).toHaveBeenCalledWith(
@@ -124,12 +163,43 @@ describe("RetentionService.sweep", () => {
     );
   });
 
+  it("deletes consultation transcripts on the consultation date but keeps the consultation row", async () => {
+    const tx = makeTx();
+    primeSweep(tx, { up: 0, cv: 0, ul: 0, ct: 3, cr: 0 });
+    const { service } = makeService(tx);
+
+    await service.sweep(ADMIN);
+
+    expect(tx.consultationNote.deleteMany).toHaveBeenCalledWith({
+      where: transcriptWhere(new Date(NOW_MS - 365 * DAY_MS)),
+    });
+  });
+
+  it("anonymizes (not deletes) concierge records, scrubbing text and skipping already-redacted rows", async () => {
+    const tx = makeTx();
+    primeSweep(tx, { up: 0, cv: 0, ul: 0, ct: 0, cr: 5 });
+    const { service } = makeService(tx);
+
+    await service.sweep(ADMIN);
+
+    expect(tx.reviewResponse.updateMany).toHaveBeenCalledWith({
+      where: {
+        createdAt: { lt: new Date(NOW_MS - 365 * DAY_MS) },
+        originalAnswer: { not: "[redacted]" },
+      },
+      data: { originalAnswer: "[redacted]", revisedAnswer: null, notes: null },
+    });
+  });
+
   it("falls back to the wall clock when no `now` seam is configured", async () => {
     const tx = makeTx();
-    tx.uploadedFile.deleteMany.mockResolvedValue({ count: 0 });
-    tx.conversation.deleteMany.mockResolvedValue({ count: 0 });
-    tx.usageLog.deleteMany.mockResolvedValue({ count: 0 });
-    const { service } = makeService(tx, { conversationDays: 730, usageLogDays: 730 });
+    primeSweep(tx);
+    const { service } = makeService(tx, {
+      conversationDays: 730,
+      usageLogDays: 730,
+      consultationTranscriptDays: 365,
+      conciergeRecordDays: 365,
+    });
 
     const before = Date.now();
     const result = await service.sweep(ADMIN);
@@ -141,10 +211,14 @@ describe("RetentionService.sweep", () => {
 
   it("honours custom retention windows when computing cutoffs", async () => {
     const tx = makeTx();
-    tx.uploadedFile.deleteMany.mockResolvedValue({ count: 0 });
-    tx.conversation.deleteMany.mockResolvedValue({ count: 0 });
-    tx.usageLog.deleteMany.mockResolvedValue({ count: 0 });
-    const { service } = makeService(tx, { conversationDays: 30, usageLogDays: 90, now: () => NOW_MS });
+    primeSweep(tx);
+    const { service } = makeService(tx, {
+      conversationDays: 30,
+      usageLogDays: 90,
+      consultationTranscriptDays: 120,
+      conciergeRecordDays: 200,
+      now: () => NOW_MS,
+    });
 
     await service.sweep(ADMIN);
 
@@ -153,6 +227,16 @@ describe("RetentionService.sweep", () => {
     });
     expect(tx.usageLog.deleteMany).toHaveBeenCalledWith({
       where: { occurredAt: { lt: new Date(NOW_MS - 90 * DAY_MS) } },
+    });
+    expect(tx.consultationNote.deleteMany).toHaveBeenCalledWith({
+      where: transcriptWhere(new Date(NOW_MS - 120 * DAY_MS)),
+    });
+    expect(tx.reviewResponse.updateMany).toHaveBeenCalledWith({
+      where: {
+        createdAt: { lt: new Date(NOW_MS - 200 * DAY_MS) },
+        originalAnswer: { not: "[redacted]" },
+      },
+      data: { originalAnswer: "[redacted]", revisedAnswer: null, notes: null },
     });
   });
 });

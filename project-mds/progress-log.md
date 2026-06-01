@@ -2425,3 +2425,28 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - NT.3 now has the same shape as NT.4: technical enforcement done, **human gate remains** (PM approval + publication of the policy DRAFT). Not code.
 - Follow-up (left intentionally): consultation-transcript expiry (delete `consultation_notes` only, keep the consultation row for revenue) + concierge-record anonymization (null/scrub PII past 1yr rather than delete).
 - Sweep runs the deletes in one transaction; fine at MVP scale. If row counts grow large, batch the `deleteMany` per category to bound lock duration.
+
+---
+
+## NT.3 follow-up — consultation-transcript expiry + concierge-record anonymization
+**Date:** 2026-06-01
+**Ref:** PRD §"Non-Technical Requirements" → NT.3 / "Data Retention & Deletion Policy"; follow-up flagged in the prior NT.3 entry
+
+**What:** Extended the data-retention sweeper (`RetentionService`) to enforce the two policy classes that were deliberately left out of the first cut because they carry value beyond their free text. Both honour the policy's distinction (keep the structural/revenue row, remove the personal content):
+
+- **Consultation transcripts** — `consultation_notes` past **1 year from the consultation date** (`scheduledAt ?? createdAt`, via a Prisma relation filter on the parent) are **deleted**, while the parent `consultations` row (status / amount / booking) is **kept** so historical revenue/MRR reporting is undistorted. This reconciles the policy table's "Consultation transcripts → Auto-delete: Yes" with the revenue-integrity concern: the *transcript* (notes) is the deletable part, not the consultation record.
+- **Concierge review records** — `review_responses` past **1 year** are **anonymized in place** (`updateMany`: `originalAnswer → "[redacted]"`, `revisedAnswer/notes → null`) rather than deleted, so the structural row the M10.3 concierge analytics read (verdict / timing / SLA / delivered flag) survives. This is the policy's "anonymized after retention" line. Idempotent via the `[redacted]` sentinel as an idempotency marker (`originalAnswer: { not: "[redacted]" }` in the where) — previews don't over-count and re-running the sweep is a no-op for already-scrubbed rows.
+
+**Files:**
+- `packages/shared/src/retention.ts` — added `consultationTranscripts` + `conciergeRecords` to `RetentionCounts`; rewrote the module doc (5 categories: 3 deletions + 2 value-bearing).
+- `apps/api/src/admin/retention.config.ts` — added `consultationTranscriptDays` (365) + `conciergeRecordDays` (365), env knobs `RETENTION_CONSULTATION_TRANSCRIPT_DAYS` / `RETENTION_CONCIERGE_DAYS`; non-positive/unparseable overrides still fall back so a typo can't collapse a window.
+- `apps/api/src/admin/retention.service.ts` — two new cutoffs, two new `where` helpers (`expiredTranscriptWhere` relation filter, `anonymizableReviewWhere` with the idempotency guard), the delete + anonymize ops in the existing in-tx sweep, audit metadata + log fields extended. The `REDACTED` sentinel lives here.
+- `apps/admin/app/retention/page.tsx` — two new preview/result `Stat`s + reworded the policy blurb.
+- Tests: `retention.service.test.ts` (preview counts both new categories; sweep delete-transcript-keeps-row, anonymize-not-delete-and-skip-redacted, audit metadata, custom windows) + `retention.config.test.ts` (defaults / overrides / fallbacks for the two new knobs).
+
+**Gates:** typecheck ✅, test ✅ (api 651→653; total 1031), lint ✅ (incl. stylelint), build ✅, deadcode (knip) ✅.
+
+**Notes for next iteration:**
+- NT.3 technical enforcement is now complete across all listed data classes; what remains is the **human gate** (PM approval + publication of the policy DRAFT).
+- Anonymization currently scrubs only `review_responses`. If `human_review_requests` ever gains free-text fields beyond `confidence_score`, extend `anonymizableReviewWhere`'s sibling there too.
+- Consultation-transcript deletion keys off the parent consultation date via a relation filter; at large scale consider an indexed denormalized date on `consultation_notes` if this `deleteMany` gets slow.

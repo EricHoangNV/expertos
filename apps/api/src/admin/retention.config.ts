@@ -17,23 +17,41 @@ export interface RetentionPolicy {
   conversationDays: number;
   /** Usage-log rows older than this many days (by `occurredAt`) are purged. */
   usageLogDays: number;
+  /** Consultation transcripts (`consultation_notes`) older than this many days are deleted (the
+   * parent consultation row is kept). Keyed off the consultation date (`scheduledAt ?? createdAt`). */
+  consultationTranscriptDays: number;
+  /** Concierge review responses older than this many days (by `createdAt`) are anonymized in place. */
+  conciergeRecordDays: number;
   /** Clock seam (defaults to `Date.now`) so cutoff math is deterministic in tests. */
   now?: () => number;
 }
 
-/** Published-policy defaults: 2-year retention for conversation history and usage logs. */
-const DEFAULTS = { conversationDays: 730, usageLogDays: 730 } as const;
+/**
+ * Published-policy defaults: 2-year retention for conversation history and usage logs; 1-year for
+ * consultation transcripts and concierge review records (PRD §"Data Retention & Deletion Policy").
+ */
+const DEFAULTS = {
+  conversationDays: 730,
+  usageLogDays: 730,
+  consultationTranscriptDays: 365,
+  conciergeRecordDays: 365,
+} as const;
 
 /**
  * Resolves the retention windows from the environment, falling back to {@link DEFAULTS}. A
  * non-positive or unparseable override is ignored (fall back) so a typo can never collapse the
- * window to zero and purge live data. `RETENTION_CONVERSATION_DAYS` / `RETENTION_USAGE_LOG_DAYS`
- * are the knobs.
+ * window to zero and purge live data. `RETENTION_CONVERSATION_DAYS` / `RETENTION_USAGE_LOG_DAYS` /
+ * `RETENTION_CONSULTATION_TRANSCRIPT_DAYS` / `RETENTION_CONCIERGE_DAYS` are the knobs.
  */
 export function resolveRetentionPolicy(env: NodeJS.ProcessEnv = process.env): RetentionPolicy {
   return {
     conversationDays: positiveInt(env.RETENTION_CONVERSATION_DAYS, DEFAULTS.conversationDays),
     usageLogDays: positiveInt(env.RETENTION_USAGE_LOG_DAYS, DEFAULTS.usageLogDays),
+    consultationTranscriptDays: positiveInt(
+      env.RETENTION_CONSULTATION_TRANSCRIPT_DAYS,
+      DEFAULTS.consultationTranscriptDays,
+    ),
+    conciergeRecordDays: positiveInt(env.RETENTION_CONCIERGE_DAYS, DEFAULTS.conciergeRecordDays),
   };
 }
 

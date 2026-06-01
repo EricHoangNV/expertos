@@ -69,19 +69,22 @@ export default function RetentionPage() {
         </div>
       </div>
       <p className="muted">
-        Enforces the published retention policy: expired temporary uploads, conversation history past
-        its window, and aged usage logs are deleted. Preview is non-destructive; running the sweep
-        deletes the rows and is recorded in the audit log. Consultation transcripts and concierge
-        records are handled separately (anonymized, not deleted).
+        Enforces the published retention policy. Past their window: temporary uploads, idle
+        conversation history, and aged usage logs are deleted; consultation transcripts are deleted
+        while the consultation record (revenue) is kept; concierge review records are anonymized in
+        place (answer text scrubbed, structural row kept for analytics). Preview is non-destructive;
+        running the sweep applies the changes and is recorded in the audit log.
       </p>
 
       <Card pad>
-        <div className="label">Eligible for deletion now</div>
+        <div className="label">Eligible now</div>
         {preview != null ? (
           <div className="row gap1">
             <Stat label="Temporary uploads" value={preview.temporaryUploads} />
             <Stat label="Idle conversations" value={preview.expiredConversations} />
             <Stat label="Old usage logs" value={preview.oldUsageLogs} />
+            <Stat label="Consultation transcripts" value={preview.consultationTranscripts} />
+            <Stat label="Concierge records" value={preview.conciergeRecords} />
           </div>
         ) : (
           <p className="muted">Loading…</p>
@@ -108,6 +111,8 @@ export default function RetentionPage() {
             <Stat label="Uploads deleted" value={result.temporaryUploads} />
             <Stat label="Conversations deleted" value={result.expiredConversations} />
             <Stat label="Usage logs deleted" value={result.oldUsageLogs} />
+            <Stat label="Transcripts deleted" value={result.consultationTranscripts} />
+            <Stat label="Records anonymized" value={result.conciergeRecords} />
           </div>
         </Card>
       )}
