@@ -1585,3 +1585,29 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - Seam-tested with a mocked tx; the real `booking_webhook_events` read joins the M11 Testcontainers list.
 - The unmatched feed is read-only — there's no per-row "manually link to a consultation" action. A reconcile poll is the only recovery mechanism; a manual link/dismiss action on a specific unmatched row could be a future follow-up if operators need it (would need a new write method on `BookingService`).
 - All gates green (typecheck/lint/knip/build all 7 workspaces); `booking.service.ts` stays 100% all metrics. Totals: **830 pass** (shared 147, ui 3, db 9, ai 143, api 528).
+
+## Consumer-web Plan & Usage page (deferred web-UI; M6.3 transparent usage indicator)
+**Date:** 2026-06-01
+**Ref:** PRD §"Paywall, Entitlements & Feature Gating" / M6.3 — deferred consumer-web UI (the API `GET /me/entitlements` + the `UsageMeter` primitive shipped in M6 with no web page consuming them).
+
+**What was done:**
+- New `apps/web/src/lib/account-client.ts` — thin `fetchEntitlements(token)` wrapper over `GET /me/entitlements` (mirrors `chat-client.ts`'s `NEXT_PUBLIC_API_URL` default + Bearer-token pattern; surfaces a `(status)` error on non-OK).
+- New `apps/web/app/account/page.tsx` ("Plan & usage") — gates on sign-in, loads the acting user's plan + per-feature entitlements, and renders:
+  - **metered** features via the `UsageMeter` DS primitive (`used` vs hard `limit`, plus the M6.3 fair-use `softLimit` warn band → amber, "Unlimited"/"fair-use N" labels handled by the primitive); a *disabled* metered feature shows a "Not included" badge instead of a misleading 0/0 meter.
+  - **boolean** features as Included (green) / Not-included (ink) badges.
+  - the current plan name as a green badge; loading/error as info/red badges.
+
+**Key decisions:**
+- Reused the existing `UsageMeter`/`Badge`/`Card` primitives verbatim (no new UI) so meter threshold/warn/Unlimited semantics stay single-sourced in `packages/ui`.
+- Split metered vs boolean rendering — boolean features have no quota to meter.
+- Purely additive frontend: no API/shared/backend code touched, so test counts are unchanged (830). The repo has no Next page tests (web precedent), so the gates are typecheck/lint/build/knip.
+- Did NOT add cross-page navigation (home/chat have none either — matched existing pattern); the page is reachable at `/account`.
+
+**Files changed:**
+- `apps/web/src/lib/account-client.ts` — new: `fetchEntitlements`.
+- `apps/web/app/account/page.tsx` — new: the Plan & usage page.
+
+**Notes for next iteration:**
+- Remaining deferred consumer-web UI: conversation history sidebar + saved answers + full-text search + answer feedback (M3.2–M3.4 are API-only); web upload UI with the temp/persistent mode picker POSTing to `/uploads` (M5); and surfacing the chat `done.degraded` flag as a subtle fair-use note in `apps/web/app/chat/page.tsx` (pairs naturally with this page's fair-use story).
+- Build gotcha reconfirmed: `next build` with `output: standalone` over a stale `.next` cache throws `SyntaxError: Unexpected end of JSON input` — `rm -rf apps/*/.next apps/*/.turbo` then rebuild (already documented in the seam notes).
+- No nav scaffold exists in `apps/web`; if more pages land, consider a small shared top-nav (out of scope here).
