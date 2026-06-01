@@ -11,6 +11,7 @@ import type {
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
 import {
+  escalateConciergeReview,
   getConciergeReview,
   getConciergeReviews,
   listExperts,
@@ -231,6 +232,29 @@ function ReviewItem({
     }
   }, [getIdToken, item.id, expertId, verdict, revised, notes, detail, onAnswered]);
 
+  const escalate = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        setError("Please sign in to continue.");
+        return;
+      }
+      await escalateConciergeReview(
+        token,
+        item.id,
+        { consultationTypeKey: null, notes: notes.trim() === "" ? null : notes },
+        expertId,
+      );
+      onAnswered();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to escalate the review.");
+    } finally {
+      setBusy(false);
+    }
+  }, [getIdToken, item.id, expertId, notes, onAnswered]);
+
   return (
     <Card pad>
       <div className="row gap2">
@@ -303,6 +327,9 @@ function ReviewItem({
                   <div className="row gap2">
                     <Button onClick={() => void submit()} disabled={busy}>
                       {busy ? "Saving…" : "Record verdict"}
+                    </Button>
+                    <Button variant="ghost" onClick={() => void escalate()} disabled={busy}>
+                      Escalate to consultation
                     </Button>
                     <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
                       Cancel

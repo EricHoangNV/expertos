@@ -14,3 +14,12 @@ export const CONCIERGE_ALLOW_SILENT = Symbol("CONCIERGE_ALLOW_SILENT");
 export function resolveSilentReviewAllowed(): boolean {
   return process.env.CONCIERGE_ALLOW_SILENT !== "false";
 }
+
+/**
+ * DI token for the concierge-flywheel embedding provider (M9.4). A "great"/edited reviewer answer
+ * is captured as a `voice_examples` row; its embedding MUST use the same model as voice retrieval
+ * (M2.1) or the cosine match is meaningless. Resolves from the same `createDefaultEmbeddingProvider`
+ * factory as ingestion / knowledge retrieval / voice — change that one factory when the production
+ * embedder lands and all of them move together.
+ */
+export const CONCIERGE_EMBEDDING_PROVIDER = "CONCIERGE_EMBEDDING_PROVIDER";

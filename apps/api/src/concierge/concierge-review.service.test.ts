@@ -1,6 +1,7 @@
 import { ConflictException, NotFoundException } from "@nestjs/common";
 import type { PrismaClient } from "@expertos/db";
 import { ConciergeReviewService } from "./concierge-review.service";
+import type { ConciergeFlywheelService } from "./concierge-flywheel.service";
 import type { StructuredLogger } from "../observability/logger.service";
 import type { AuthUser } from "../auth/auth.types";
 
@@ -25,6 +26,7 @@ const OTHER_EXPERT_ID = "44444444-4444-4444-4444-444444444444";
 
 const REQUEST_ROW = {
   id: "55555555-5555-5555-5555-555555555555",
+  userId: "88888888-8888-8888-8888-888888888888",
   messageId: "66666666-6666-6666-6666-666666666666",
   triggerMode: "auto_silent",
   visibility: "silent",
@@ -65,6 +67,17 @@ function makeTx() {
         createdAt: new Date("2026-06-01T01:00:00.000Z"),
       }),
     },
+    consultationType: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "ct-1",
+        key: "deep-dive",
+        priceCents: 19900,
+        tidycalLink: "https://tidycal.com/expert/deep-dive",
+      }),
+    },
+    consultation: {
+      create: jest.fn().mockResolvedValue({ id: "cons-1" }),
+    },
   };
 }
 
@@ -73,7 +86,10 @@ function makeService(tx: ReturnType<typeof makeTx>) {
     $transaction: jest.fn((work: (t: unknown) => Promise<unknown>) => work(tx)),
   } as unknown as PrismaClient;
   const logger = { info: jest.fn(), error: jest.fn() } as unknown as StructuredLogger;
-  return { service: new ConciergeReviewService(prisma, logger), tx };
+  const flywheel = {
+    applyReviewOutcome: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<ConciergeFlywheelService>;
+  return { service: new ConciergeReviewService(prisma, logger, flywheel), tx, flywheel };
 }
 
 describe("ConciergeReviewService.list", () => {
@@ -312,6 +328,59 @@ describe("ConciergeReviewService.respond", () => {
     expect(result).toMatchObject({ id: "resp-1", verdict: "great", edited: true });
   });
 
+  it("feeds the recorded verdict into the flywheel after the verdict commits", async () => {
+    const tx = makeTx();
+    const { service, flywheel } = makeService(tx);
+
+    await service.respond(EXPERT_USER, null, REQUEST_ROW.id, {
+      verdict: "great",
+      revisedAnswer: "An improved answer.",
+      notes: null,
+    });
+
+    expect(flywheel.applyReviewOutcome).toHaveBeenCalledWith({
+      reviewRequestId: REQUEST_ROW.id,
+      tenantId: EXPERT_USER.tenantId,
+      verdict: "great",
+      improvedAnswer: "An improved answer.",
+      edited: true,
+    });
+  });
+
+  it("passes the original answer as the improved answer for a verdict-only response", async () => {
+    const tx = makeTx();
+    const { service, flywheel } = makeService(tx);
+
+    await service.respond(EXPERT_USER, null, REQUEST_ROW.id, {
+      verdict: "bad",
+      revisedAnswer: null,
+      notes: null,
+    });
+
+    expect(flywheel.applyReviewOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        verdict: "bad",
+        improvedAnswer: REQUEST_ROW.message.content,
+        edited: false,
+      }),
+    );
+  });
+
+  it("does not run the flywheel when the verdict is rejected (409)", async () => {
+    const tx = makeTx();
+    tx.humanReviewRequest.findFirst.mockResolvedValue({ ...REQUEST_ROW, status: "answered" });
+    const { service, flywheel } = makeService(tx);
+
+    await expect(
+      service.respond(EXPERT_USER, null, REQUEST_ROW.id, {
+        verdict: "good",
+        revisedAnswer: null,
+        notes: null,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(flywheel.applyReviewOutcome).not.toHaveBeenCalled();
+  });
+
   it("marks edited:false for a verdict-only response (no revision)", async () => {
     const tx = makeTx();
     const { service } = makeService(tx);
@@ -368,6 +437,96 @@ describe("ConciergeReviewService.respond", () => {
         revisedAnswer: null,
         notes: null,
       }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe("ConciergeReviewService.escalate", () => {
+  it("opens a recommended consultation for the asking user and escalates the request", async () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+
+    const result = await service.escalate(EXPERT_USER, null, REQUEST_ROW.id, {
+      consultationTypeKey: "deep-dive",
+      notes: null,
+    });
+
+    // type resolved by the requested key (active).
+    expect(tx.consultationType.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { key: "deep-dive", active: true } }),
+    );
+    // consultation opened for the request's user (not the reviewer), priced from the type.
+    expect(tx.consultation.create).toHaveBeenCalledWith({
+      data: {
+        tenantId: EXPERT_USER.tenantId,
+        userId: REQUEST_ROW.userId,
+        typeId: "ct-1",
+        status: "recommended",
+        amountCents: 19900,
+      },
+      select: { id: true },
+    });
+    expect(tx.humanReviewRequest.update).toHaveBeenCalledWith({
+      where: { id: REQUEST_ROW.id },
+      data: { status: "escalated", assigneeId: EXPERT_USER.id },
+    });
+    expect(result).toEqual({
+      reviewRequestId: REQUEST_ROW.id,
+      status: "escalated",
+      consultationId: "cons-1",
+      consultationTypeKey: "deep-dive",
+      tidycalLink: "https://tidycal.com/expert/deep-dive",
+    });
+  });
+
+  it("falls back to the active default type when no key is supplied", async () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+
+    await service.escalate(EXPERT_USER, null, REQUEST_ROW.id, {
+      consultationTypeKey: null,
+      notes: null,
+    });
+
+    expect(tx.consultationType.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { active: true }, orderBy: { createdAt: "asc" } }),
+    );
+  });
+
+  it("opens an untyped consultation when no active type exists", async () => {
+    const tx = makeTx();
+    tx.consultationType.findFirst.mockResolvedValue(null);
+    const { service } = makeService(tx);
+
+    const result = await service.escalate(EXPERT_USER, null, REQUEST_ROW.id, {
+      consultationTypeKey: null,
+      notes: null,
+    });
+
+    expect(tx.consultation.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ typeId: null, amountCents: null }) }),
+    );
+    expect(result).toMatchObject({ consultationTypeKey: null, tidycalLink: null });
+  });
+
+  it("409s when the request is already answered (no consultation opened)", async () => {
+    const tx = makeTx();
+    tx.humanReviewRequest.findFirst.mockResolvedValue({ ...REQUEST_ROW, status: "answered" });
+    const { service } = makeService(tx);
+
+    await expect(
+      service.escalate(EXPERT_USER, null, REQUEST_ROW.id, { consultationTypeKey: null, notes: null }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.consultation.create).not.toHaveBeenCalled();
+  });
+
+  it("404s when the request is not in the reviewer's voice", async () => {
+    const tx = makeTx();
+    tx.humanReviewRequest.findFirst.mockResolvedValue(null);
+    const { service } = makeService(tx);
+
+    await expect(
+      service.escalate(EXPERT_USER, null, REQUEST_ROW.id, { consultationTypeKey: null, notes: null }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

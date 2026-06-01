@@ -46,6 +46,8 @@ import type {
   ReviewQueueDetailDto,
   ReviewResponseDto,
   ReviewResponseCreateInput,
+  ReviewEscalateInput,
+  ReviewEscalationDto,
 } from "@expertos/shared";
 
 /**
@@ -592,6 +594,20 @@ export function respondConciergeReview(
 ): Promise<ReviewResponseDto> {
   const query = expertId != null && expertId !== "" ? `?expertId=${expertId}` : "";
   return request<ReviewResponseDto>(`/concierge-reviews/${id}/respond${query}`, token, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Escalate a queued review into a paid consultation (opens a recommended consultation) — M9.4. */
+export function escalateConciergeReview(
+  token: string,
+  id: string,
+  body: ReviewEscalateInput,
+  expertId?: string,
+): Promise<ReviewEscalationDto> {
+  const query = expertId != null && expertId !== "" ? `?expertId=${expertId}` : "";
+  return request<ReviewEscalationDto>(`/concierge-reviews/${id}/escalate${query}`, token, {
     method: "POST",
     body: JSON.stringify(body),
   });

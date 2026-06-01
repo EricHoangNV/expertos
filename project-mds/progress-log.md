@@ -2074,3 +2074,44 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M9.3 (async delivery)** still needs an email-provider abstraction (the `PaymentProvider`/`TidyCalProvider` seam) + the conversation push-back; silent delivery is the OD#5-gated piece (now allowed). A live dep.
 - **M10.3 (concierge metrics)** now has `human_review_requests`/`review_responses` to aggregate — the `AnalyticsService` follow-on.
 - **Seam-tested with a mocked tx** — the real elevated cross-user enqueue/read + the volume-cap count join the M11 Testcontainers live-DB list (the standing raw-elevated-RLS caveat). `human_review_requests` is `user_scoped`, `review_responses` is `tenant_only`.
+
+## M9.4 — Reviewer-feedback flywheel + escalate-to-consultation
+**Date:** 2026-06-01
+**Ref:** PRD §"Phase 1 — MVP" → M9.4; §"Concierge Mode" → "Reviewer feedback loop (improves the next answer)"
+
+**What was done:**
+- New `ConciergeFlywheelService` (`apps/api/src/concierge/concierge-flywheel.service.ts`) — the global reviewer-feedback flywheel, invoked by `ConciergeReviewService.respond` after the verdict commits (non-fatal). In an elevated (`is_admin`) context re-bounded to the tenant:
+  - **great OR edited** → creates a `knowledge_drafts` row (conversation Q&A, → Expert Review → publish/re-embed via the M8.2 pipeline) + an **embedded** `voice_examples` row on the expert's published voice profile (same embedder as voice retrieval; embed outside the tx, raw `INSERT … $7::vector` in a 2nd short elevated tx).
+  - **bad** → increments `chunks.flag_count` + sets `last_flagged_at` on the answer's cited knowledge chunks (the M10.3 knowledge-gap signal).
+- New chunk-flag columns: schema `Chunk.flagCount`/`lastFlaggedAt` + migration `20260601070000_chunk_flag_signal` (additive, no backfill).
+- New `ConciergeReviewService.escalate` (`POST /concierge-reviews/:id/escalate`, `@Roles("expert")`) — opens a `recommended` consultation for the asking user (request `userId`), resolves the consultation type (requested key → active default → untyped), moves the request → `escalated`. Voice-scoped via `loadInVoice` (404/409). Added `userId` to `REQUEST_SELECT`.
+- Immediate context injection: `ConversationService.loadHistory` substitutes the latest reviewer-edited revision (`review_responses` where `edited && revisedAnswer != null`, joined to windowed assistant ids) into the replayed prompt context. Displayed message untouched.
+- Shared `reviewEscalateSchema` + `ReviewEscalateInput`/`ReviewEscalationDto` (`packages/shared/src/concierge.ts` + index re-exports).
+- Module wiring: `ConciergeFlywheelService` provider + `CONCIERGE_EMBEDDING_PROVIDER` (→ `createDefaultEmbeddingProvider`) in `ConciergeModule`.
+- Admin UI: `apps/admin/app/concierge-reviews` "Escalate to consultation" action + `escalateConciergeReview` admin-client fn.
+- Tests: +22 `apps/api` (flywheel ×12, review +6 escalate/flywheel, conversation +2 context-injection), +3 shared. Final counts: 968 pass (shared 175, ui 29, db 9, ai 149, api 606).
+
+**Key decisions:**
+- Flywheel runs *after* the verdict tx and is non-fatal — the recorded verdict is the primary action; a flywheel failure must never roll it back or error the reviewer.
+- Voice examples embedded properly (not inert) so they're retrievable — embed outside the DB tx (no network in a tx), insert in a second short elevated tx via raw SQL (Prisma can't write the `Unsupported("vector")` column).
+- Context injection via `loadHistory` substitution rather than mutating `message.content` — keeps the displayed answer unchanged so M9.3 owns the visible-vs-silent delivery decision (the `delivered_to_user` flag).
+- `bad` and `great/edited` handled independently (a bad+edited both flags chunks and captures the correction).
+- Chunk-flag as counter columns on `chunks` (not a new table) — simplest signal store for the M10.3 inspector.
+
+**Files changed:**
+- `packages/db/prisma/schema.prisma` — `Chunk.flagCount`/`lastFlaggedAt`.
+- `packages/db/prisma/migrations/20260601070000_chunk_flag_signal/migration.sql` — new.
+- `packages/shared/src/concierge.ts` + `index.ts` — `reviewEscalateSchema` + DTOs.
+- `apps/api/src/concierge/concierge-flywheel.service.ts` — new service.
+- `apps/api/src/concierge/concierge-review.service.ts` — flywheel call in `respond`, `escalate`, `resolveConsultationType`, `userId` in select.
+- `apps/api/src/concierge/concierge-review.controller.ts` — `escalate` route.
+- `apps/api/src/concierge/concierge.module.ts` + `concierge.tokens.ts` — provider + embedding token.
+- `apps/api/src/chat/conversation.service.ts` — `loadHistory` context injection + `loadEditedRevisions`.
+- `apps/admin/app/concierge-reviews/page.tsx` + `apps/admin/src/lib/admin-client.ts` — escalate UI + client fn.
+- Tests: `concierge-flywheel.service.test.ts` (new), `concierge-review.service.test.ts`, `conversation.service.test.ts`, `packages/shared/src/concierge.test.ts`.
+
+**Notes for next iteration:**
+- **M9.3 (async delivery)** is the last M9 task: push the reviewer's `ReviewResponse.revisedAnswer` *visibly* back into the conversation (vs Mode-B silent) + a transactional email. Needs a new email-provider abstraction (the `PaymentProvider`/`TidyCalProvider` seam) — a live dep. The M9.4 loadHistory context-injection + the `delivered_to_user` flag are the hooks it builds on. Visible delivery is the OD#5-gated half (now allowed).
+- **M10.3 (concierge metrics + knowledge-quality signals)** is now fully unblocked: aggregate `human_review_requests` (volume/SLA — `slaDueAt` vs `answeredAt`), `review_responses` (verdict mix), and the new `chunks.flag_count`/`last_flagged_at` (knowledge-gap) — the `AnalyticsService` admin cross-tenant pattern (M10.1/M10.2). A failed-query-inspector read over flagged chunks is the knowledge-quality surface.
+- **Seam-tested with a mocked tx** — the real elevated cross-user writes (`knowledge_drafts`/`voice_examples` raw insert/`chunks.updateMany`) + the `review_responses` join in `loadHistory` join the M11 Testcontainers live-DB list. `voice_examples`/`knowledge_drafts`/`review_responses` are `tenant_only`; `chunks` is `knowledge` (tenant_write); `consultations` is `user_scoped`.
+- The minted `voice_examples` embedding uses the offline `HashingEmbeddingProvider` (like all writes here) — when the real embedder lands, both this and retrieval move via `createDefaultEmbeddingProvider`.

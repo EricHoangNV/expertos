@@ -1,6 +1,7 @@
 import {
   conciergeQueueListQuerySchema,
   reviewConfigUpdateSchema,
+  reviewEscalateSchema,
   reviewResponseCreateSchema,
   reviewTriggerModeSchema,
   reviewVerdictSchema,
@@ -118,5 +119,21 @@ describe("reviewResponseCreateSchema", () => {
     expect(reviewResponseCreateSchema.safeParse({ verdict: "good", revisedAnswer: "   " }).success).toBe(
       false,
     );
+  });
+});
+
+describe("reviewEscalateSchema", () => {
+  it("defaults consultationTypeKey and notes to null", () => {
+    expect(reviewEscalateSchema.parse({})).toEqual({ consultationTypeKey: null, notes: null });
+  });
+
+  it("trims and keeps a supplied type key + notes", () => {
+    expect(
+      reviewEscalateSchema.parse({ consultationTypeKey: "  deep-dive  ", notes: "  needs depth  " }),
+    ).toEqual({ consultationTypeKey: "deep-dive", notes: "needs depth" });
+  });
+
+  it("rejects an empty type key", () => {
+    expect(reviewEscalateSchema.safeParse({ consultationTypeKey: "   " }).success).toBe(false);
   });
 });

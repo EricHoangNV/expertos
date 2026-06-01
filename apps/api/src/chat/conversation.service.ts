@@ -159,7 +159,7 @@ export class ConversationService {
         where: { conversationId, role: { in: ["user", "assistant"] } },
         orderBy: { createdAt: "desc" },
         take: HISTORY_MAX_MESSAGES,
-        select: { role: true, content: true },
+        select: { id: true, role: true, content: true },
       });
       const windowed: typeof rows = [];
       let tokens = 0;
@@ -171,10 +171,56 @@ export class ConversationService {
         tokens += cost;
         windowed.push(row);
       }
+
+      // Concierge reviewer-feedback flywheel — immediate context injection (M9.4): when a human
+      // reviewer edited one of these assistant answers, replay the *corrected* text into the prompt
+      // history so the next turn reflects it. The displayed message is untouched (visible delivery is
+      // M9.3); this only substitutes the context the model sees.
+      const revisions = await this.loadEditedRevisions(
+        tx,
+        windowed.filter((row) => row.role === "assistant").map((row) => row.id),
+      );
+
       return windowed
         .reverse()
-        .map((row) => ({ role: row.role as ChatMessage["role"], content: row.content }));
+        .map((row) => ({
+          role: row.role as ChatMessage["role"],
+          content: revisions.get(row.id) ?? row.content,
+        }));
     });
+  }
+
+  /**
+   * Maps assistant message id → the latest reviewer-edited answer for it (M9.4 context injection).
+   * `review_responses` is tenant-scoped and the owning `human_review_requests` are the acting user's
+   * own (the answers under review are in their conversation), so this read is safe under the user's
+   * own RLS context. Only edited responses with a real revision substitute.
+   */
+  private async loadEditedRevisions(
+    tx: Prisma.TransactionClient,
+    assistantMessageIds: string[],
+  ): Promise<Map<string, string>> {
+    const revisions = new Map<string, string>();
+    if (assistantMessageIds.length === 0) {
+      return revisions;
+    }
+    const responses = await tx.reviewResponse.findMany({
+      where: {
+        edited: true,
+        revisedAnswer: { not: null },
+        reviewRequest: { messageId: { in: assistantMessageIds } },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { revisedAnswer: true, reviewRequest: { select: { messageId: true } } },
+    });
+    // Ordered newest-first, so the first revision seen per message is the latest.
+    for (const response of responses) {
+      const messageId = response.reviewRequest.messageId;
+      if (response.revisedAnswer !== null && !revisions.has(messageId)) {
+        revisions.set(messageId, response.revisedAnswer);
+      }
+    }
+    return revisions;
   }
 
   /** Persists a completed turn, creating the conversation when this is the first turn. */

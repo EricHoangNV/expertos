@@ -143,6 +143,7 @@ export {
   reviewVerdictSchema,
   conciergeQueueListQuerySchema,
   reviewResponseCreateSchema,
+  reviewEscalateSchema,
 } from "./concierge";
 export type {
   ReviewTriggerModeValue,
@@ -156,6 +157,8 @@ export type {
   ReviewQueueItemDto,
   ReviewQueueDetailDto,
   ReviewResponseCreateInput,
+  ReviewEscalateInput,
+  ReviewEscalationDto,
 } from "./concierge";
 export { expertAnswerListQuerySchema } from "./expert";
 export type {

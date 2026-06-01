@@ -1,8 +1,11 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from "@nestjs/common";
 import {
   conciergeQueueListQuerySchema,
+  reviewEscalateSchema,
   reviewResponseCreateSchema,
   type ConciergeQueueListQueryInput,
+  type ReviewEscalateInput,
+  type ReviewEscalationDto,
   type ReviewQueueDetailDto,
   type ReviewQueueItemDto,
   type ReviewResponseCreateInput,
@@ -56,5 +59,16 @@ export class ConciergeReviewController {
     @Query("expertId", new ParseUUIDPipe({ optional: true })) expertId?: string,
   ): Promise<ReviewResponseDto> {
     return this.service.respond(user, expertId ?? null, id, body);
+  }
+
+  /** Escalate a queued review into a paid consultation (opens a recommended consultation). */
+  @Post(":id/escalate")
+  escalate(
+    @CurrentUser() user: AuthUser,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(reviewEscalateSchema)) body: ReviewEscalateInput,
+    @Query("expertId", new ParseUUIDPipe({ optional: true })) expertId?: string,
+  ): Promise<ReviewEscalationDto> {
+    return this.service.escalate(user, expertId ?? null, id, body);
   }
 }

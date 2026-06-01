@@ -26,6 +26,7 @@ function makeTx() {
       create: jest.fn().mockResolvedValue({ id: "cit" }),
       findMany: jest.fn().mockResolvedValue([]),
     },
+    reviewResponse: { findMany: jest.fn().mockResolvedValue([]) },
     $queryRawUnsafe: jest.fn(),
   };
 }
@@ -126,6 +127,51 @@ describe("ConversationService.loadHistory", () => {
 
     await expect(service.loadHistory(USER, "conv-x")).rejects.toBeInstanceOf(NotFoundException);
     expect(tx.message.findMany).not.toHaveBeenCalled();
+  });
+
+  it("injects a reviewer's corrected answer into the replayed context (M9.4)", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue({ id: "conv-1" });
+    tx.message.findMany.mockResolvedValue([
+      { id: "a1", role: "assistant", content: "the original answer" },
+      { id: "q1", role: "user", content: "q1" },
+    ]);
+    // A reviewer edited the assistant answer — the latest revision is replayed instead.
+    tx.reviewResponse.findMany.mockResolvedValue([
+      { revisedAnswer: "the corrected answer", reviewRequest: { messageId: "a1" } },
+      { revisedAnswer: "an older revision", reviewRequest: { messageId: "a1" } },
+    ]);
+    const { service } = makeService(tx);
+
+    const history = await service.loadHistory(USER, "conv-1");
+
+    // Only edited assistant messages are looked up, scoped to the windowed assistant ids.
+    expect(tx.reviewResponse.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          edited: true,
+          revisedAnswer: { not: null },
+          reviewRequest: { messageId: { in: ["a1"] } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+    );
+    expect(history).toEqual([
+      { role: "user", content: "q1" },
+      { role: "assistant", content: "the corrected answer" },
+    ]);
+  });
+
+  it("skips the revision lookup when the window has no assistant messages", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue({ id: "conv-1" });
+    tx.message.findMany.mockResolvedValue([{ id: "q1", role: "user", content: "only a question" }]);
+    const { service } = makeService(tx);
+
+    const history = await service.loadHistory(USER, "conv-1");
+
+    expect(tx.reviewResponse.findMany).not.toHaveBeenCalled();
+    expect(history).toEqual([{ role: "user", content: "only a question" }]);
   });
 });
 

@@ -592,6 +592,11 @@ model Chunk {
   status            ChunkStatus                  @default(pending)
   tokenCount        Int?                         @map("token_count")
   embedding         Unsupported("vector(1536)")?
+  // Concierge "Bad"-verdict knowledge-gap signal (M9.4): how many times a reviewer flagged an
+  // answer grounded on this chunk as bad, plus when it last happened. Feeds the failed-query /
+  // knowledge-quality inspector (M10.3) so weak source material surfaces for re-authoring.
+  flagCount         Int                          @default(0) @map("flag_count")
+  lastFlaggedAt     DateTime?                    @map("last_flagged_at")
   createdAt         DateTime                     @default(now()) @map("created_at")
 
   tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)

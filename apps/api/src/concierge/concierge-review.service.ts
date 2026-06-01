@@ -2,6 +2,8 @@ import { ConflictException, Inject, Injectable, NotFoundException } from "@nestj
 import { applyRlsContext, type Prisma, type PrismaClient } from "@expertos/db";
 import type {
   ConciergeQueueListQueryInput,
+  ReviewEscalateInput,
+  ReviewEscalationDto,
   ReviewQueueDetailDto,
   ReviewQueueItemDto,
   ReviewResponseCreateInput,
@@ -11,6 +13,7 @@ import type {
 import { PRISMA } from "../database/database.module";
 import type { AuthUser } from "../auth/auth.types";
 import { StructuredLogger } from "../observability/logger.service";
+import { ConciergeFlywheelService } from "./concierge-flywheel.service";
 
 /** Max characters of the AI answer surfaced as a queue-item preview. */
 const ANSWER_PREVIEW_CHARS = 280;
@@ -18,6 +21,7 @@ const ANSWER_PREVIEW_CHARS = 280;
 /** A persisted review-request row the queue/detail reads return. */
 interface RequestRow {
   id: string;
+  userId: string;
   messageId: string;
   triggerMode: "user_prompted" | "auto_silent";
   visibility: "visible" | "silent";
@@ -46,6 +50,7 @@ interface ResponseRow {
 
 const REQUEST_SELECT = {
   id: true,
+  userId: true,
   messageId: true,
   triggerMode: true,
   visibility: true,
@@ -101,6 +106,7 @@ export class ConciergeReviewService {
   constructor(
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly logger: StructuredLogger,
+    private readonly flywheel: ConciergeFlywheelService,
   ) {}
 
   /** A page of the reviewer's queue, most-actionable first (open items by SLA, then newest). */
@@ -162,7 +168,7 @@ export class ConciergeReviewService {
     id: string,
     input: ReviewResponseCreateInput,
   ): Promise<ReviewResponseDto> {
-    return this.runReviewer(user, async (tx) => {
+    const { dto, flywheel } = await this.runReviewer(user, async (tx) => {
       const row = await this.loadInVoice(tx, user, requestedExpertId, id);
       if (!RESPONDABLE.has(row.status)) {
         throw new ConflictException(`review is already ${row.status}`);
@@ -207,7 +213,101 @@ export class ConciergeReviewService {
         edited,
       });
 
-      return toResponseDto(response);
+      return {
+        dto: toResponseDto(response),
+        flywheel: {
+          reviewRequestId: row.id,
+          tenantId: user.tenantId,
+          verdict: input.verdict,
+          improvedAnswer: revised ?? original,
+          edited,
+        },
+      };
+    });
+
+    // Feed the reviewer's verdict into the global flywheel (M9.4). Best-effort: the service swallows
+    // its own errors so the recorded verdict (already committed above) is never rolled back.
+    await this.flywheel.applyReviewOutcome(flywheel);
+
+    return dto;
+  }
+
+  /**
+   * Escalates a concierge case into a paid consultation (M9.4). A reviewer who judges that the answer
+   * needs a deeper, live engagement opens a `recommended` consultation for the **asking user** (the
+   * funnel-attribution row the booking webhook later confirms) and moves the request to `escalated`.
+   * The request must be in the reviewer's voice (else 404) and still open (else 409).
+   */
+  async escalate(
+    user: AuthUser,
+    requestedExpertId: string | null,
+    id: string,
+    input: ReviewEscalateInput,
+  ): Promise<ReviewEscalationDto> {
+    return this.runReviewer(user, async (tx) => {
+      const row = await this.loadInVoice(tx, user, requestedExpertId, id);
+      if (!RESPONDABLE.has(row.status)) {
+        throw new ConflictException(`review is already ${row.status}`);
+      }
+
+      const type = await this.resolveConsultationType(tx, input.consultationTypeKey);
+      const consultation = await tx.consultation.create({
+        data: {
+          tenantId: user.tenantId,
+          userId: row.userId,
+          typeId: type?.id ?? null,
+          status: "recommended",
+          amountCents: type?.priceCents ?? null,
+        },
+        select: { id: true },
+      });
+
+      await tx.humanReviewRequest.update({
+        where: { id: row.id },
+        data: { status: "escalated", assigneeId: user.id },
+      });
+
+      this.logger.info("concierge review escalated", {
+        reviewRequestId: row.id,
+        consultationId: consultation.id,
+        consultationTypeKey: type?.key ?? "",
+      });
+
+      return {
+        reviewRequestId: row.id,
+        status: "escalated",
+        consultationId: consultation.id,
+        consultationTypeKey: type?.key ?? null,
+        tidycalLink: type?.tidycalLink ?? null,
+      };
+    });
+  }
+
+  /**
+   * Resolves the consultation type to open: the requested `key` if it maps to an active type, else
+   * the active default (oldest active type). Null when no active type exists — the consultation is
+   * opened untyped and the booking flow surfaces a generic CTA (mirrors `RecommendationService`).
+   */
+  private async resolveConsultationType(
+    tx: Prisma.TransactionClient,
+    key: string | null,
+  ): Promise<{ id: string; key: string; priceCents: number | null; tidycalLink: string | null } | null> {
+    const select = {
+      id: true,
+      key: true,
+      priceCents: true,
+      tidycalLink: true,
+    } satisfies Prisma.ConsultationTypeSelect;
+    if (key) {
+      const byKey = await tx.consultationType.findFirst({ where: { key, active: true }, select });
+      if (byKey) {
+        return byKey;
+      }
+    }
+    return tx.consultationType.findFirst({
+      where: { active: true },
+      orderBy: { createdAt: "asc" },
+      select,
     });
   }
 

@@ -184,3 +184,30 @@ export const reviewResponseCreateSchema = z.object({
 });
 
 export type ReviewResponseCreateInput = z.infer<typeof reviewResponseCreateSchema>;
+
+/**
+ * Escalate a concierge case into a paid consultation (`POST /concierge-reviews/:id/escalate`, M9.4).
+ * A reviewer who judges an answer needs a deeper, live engagement opens a `recommended` consultation
+ * for the asking user and moves the review request to `escalated`. `consultationTypeKey` optionally
+ * picks a specific consultation type (falls back to the active default); `notes` is reviewer context.
+ */
+export const reviewEscalateSchema = z.object({
+  consultationTypeKey: z.string().trim().min(1).max(120).nullable().default(null),
+  notes: z.string().trim().min(1).max(2_000).nullable().default(null),
+});
+
+export type ReviewEscalateInput = z.infer<typeof reviewEscalateSchema>;
+
+/** Result of escalating a concierge review to a consultation (M9.4). */
+export interface ReviewEscalationDto {
+  /** The escalated `human_review_requests` row. */
+  reviewRequestId: string;
+  /** The request's new status (`escalated`). */
+  status: ReviewRequestStatusValue;
+  /** The `consultations` row opened for the asking user. */
+  consultationId: string;
+  /** The resolved consultation type key, or null when no active type exists. */
+  consultationTypeKey: string | null;
+  /** The TidyCal booking link for the resolved type, or null. */
+  tidycalLink: string | null;
+}
