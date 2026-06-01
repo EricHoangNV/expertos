@@ -47,3 +47,18 @@ export type {
   EvalCaseResult,
   EvalReport,
 } from "./eval/types";
+export { evaluateVoice } from "./eval/voice-harness";
+export { VOICE_GOLDEN_SET } from "./eval/voice-golden-set";
+export { VOICE_FIDELITY_BAR, FACT_ADHERENCE_BAR } from "./eval/voice-metrics";
+export type {
+  VoiceEvalCase,
+  VoiceGoldenSet,
+  VoiceJudge,
+  VoiceJudgeRequest,
+  VoiceJudgeVerdict,
+  VoiceEvalOptions,
+  StructuralVoiceResult,
+  LiveVoiceResult,
+  VoiceCaseResult,
+  VoiceEvalReport,
+} from "./eval/voice-types";

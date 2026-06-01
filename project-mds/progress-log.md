@@ -431,3 +431,43 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Portal UI is M8.5**, **voice-example authoring is M8.4** — the API + `VoiceProfileSummary` (status/approvedBy/approvedAt) are ready for both.
 - Prisma model writes are unit-tested with a mocked tx; same M11 Testcontainers caveat as the other stores (RLS WITH CHECK on insert, enum casts).
 - No new bug surfaced; no LEARNINGS/DIRECTIVES change warranted (the zod-structural-typing choice is captured here + in progress-state notes).
+
+## M2.4 — Voice-vs-facts separation tests + voice-fidelity assertion in the eval harness
+**Date:** 2026-06-01
+**Ref:** PRD Task Manifest M2.4 (§"Expert voice layer", §"LLM/RAG eval harness"); Open Decisions #2, #3, #6. Finishes M2.
+
+**What was done:**
+- Added a dedicated voice-vs-facts separation test suite (`packages/ai/src/prompt/voice-vs-facts.test.ts`) asserting against `buildAnswerPrompt` output (the single enforcement point, never re-implementing the rule):
+  - citation list identical with/without a voice, and identical across two different voices;
+  - SOURCES+QUESTION user message byte-identical regardless of voice (voice lives only in the system message);
+  - a number present ONLY in a voice guideline or style example (decoys "37%"/"7%") never leaks into the SOURCES block or the resolvable citation list;
+  - all voice content confined to the system message;
+  - facts-authoritative / voice-presentation-only / insufficient-knowledge rules survive even under a heavy (5-example) voice.
+- Built a voice-fidelity eval harness mirroring the M1.3 retrieval harness's "deterministic-offline + out-of-band real model" split:
+  - `eval/voice-types.ts` — `VoiceEvalCase`/`VoiceGoldenSet`, `VoiceJudge`/`VoiceJudgeRequest`/`VoiceJudgeVerdict`, `VoiceEvalOptions`, and the result/report types.
+  - `eval/voice-metrics.ts` — pure `scoreStructural` (6 checks incl. the load-bearing facts-invariant-under-voice compare against a voice-off twin), `scoreLive`, `aggregate`, and the exported acceptance bars.
+  - `eval/voice-harness.ts` — `evaluateVoice(goldenSet, { llm?, judge? })`. Structural layer always runs; live layer runs only when both `llm` + `judge` are injected (a `judge` without an `llm` throws).
+  - `eval/voice-golden-set.ts` — `VOICE_GOLDEN_SET` (terse-EN-with-example, narrative-EN guidelines-only, VI-with-example).
+- Exported the new surface from `packages/ai/src/index.ts`.
+- Added test suites: `voice-metrics.test.ts` (17), `voice-harness.test.ts` (6), `voice-vs-facts.test.ts` (6) — using stub `LlmProvider`/`VoiceJudge` to exercise the live path deterministically in CI.
+
+**Key decisions:**
+- **OD#2 — engineering stance, not the product ruling.** Encoded acceptance bars in code: `FACT_ADHERENCE_BAR = 1.0` (any invented/altered claim fails a case outright — the product's premise is that facts stay authoritative) and `VOICE_FIDELITY_BAR = 0.7` mean (voice is a spectrum; leaves headroom for judge noise). The *product / expert-signed* bar and golden-set ownership/size/refresh (OD#6) stay open but now have a concrete harness to calibrate against. Documented both in the `voice-metrics.ts` doc comment.
+- **Structural layer is the CI guard; live layer is out-of-band.** The structural checks are pure and assert the prompt contract — most importantly that building the same facts with vs. without the voice yields an identical user message + citation list. The live (real-LLM + judge) layer is a seam only, injected exactly like the M1.3 real-embedder slice, so CI stays deterministic and network-free.
+- **No real judge implementation** — deliberately deferred (same policy as the real embedder). The interface + wiring exist; a real judge is implemented when product calibrates the bar.
+- **Did NOT use a multi-agent workflow** despite the keyword being flagged: M2.4 is a single tightly-coupled test/harness authoring task in one package with shared design decisions — parallel agents would only risk conflicts. Implemented inline.
+
+**Files changed:**
+- `packages/ai/src/eval/voice-types.ts` — new: voice-fidelity eval contracts.
+- `packages/ai/src/eval/voice-metrics.ts` — new: pure scoring + acceptance bars (OD#2).
+- `packages/ai/src/eval/voice-harness.ts` — new: `evaluateVoice`.
+- `packages/ai/src/eval/voice-golden-set.ts` — new: seed `VOICE_GOLDEN_SET`.
+- `packages/ai/src/eval/voice-metrics.test.ts`, `voice-harness.test.ts` — new tests.
+- `packages/ai/src/prompt/voice-vs-facts.test.ts` — new: voice-vs-facts separation tests.
+- `packages/ai/src/index.ts` — export the new harness/types/bars.
+
+**Notes for next iteration:**
+- M2 is fully complete (M2.1–M2.4). Next is M3.1 (chat UI), which consumes `RetrievalService` + `VoiceService` + `buildAnswerPrompt`.
+- To run the *semantic* voice-fidelity numbers, call `evaluateVoice(VOICE_GOLDEN_SET, { llm, judge })` out-of-band with a real `LlmProvider` and a `VoiceJudge` implementation (none exists yet — same deferral as the real embedder).
+- M3.4's insufficient-knowledge path can lean on the prompt builder's already-enforced INSUFFICIENT-KNOWLEDGE rule.
+- No bug surfaced; no LEARNINGS/DIRECTIVES change warranted. Coverage: whole `@expertos/ai` package at 100%.

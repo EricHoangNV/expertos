@@ -27,7 +27,7 @@
 - [x] M2.1 Voice profiles + runtime voice-example retrieval; voice-on-top-of-facts enforced in prompt builder
 - [x] M2.2 Multiple selectable expert voices + attribution / "AI rendition of [Expert]" disclosure
 - [x] M2.3 Expert sign-off workflow on own voice profile; language-aware voice (EN + VI)
-- [ ] M2.4 Voice-vs-facts separation tests; voice-fidelity assertion in eval harness (Open Decisions #2, #3, #6)
+- [x] M2.4 Voice-vs-facts separation tests; voice-fidelity assertion in eval harness (Open Decisions #2, #3, #6)
 
 #### M3 — Chat experience
 - [ ] M3.1 Chat UI with streaming + context-retaining follow-ups
