@@ -16,11 +16,23 @@ export type PromptLanguage = "en" | "vi";
  * fields the prompt needs — so the builder can be fed straight from the retrieval seam. The
  * provenance (`chunkId` / `documentVersionId`) is carried through to {@link AnswerPrompt.citations}
  * so the M4 citation builder can resolve every emitted `[n]` marker back to a real chunk.
+ *
+ * A fact may also come from a user's own uploaded document (M5.4): such a fact carries an
+ * `uploadChunkId` (instead of published-knowledge provenance — `chunkId`/`documentVersionId` are
+ * empty for it), `kind: "upload"`, and a human-readable `sourceLabel` (e.g. `budget.xlsx · Q1!A2`).
+ * These optional fields ride through {@link AnswerPrompt.citations} so the M4 builder resolves an
+ * upload citation the same way it resolves a knowledge one, just with a different source class.
  */
 export interface PromptFact {
   chunkId: string;
   documentVersionId: string;
   content: string;
+  /** Source class for the M5.4 upload-vs-knowledge citation distinction. Defaults to `"knowledge"`. */
+  kind?: "knowledge" | "upload";
+  /** `upload_chunk` id when this fact came from a user upload (M5.4); absent for knowledge. */
+  uploadChunkId?: string;
+  /** Human-readable provenance for an uploaded source (M5.4): `filename · sheet!cell`. */
+  sourceLabel?: string;
 }
 
 /**

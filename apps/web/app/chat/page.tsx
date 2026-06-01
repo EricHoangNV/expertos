@@ -129,7 +129,12 @@ function AssistantAnswer({ message }: { message: UiMessage }) {
               <Cite label={citation.ordinal} resolved variant={citation.kind} />
               <div className="source-body">
                 {citation.quote && <span className="source-quote">{citation.quote}</span>}
-                <span className="source-prov">source: {citation.documentVersionId}</span>
+                <span className="source-prov">
+                  source:{" "}
+                  {citation.kind === "upload"
+                    ? (citation.sourceLabel ?? "uploaded file")
+                    : citation.documentVersionId}
+                </span>
               </div>
             </div>
           ))}

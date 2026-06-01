@@ -35,6 +35,10 @@ export interface CitationSource {
   content: string;
   /** Source class for the M4.2/M5 `.cite` variant. Defaults to `"knowledge"` when absent. */
   kind?: "knowledge" | "upload";
+  /** `upload_chunk` id when the source came from a user upload (M5.4); absent for knowledge. */
+  uploadChunkId?: string;
+  /** Human-readable provenance for an uploaded source (M5.4): `filename · sheet!cell`. */
+  sourceLabel?: string;
 }
 
 /** A source confirmed resolvable and actually referenced by a surviving marker. */
@@ -45,6 +49,10 @@ export interface ResolvedCitation {
   documentVersionId: string;
   content: string;
   kind: "knowledge" | "upload";
+  /** `upload_chunk` id for an upload citation (M5.4) — persisted as the citation's provenance. */
+  uploadChunkId?: string;
+  /** Human-readable provenance for an upload citation (M5.4): `filename · sheet!cell`. */
+  sourceLabel?: string;
 }
 
 export interface BuildCitationsInput {
@@ -100,6 +108,8 @@ export function buildCitations(input: BuildCitationsInput): BuiltCitations {
             documentVersionId: src.documentVersionId,
             content: src.content,
             kind: src.kind ?? "knowledge",
+            uploadChunkId: src.uploadChunkId,
+            sourceLabel: src.sourceLabel,
           });
         }
       }

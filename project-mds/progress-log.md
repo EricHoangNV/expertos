@@ -851,3 +851,45 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **PDF/DOCX parsers** still unbuilt (stored-but-0-chunks); register in `createDefaultParserRegistry` when added. PDF → flat `text`; DOCX tables could emit `chunks` too.
 - XLSX extracts stored values, not formatted display — would need `styles.xml`/number-format parsing if the formatted string is ever wanted.
 - Parser/zip files aren't coverage-gated (only `*.service.ts` is) but have unit tests; the raw DB write path stays seam-tested (mocked tx) — M11 Testcontainers caveat.
+
+---
+
+## M5.4 — Distinct upload citations + retrieval folding
+**Date:** 2026-06-01
+**Ref:** PRD §"Document-assisted Q&A" / §"Design System"; Task Manifest M5.4 (closes M5)
+
+**What was done:**
+- Built the **read path** for query-time uploads that M5.2/M5.3 wrote but nothing consumed. A user's own uploaded chunks are now folded into chat retrieval and cited distinctly (info-blue).
+- New `PgUploadChunkStore` (`apps/api/src/retrieval/upload-chunk.store.ts`) — pgvector cosine over `upload_chunks ⋈ uploaded_files`. Scope follows the M5.2 mode contract: `persistent` always foldable; `temporary` only when attached to the current conversation and unexpired (`expires_at IS NULL OR > now()`). Isolation is the `uploaded_files` (`user_scoped`) JOIN under RLS — no manual `user_id`/`tenant_id` predicate.
+- New `RetrievalService.retrieveUploads(user, {text, topK, conversationId?})` — embeds the query via a new shared private `embedQuery` helper (refactored out of `retrieve`), runs the store inside `RlsService.run`, usage-logs `upload.retrieve.embed`.
+- `ChatService.answerStream` now retrieves uploads (cap `UPLOAD_FACT_TOPK=5`) and appends them as facts **after** knowledge, so knowledge keeps markers `[1..N]` and uploads follow `[N+1..]`. An upload fact carries `kind:"upload"`, `uploadChunkId`, `sourceLabel` (`filename · sheet!cell`), and empty `chunkId`/`documentVersionId`. New `uploadSourceLabel` helper builds the label.
+- `@expertos/ai`: added optional `uploadChunkId`/`sourceLabel`/`kind` to `PromptFact`, and `uploadChunkId`/`sourceLabel` to `CitationSource`/`ResolvedCitation`; `buildCitations` carries them through (resolves an upload marker identically to a knowledge one).
+- Persistence: `ConversationService.TurnCitation` gains `uploadChunkId`; `persistTurn` writes it and coalesces empty `chunkId`/`documentVersionId` → null (a uuid column rejects `""`). `ChatService` filters empty doc-version ids out of `sourceVersionIds`.
+- `ChatCitationDto` gains optional `sourceLabel`; `toCitationDto` sets it. `loadCitations` already derived `kind` from `uploadChunkId` (M4.2) — unchanged.
+- Web: `apps/web/app/chat/page.tsx` sources drawer shows `sourceLabel` for upload citations in place of `documentVersionId` (info-blue `.cite.upload` already wired in M4.2).
+- Tests +10 (439 total): `retrieval.service.test.ts` ×2, new `upload-chunk.store.test.ts` ×4, `chat.service.test.ts` ×2, `conversation.service.test.ts` ×1, `citations.test.ts` ×1.
+
+**Key decisions:**
+- **Two independent embeds (knowledge + upload) over one shared vector.** Each retrieval seam stays single-responsibility and independently testable; the extra embed of one short question is negligible. A shared-vector optimization is documented as an open follow-up rather than coupling the two methods now.
+- **Temporary uploads are conversation-scoped** (the natural "session" boundary), **persistent are user-wide.** This matches the M5.2 retention semantics exactly and needs no new "session" concept.
+- **Knowledge-before-upload ordering** keeps knowledge citation numbers stable regardless of how many uploads fold in.
+- **`insufficientKnowledge` stays `facts.length === 0`** (now counting uploads) — an answer grounded only on the user's own upload is correctly NOT flagged insufficient. Deliberately did not couple it to knowledge-only count.
+- **`sourceLabel` only on the live `done` event** (no column stores it); the history read path re-hydrates `kind` but not the label — keeps the change minimal. Documented how to JOIN it back in if a history view ever needs it.
+
+**Files changed:**
+- `packages/ai/src/prompt/types.ts` — `PromptFact` gains optional `kind`/`uploadChunkId`/`sourceLabel`.
+- `packages/ai/src/prompt/citations.ts` — `CitationSource`/`ResolvedCitation` gain `uploadChunkId`/`sourceLabel`; `buildCitations` carries them through.
+- `packages/shared/src/chat.ts` — `ChatCitationDto` gains optional `sourceLabel`.
+- `apps/api/src/retrieval/upload-chunk.store.ts` — NEW `PgUploadChunkStore`.
+- `apps/api/src/retrieval/retrieval.service.ts` — NEW `retrieveUploads` + shared `embedQuery`.
+- `apps/api/src/chat/chat.service.ts` — fold uploads as facts; `uploadSourceLabel`; persist `uploadChunkId`; filter empty `sourceVersionIds`.
+- `apps/api/src/chat/conversation.service.ts` — `TurnCitation.uploadChunkId`; null-coalesce empty knowledge ids in `persistTurn`.
+- `apps/web/app/chat/page.tsx` — drawer shows `sourceLabel` for uploads.
+- Tests: `apps/api/src/retrieval/{retrieval.service,upload-chunk.store}.test.ts`, `apps/api/src/chat/{chat.service,conversation.service}.test.ts`, `packages/ai/src/prompt/citations.test.ts`.
+
+**Notes for next iteration:**
+- **M5 is closed.** Next is **M6.1** (entitlement catalog + `plan_entitlements` matrix + `@RequiresEntitlement` guard + `/me/entitlements`); M6.5 is gated on OD#4 but M6.1's scaffolding isn't.
+- **No web upload UI yet** — the API path is end-to-end (store→index→fold→cite) but `apps/web` has no file picker / temp-vs-persistent mode toggle. That's the open consumer work now that uploads actually answer questions.
+- **Two query embeds per chat turn now** (knowledge + upload). If a real embedding provider makes this matter, share one vector across both stores in `RetrievalService`.
+- **History view + `sourceLabel`:** the live event carries it, the persisted read path doesn't. JOIN `upload_chunks`→`uploaded_files` in `loadCitations` if a history drawer ever needs the upload label (handle a `SetNull`'d chunk).
+- **Still seam-tested only** (mocked tx) — the real `upload_chunks ⋈ uploaded_files` cosine + mode/expiry WHERE join the M11 Testcontainers list.

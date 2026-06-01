@@ -60,6 +60,13 @@ export interface ChatCitationDto {
    * from which chunk the citation resolved to, so the drawer can colour-distinguish them.
    */
   kind: "knowledge" | "upload";
+  /**
+   * Human-readable provenance for an `upload` citation (M5.4): the uploaded file plus its
+   * sheet/cell location (e.g. `budget.xlsx · Q1 KPIs!A2:B2`). The sources drawer shows this for
+   * uploads in place of the `documentVersionId` it shows for knowledge. Absent for knowledge
+   * citations (and on the history read path, where only `kind` is re-hydrated).
+   */
+  sourceLabel?: string;
 }
 
 /**

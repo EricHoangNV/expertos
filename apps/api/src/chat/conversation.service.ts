@@ -97,8 +97,12 @@ interface TurnCitation {
    * M4.2 read path re-hydrate citations whose ordinal still matches the answer prose.
    */
   ordinal: number;
+  /** Knowledge-chunk id; empty for an upload citation (which provenances via `uploadChunkId`). */
   chunkId: string;
+  /** Knowledge document-version id; empty for an upload citation. */
   documentVersionId: string;
+  /** `upload_chunk` id for an upload citation (M5.4); absent for a knowledge citation. */
+  uploadChunkId?: string;
   content: string;
 }
 
@@ -222,8 +226,12 @@ export class ConversationService {
             // Persist the true marker ordinal, not the loop index — a sparse citation list (M4.1)
             // must keep `ordinal` aligned with the `[n]` markers in the persisted answer text.
             ordinal: citation.ordinal,
-            chunkId: citation.chunkId,
-            documentVersionId: citation.documentVersionId,
+            // Knowledge citations carry uuid provenance; an upload citation (M5.4) provenances via
+            // `uploadChunkId` and leaves these empty — coalesce "" → null so the uuid columns stay
+            // valid (an empty string is not a uuid).
+            chunkId: citation.chunkId || null,
+            documentVersionId: citation.documentVersionId || null,
+            uploadChunkId: citation.uploadChunkId ?? null,
             quote: citation.content.slice(0, QUOTE_PREVIEW_CHARS),
           },
         });

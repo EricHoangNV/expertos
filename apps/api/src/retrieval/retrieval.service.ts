@@ -11,7 +11,21 @@ import type { AuthUser } from "../auth/auth.types";
 import { UsageLogService } from "../observability/usage-log.service";
 import { StructuredLogger } from "../observability/logger.service";
 import { PgVectorStore } from "./pgvector.store";
+import {
+  PgUploadChunkStore,
+  type RetrievedUploadChunk,
+} from "./upload-chunk.store";
 import { RETRIEVAL_EMBEDDING_PROVIDER } from "./retrieval.tokens";
+
+/** Parameters for folding a user's own uploads into a chat turn (M5.4). */
+interface UploadRetrievalInput {
+  /** Query text — embedded with the same model as knowledge retrieval. */
+  text: string;
+  /** Max upload chunks to fold in. */
+  topK: number;
+  /** Current conversation, to include its `temporary` uploads; absent = `persistent` only. */
+  conversationId?: string;
+}
 
 /**
  * Entry point for M1.2 hybrid retrieval and the seam the chat layer (M3) and citation
@@ -39,12 +53,7 @@ export class RetrievalService {
     user: AuthUser,
     query: RetrievalQueryInput,
   ): Promise<RetrievedChunk[]> {
-    const [embedding] = await this.embeddings.embed([query.text]);
-    if (!embedding || embedding.length !== this.embeddings.dimensions) {
-      throw new Error(
-        `retrieval embedding has ${embedding?.length ?? 0} dims, expected ${this.embeddings.dimensions}`,
-      );
-    }
+    const embedding = await this.embedQuery(query.text);
 
     const request: RetrievalRequest = {
       text: query.text,
@@ -71,5 +80,55 @@ export class RetrievalService {
     });
 
     return results;
+  }
+
+  /**
+   * Folds the acting user's own query-time uploads (M5.4) into retrieval, ranked against the same
+   * query embedding as knowledge retrieval. `persistent` uploads are always in scope; `temporary`
+   * uploads only when they belong to the current conversation. Isolation is RLS — `uploaded_files`
+   * is `user_scoped`, so the store's JOIN limits chunks to the user's own files (directive §4.21).
+   *
+   * This embeds the query independently of {@link retrieve} so each retrieval seam stays a single
+   * responsibility; the extra embed of one short question is negligible (a shared-vector
+   * optimization can land later if a real provider makes it worthwhile).
+   */
+  async retrieveUploads(
+    user: AuthUser,
+    query: UploadRetrievalInput,
+  ): Promise<RetrievedUploadChunk[]> {
+    const embedding = await this.embedQuery(query.text);
+
+    const results = await this.rls.run(user, (tx) =>
+      new PgUploadChunkStore(tx).retrieve({
+        embedding,
+        topK: query.topK,
+        conversationId: query.conversationId,
+      }),
+    );
+
+    await this.usage.record(user, {
+      featureKey: "upload.retrieve.embed",
+      model: this.embeddings.name,
+      promptTokens: estimateTokens(query.text),
+    });
+
+    this.logger.info("upload retrieval completed", {
+      topK: query.topK,
+      results: results.length,
+      conversationScoped: query.conversationId != null,
+    });
+
+    return results;
+  }
+
+  /** Embeds query text and asserts the provider returned a single vector of the expected width. */
+  private async embedQuery(text: string): Promise<number[]> {
+    const [embedding] = await this.embeddings.embed([text]);
+    if (!embedding || embedding.length !== this.embeddings.dimensions) {
+      throw new Error(
+        `retrieval embedding has ${embedding?.length ?? 0} dims, expected ${this.embeddings.dimensions}`,
+      );
+    }
+    return embedding;
   }
 }

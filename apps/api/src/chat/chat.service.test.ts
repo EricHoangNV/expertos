@@ -39,6 +39,7 @@ function makeService(opts: { streaming?: boolean; deltas?: string[] } = {}) {
   const seenMessages: ChatMessage[][] = [];
 
   const retrieve = jest.fn().mockResolvedValue(CHUNKS);
+  const retrieveUploads = jest.fn().mockResolvedValue([]);
   const retrieveVoice = jest.fn().mockResolvedValue(VOICE);
   const loadHistory = jest.fn().mockResolvedValue([
     { role: "user", content: "prev q" },
@@ -72,7 +73,7 @@ function makeService(opts: { streaming?: boolean; deltas?: string[] } = {}) {
       };
 
   const service = new ChatService(
-    { retrieve } as unknown as RetrievalService,
+    { retrieve, retrieveUploads } as unknown as RetrievalService,
     { retrieveVoice } as unknown as VoiceService,
     { loadHistory, persistTurn } as unknown as ConversationService,
     llm,
@@ -82,7 +83,17 @@ function makeService(opts: { streaming?: boolean; deltas?: string[] } = {}) {
 
   return {
     service,
-    stubs: { retrieve, retrieveVoice, loadHistory, persistTurn, record, info, error, seenMessages },
+    stubs: {
+      retrieve,
+      retrieveUploads,
+      retrieveVoice,
+      loadHistory,
+      persistTurn,
+      record,
+      info,
+      error,
+      seenMessages,
+    },
   };
 }
 
@@ -156,6 +167,84 @@ describe("ChatService.answerStream", () => {
         { ordinal: 1, chunkId: "c1", documentVersionId: "dv1", quote: "fact one", kind: "knowledge" },
         { ordinal: 2, chunkId: "c2", documentVersionId: "dv1", quote: "fact two", kind: "knowledge" },
       ],
+    });
+  });
+
+  it("folds the user's own uploads in as upload citations after knowledge (M5.4)", async () => {
+    // Model cites a knowledge source [1] and the folded upload [3] (2 knowledge + 1 upload = 3).
+    const { service, stubs } = makeService({ deltas: ["Per the docs [1]", " and your file [3]."] });
+    stubs.retrieveUploads.mockResolvedValue([
+      {
+        uploadChunkId: "uc1",
+        uploadedFileId: "uf1",
+        filename: "budget.xlsx",
+        content: "Q1 revenue was 1.2M",
+        score: 0.95,
+        sheetName: "Q1 KPIs",
+        cellRef: "A2:B2",
+      },
+    ]);
+    const input = baseInput({ conversationId: "conv-1" });
+
+    const events = await drain(service.answerStream(USER, input));
+
+    // Uploads were retrieved for the current conversation (temporary uploads are session-scoped).
+    expect(stubs.retrieveUploads).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ text: input.text, conversationId: "conv-1" }),
+    );
+
+    // The upload's content is appended to the SOURCES block after the knowledge facts.
+    const userMessage = stubs.seenMessages[0].at(-1)?.content ?? "";
+    expect(userMessage).toContain("fact one");
+    expect(userMessage).toContain("Q1 revenue was 1.2M");
+
+    const done = events.at(-1);
+    expect(done).toMatchObject({
+      type: "done",
+      insufficientKnowledge: false,
+      citations: [
+        { ordinal: 1, chunkId: "c1", documentVersionId: "dv1", kind: "knowledge" },
+        {
+          ordinal: 3,
+          chunkId: "",
+          documentVersionId: "",
+          kind: "upload",
+          sourceLabel: "budget.xlsx · Q1 KPIs!A2:B2",
+        },
+      ],
+    });
+
+    // Persisted: the upload citation carries `uploadChunkId`; provenance excludes the empty version.
+    const turn = stubs.persistTurn.mock.calls[0][1];
+    expect(turn.assistant.sourceVersionIds).toEqual(["dv1"]);
+    expect(turn.assistant.citations).toEqual([
+      expect.objectContaining({ ordinal: 1, chunkId: "c1", documentVersionId: "dv1" }),
+      expect.objectContaining({ ordinal: 3, uploadChunkId: "uc1", chunkId: "", documentVersionId: "" }),
+    ]);
+  });
+
+  it("is not insufficient when only an upload grounds the answer (M5.4)", async () => {
+    const { service, stubs } = makeService({ deltas: ["From your upload [1]."] });
+    stubs.retrieve.mockResolvedValue([]);
+    stubs.retrieveUploads.mockResolvedValue([
+      {
+        uploadChunkId: "uc1",
+        uploadedFileId: "uf1",
+        filename: "notes.txt",
+        content: "the answer is 42",
+        score: 0.9,
+        sheetName: null,
+        cellRef: null,
+      },
+    ]);
+
+    const done = (await drain(service.answerStream(USER, baseInput()))).at(-1);
+
+    expect(done).toMatchObject({
+      type: "done",
+      insufficientKnowledge: false,
+      citations: [{ ordinal: 1, kind: "upload", sourceLabel: "notes.txt" }],
     });
   });
 

@@ -15,6 +15,7 @@ import type {
 } from "@expertos/shared";
 import type { AuthUser } from "../auth/auth.types";
 import { RetrievalService } from "../retrieval/retrieval.service";
+import type { RetrievedUploadChunk } from "../retrieval/upload-chunk.store";
 import { VoiceService } from "../voice/voice.service";
 import { UsageLogService } from "../observability/usage-log.service";
 import { StructuredLogger } from "../observability/logger.service";
@@ -26,6 +27,9 @@ const CITATION_PREVIEW_CHARS = 280;
 
 /** Voice examples retrieved per answer — small so the few-shot block can't crowd out facts. */
 const VOICE_EXAMPLE_TOPK = 3;
+
+/** Max of the user's own uploaded chunks folded into one answer (M5.4), kept modest vs. knowledge. */
+const UPLOAD_FACT_TOPK = 5;
 
 /**
  * The chat orchestration seam (M3.1) — the first consumer that wires the M1 retrieval and M2
@@ -63,11 +67,29 @@ export class ChatService {
         : [];
 
       const chunks = await this.retrieval.retrieve(user, this.toRetrievalQuery(input));
-      const facts: PromptFact[] = chunks.map((c) => ({
-        chunkId: c.chunkId,
-        documentVersionId: c.documentVersionId,
-        content: c.content,
-      }));
+      // Fold the asker's own query-time uploads (M5.4) in after knowledge, so knowledge keeps the
+      // low marker numbers [1..N] and uploads follow [N+1..]. An upload fact carries no
+      // knowledge provenance (empty chunkId/documentVersionId) — its provenance is `uploadChunkId`.
+      const uploads = await this.retrieval.retrieveUploads(user, {
+        text: input.text,
+        topK: UPLOAD_FACT_TOPK,
+        conversationId: input.conversationId,
+      });
+      const facts: PromptFact[] = [
+        ...chunks.map((c) => ({
+          chunkId: c.chunkId,
+          documentVersionId: c.documentVersionId,
+          content: c.content,
+        })),
+        ...uploads.map((u) => ({
+          chunkId: "",
+          documentVersionId: "",
+          content: u.content,
+          kind: "upload" as const,
+          uploadChunkId: u.uploadChunkId,
+          sourceLabel: uploadSourceLabel(u),
+        })),
+      ];
 
       const voice = await this.resolveVoice(user, input);
       const prompt = buildAnswerPrompt({
@@ -115,7 +137,11 @@ export class ChatService {
         });
       }
 
-      const sourceVersionIds = [...new Set(built.citations.map((c) => c.documentVersionId))];
+      // Provenance is the document_version ids of the *knowledge* sources cited; upload citations
+      // carry no document version (empty), so they're filtered out here.
+      const sourceVersionIds = [
+        ...new Set(built.citations.map((c) => c.documentVersionId).filter((id) => id.length > 0)),
+      ];
       const persisted = await this.conversations.persistTurn(user, {
         conversationId: input.conversationId,
         expertId: input.expertId,
@@ -130,6 +156,7 @@ export class ChatService {
             ordinal: c.ordinal,
             chunkId: c.chunkId,
             documentVersionId: c.documentVersionId,
+            uploadChunkId: c.uploadChunkId,
             content: c.content,
           })),
         },
@@ -195,5 +222,19 @@ function toCitationDto(citation: ResolvedCitation): ChatCitationDto {
     documentVersionId: citation.documentVersionId,
     quote: citation.content.slice(0, CITATION_PREVIEW_CHARS),
     kind: citation.kind,
+    sourceLabel: citation.sourceLabel,
   };
+}
+
+/**
+ * Builds an upload citation's provenance label (M5.4): the filename plus, for a spreadsheet chunk,
+ * its sheet/cell location (`budget.xlsx · Q1 KPIs!A2:B2`, `notes.csv · A5`). Prose uploads (PDF/
+ * DOCX) carry no sheet/cell, so the label is just the filename.
+ */
+function uploadSourceLabel(upload: RetrievedUploadChunk): string {
+  const location =
+    upload.sheetName && upload.cellRef
+      ? `${upload.sheetName}!${upload.cellRef}`
+      : (upload.cellRef ?? upload.sheetName ?? null);
+  return location ? `${upload.filename} · ${location}` : upload.filename;
 }

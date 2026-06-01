@@ -129,6 +129,87 @@ describe("RetrievalService", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it("folds the user's uploads in, scoped to the conversation, and records upload usage (M5.4)", async () => {
+    const uploadRow = {
+      id: "uc1",
+      uploaded_file_id: "uf1",
+      filename: "budget.xlsx",
+      content: "Q1 revenue",
+      sheet_name: "Q1 KPIs",
+      cell_ref: "A2:B2",
+      score: 0.9,
+    };
+    const queryRawUnsafe = jest.fn().mockResolvedValue([uploadRow]);
+    const tx = { $queryRawUnsafe: queryRawUnsafe };
+    const embed = jest.fn((texts: string[]) =>
+      Promise.resolve(texts.map(() => new Array(4).fill(0.5))),
+    );
+    const embeddings = { name: "fake-embed", dimensions: 4, embed } as EmbeddingProvider;
+    const run = jest.fn((_u: AuthUser, work: (tx: unknown) => Promise<unknown>) => work(tx));
+    const record = jest.fn().mockResolvedValue(undefined);
+    const info = jest.fn();
+    const service = new RetrievalService(
+      embeddings,
+      { run } as unknown as RlsService,
+      { record } as unknown as UsageLogService,
+      { info } as unknown as StructuredLogger,
+    );
+
+    const results = await service.retrieveUploads(USER, {
+      text: "revenue?",
+      topK: 5,
+      conversationId: "conv-1",
+    });
+
+    expect(results).toEqual([
+      {
+        uploadChunkId: "uc1",
+        uploadedFileId: "uf1",
+        filename: "budget.xlsx",
+        content: "Q1 revenue",
+        score: 0.9,
+        sheetName: "Q1 KPIs",
+        cellRef: "A2:B2",
+      },
+    ]);
+    // The conversation id is bound (temporary uploads are session-scoped) and the SQL joins files.
+    const sql = queryRawUnsafe.mock.calls[0][0] as string;
+    expect(sql).toContain("upload_chunks");
+    expect(sql).toContain("JOIN uploaded_files");
+    expect(queryRawUnsafe.mock.calls[0]).toContain("conv-1");
+    expect(record).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ featureKey: "upload.retrieve.embed", model: "fake-embed" }),
+    );
+    expect(info).toHaveBeenCalledWith(
+      "upload retrieval completed",
+      expect.objectContaining({ results: 1, conversationScoped: true }),
+    );
+  });
+
+  it("restricts uploads to persistent-only when no conversation is attached (M5.4)", async () => {
+    const queryRawUnsafe = jest.fn().mockResolvedValue([]);
+    const tx = { $queryRawUnsafe: queryRawUnsafe };
+    const embed = jest.fn(() => Promise.resolve([new Array(4).fill(0.5)]));
+    const embeddings = { name: "fake-embed", dimensions: 4, embed } as unknown as EmbeddingProvider;
+    const run = jest.fn((_u: AuthUser, work: (tx: unknown) => Promise<unknown>) => work(tx));
+    const service = new RetrievalService(
+      embeddings,
+      { run } as unknown as RlsService,
+      { record: jest.fn() } as unknown as UsageLogService,
+      { info: jest.fn() } as unknown as StructuredLogger,
+    );
+
+    const results = await service.retrieveUploads(USER, { text: "q", topK: 5 });
+
+    expect(results).toEqual([]);
+    const sql = queryRawUnsafe.mock.calls[0][0] as string;
+    // No conversation → the temporary branch is a constant false, so only persistent uploads match.
+    expect(sql).toContain("uf.mode = 'persistent' OR false");
+    // Only the query vector + limit are bound (no conversation id).
+    expect(queryRawUnsafe.mock.calls[0]).toHaveLength(3);
+  });
+
   it("throws when the embedder returns no vector at all", async () => {
     const embed = jest.fn(() => Promise.resolve([]));
     const embeddings = { name: "x", dimensions: 4, embed } as unknown as EmbeddingProvider;

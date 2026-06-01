@@ -85,6 +85,28 @@ describe("buildCitations", () => {
     expect(buildCitations({ answer: "x [1]", citations: upload }).citations[0].kind).toBe("upload");
   });
 
+  it("carries an upload citation's uploadChunkId and sourceLabel through (M5.4)", () => {
+    const upload: CitationSource[] = [
+      {
+        chunkId: "",
+        documentVersionId: "",
+        content: "Q1 revenue",
+        kind: "upload",
+        uploadChunkId: "uc1",
+        sourceLabel: "budget.xlsx · Q1 KPIs!A2:B2",
+      },
+    ];
+    expect(buildCitations({ answer: "From your file [1]", citations: upload }).citations[0]).toEqual({
+      ordinal: 1,
+      chunkId: "",
+      documentVersionId: "",
+      content: "Q1 revenue",
+      kind: "upload",
+      uploadChunkId: "uc1",
+      sourceLabel: "budget.xlsx · Q1 KPIs!A2:B2",
+    });
+  });
+
   it("NFC-normalizes the answer text (VI recall safety)", () => {
     const nfd = "Việt".normalize("NFD");
     const nfc = nfd.normalize("NFC");

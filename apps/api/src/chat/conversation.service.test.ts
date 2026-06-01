@@ -188,6 +188,43 @@ describe("ConversationService.persistTurn", () => {
     expect(tx.citation.create.mock.calls[0][0].data).toMatchObject({ ordinal: 2, chunkId: "c2" });
   });
 
+  it("persists an upload citation via uploadChunkId, nulling the empty knowledge ids (M5.4)", async () => {
+    const tx = makeTx();
+    tx.conversation.findUnique.mockResolvedValue({ id: "conv-1" });
+    tx.message.create.mockResolvedValue({ id: "assist-up" });
+    const { service } = makeService(tx);
+
+    await service.persistTurn(USER, {
+      ...TURN,
+      conversationId: "conv-1",
+      assistant: {
+        ...TURN.assistant,
+        content: "Per your file [1].",
+        sourceVersionIds: [],
+        citations: [
+          {
+            ordinal: 1,
+            chunkId: "",
+            documentVersionId: "",
+            uploadChunkId: "uc1",
+            content: "Q1 revenue",
+          },
+        ],
+      },
+    });
+
+    expect(tx.citation.create).toHaveBeenCalledTimes(1);
+    // Empty knowledge ids are coalesced to null (an empty string is not a uuid); provenance is
+    // the upload chunk.
+    expect(tx.citation.create.mock.calls[0][0].data).toMatchObject({
+      ordinal: 1,
+      chunkId: null,
+      documentVersionId: null,
+      uploadChunkId: "uc1",
+      quote: "Q1 revenue",
+    });
+  });
+
   it("creates a new conversation with voice attribution and an auto-derived title", async () => {
     const tx = makeTx();
     tx.conversation.create.mockResolvedValue({ id: "conv-new" });
