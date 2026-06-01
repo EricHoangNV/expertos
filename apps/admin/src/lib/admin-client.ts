@@ -39,6 +39,8 @@ import type {
   ExpertAnswerReviewDto,
   BookingReconcileResultDto,
   UnmatchedBookingEventDto,
+  ReviewConfigDto,
+  ReviewConfigUpdateInput,
 } from "@expertos/shared";
 
 /**
@@ -484,6 +486,24 @@ export function getUnmatchedBookings(
     `/consultation-bookings/unmatched${query ? `?${query}` : ""}`,
     token,
   );
+}
+
+// ── M9.1 — concierge trigger config ─────────────────────────────────────────
+
+/** The current concierge (human-review) trigger config — the global singleton. */
+export function getConciergeConfig(token: string): Promise<ReviewConfigDto> {
+  return request<ReviewConfigDto>("/admin/concierge-config", token);
+}
+
+/** Save the concierge trigger config. The server gates enabling Mode B on the OD#5 legal sign-off. */
+export function updateConciergeConfig(
+  token: string,
+  body: ReviewConfigUpdateInput,
+): Promise<ReviewConfigDto> {
+  return request<ReviewConfigDto>("/admin/concierge-config", token, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 }
 
 // ── session identity (role gating) ──────────────────────────────────────────

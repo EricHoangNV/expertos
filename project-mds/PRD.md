@@ -68,7 +68,7 @@
 
 #### M9 — Concierge Mode (human-in-the-loop) — GATED by Open Decision #5
 - [ ] M9.0 **GATE:** Open Decision #5 (Mode B legal/brand ruling) resolved — or fall back to Mode-A-only
-- [ ] M9.1 Admin trigger config (off / user-prompted / auto-silent) + confidence threshold + SLA + volume cap
+- [x] M9.1 Admin trigger config (off / user-prompted / auto-silent) + confidence threshold + SLA + volume cap — **DONE** (`apps/api/src/concierge/` `ConciergeConfigService` over the `review_configs` global singleton + `GET/PATCH /admin/concierge-config` admin-RLS editor + audit-in-tx + `apps/admin/app/concierge` page). **OD#5-respecting:** enabling Mode B (`auto_silent`) is blocked until the legal/brand sign-off flips the injected `CONCIERGE_ALLOW_SILENT` flag (surfaced on the DTO as `silentReviewAllowed` so the UI disables the option). Mode-agnostic config infra; the risky silent-delivery path (M9.3) stays unbuilt pending OD#5.
 - [ ] M9.2 Concierge review queue in Expert portal; reviewer verdict (Good/Bad/Great) + edit
 - [ ] M9.3 Async delivery (visible update vs silent) + transactional email notification
 - [ ] M9.4 Reviewer-feedback flywheel: conversation-context injection (immediate) + `voice_examples`/`knowledge_drafts`/chunk-flagging (global); escalate-to-consultation

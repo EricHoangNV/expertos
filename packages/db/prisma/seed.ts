@@ -215,6 +215,14 @@ async function main() {
     });
   }
 
+  // The concierge trigger config is a global singleton (M9.1). Seed exactly one row, defaulting to
+  // "Off" (enabled = false) — the safe launch state until the OD#5 legal/brand ruling. Idempotent:
+  // only create when none exists, so re-running the seed never duplicates or overwrites admin edits.
+  const reviewConfig = await prisma.reviewConfig.findFirst();
+  if (!reviewConfig) {
+    await prisma.reviewConfig.create({ data: {} });
+  }
+
   const [tenants, features, plans, entitlements] = await Promise.all([
     prisma.tenant.count(),
     prisma.feature.count(),

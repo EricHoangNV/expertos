@@ -17,6 +17,7 @@ import { AnalyticsModule } from "./analytics/analytics.module";
 import { FeedbackInspectorModule } from "./feedback-inspector/feedback-inspector.module";
 import { AdminModule } from "./admin/admin.module";
 import { ExpertModule } from "./expert/expert.module";
+import { ConciergeModule } from "./concierge/concierge.module";
 import { RateLimitModule } from "./rate-limit/rate-limit.module";
 
 @Module({
@@ -39,6 +40,7 @@ import { RateLimitModule } from "./rate-limit/rate-limit.module";
     FeedbackInspectorModule,
     AdminModule,
     ExpertModule,
+    ConciergeModule,
   ],
   controllers: [HealthController],
   providers: [HealthService],

@@ -804,6 +804,25 @@ model ReviewResponse {
   @@map("review_responses")
 }
 
+/// Admin-configurable concierge (human-review) trigger config (M9.1, PRD §"Concierge Mode"). A
+/// global singleton for the consumer MVP — there is exactly one row (per-expert overrides are a
+/// future extension). Reference/config data like `recommendation_rules`: NO row-level security
+/// (global config, admin-only writes via the M9.1 portal). `enabled = false` is "Off"; otherwise
+/// `triggerMode` selects Mode A (`user_prompted`) or Mode B (`auto_silent`). Mode B (silent review)
+/// is gated on the OD#5 legal/brand sign-off (enforced in the service, not the schema).
+model ReviewConfig {
+  id                  String            @id @default(uuid()) @db.Uuid
+  enabled             Boolean           @default(false)
+  triggerMode         ReviewTriggerMode @default(user_prompted) @map("trigger_mode")
+  confidenceThreshold Float             @default(0.5) @map("confidence_threshold")
+  slaHours            Int               @default(24) @map("sla_hours")
+  volumeCapPerDay     Int               @default(50) @map("volume_cap_per_day")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  @@map("review_configs")
+}
+
 // ──────────────────────────── Uploads ────────────────────────────
 
 model UploadedFile {

@@ -18,5 +18,6 @@ import { AdminExpertController } from "./admin-expert.controller";
   imports: [AuthModule],
   controllers: [AdminAuditController, AdminUserController, AdminExpertController],
   providers: [AdminAuditService, AdminUserService, AdminExpertService],
+  exports: [AdminAuditService],
 })
 export class AdminModule {}

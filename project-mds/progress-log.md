@@ -2001,3 +2001,38 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 **Notes for next iteration:**
 - **No fully-buildable Phase-1 engineering tasks remain offline.** What's left is gate/decision-bound or needs a live stack: M9 (Concierge) GATED by OD#5; M10.3 (concierge metrics) awaits M9; M10.4 (kill-line) awaits OD#1; M11.1 (Playwright E2E) + M11.3 (load smoke) need a live stack (Firebase + DB + LLM); M11.4 + NT.1–6 need product/legal sign-offs.
 - **M10.3 is the natural `AnalyticsService` follow-on** once M9 lands (concierge volume/SLA/verdict metrics + knowledge-quality signals) — same admin cross-tenant `groupBy` pattern.
+
+## M9.1 — Admin concierge trigger config
+**Date:** 2026-06-01
+**Ref:** PRD §"Concierge Mode" → "Admin-configurable trigger mode"; Task Manifest M9.1 (M9 GATED by Open Decision #5)
+
+**What was done:**
+- Built the first M9 slice — the admin-configurable concierge (human-review) trigger config — in a way that respects the OD#5 legal/brand gate without being blocked by it. The milestone is gated, but M9.1 is mode-agnostic *config infrastructure*; OD#5 governs which mode an admin may turn on in production + the disclosure copy, not whether the config surface exists. The genuinely-gated silent-delivery path (M9.3) stays unbuilt.
+- **Schema/DB:** new `ReviewConfig` model (`review_configs`) — a global singleton, RLS-exempt config like `recommendation_rules`; migration `20260601060000_review_config` (reuses the existing `review_trigger_mode` enum); idempotent seed (create-if-none, defaults to **Off**). Applied + seed-validated against the live `expertos-pg` (one Off row; re-run stays at 1 row).
+- **API:** new `apps/api/src/concierge/` module — `ConciergeConfigService` (`getConfig`/`updateConfig`) behind `GET/PATCH /admin/concierge-config` (`@Roles("admin")`). Runs in `RlsService.run` under the admin principal; every save appends an `AdminAuditService` entry in the same tx (`concierge.config_updated`). `AdminModule` now `exports: [AdminAuditService]`; `ConciergeModule` imports it.
+- **OD#5 gate:** enabling Mode B (`auto_silent`) is rejected (400) unless the injected `CONCIERGE_ALLOW_SILENT` boolean (resolved once at boot from env, default false) is set. The flag is surfaced on `ReviewConfigDto.silentReviewAllowed` so the UI disables the option.
+- **Admin UI:** `apps/admin/app/concierge/page.tsx` (single config form — mode dropdown collapsing enabled+triggerMode, confidence/SLA/volume inputs, Mode-B disabled + amber note when not allowed); `getConciergeConfig`/`updateConciergeConfig` client fns; "Concierge" nav entry (Admin group).
+- **Shared:** `packages/shared/src/concierge.ts` — `reviewConfigUpdateSchema` (range-validated), `ReviewConfigDto`, `reviewTriggerModeSchema`/`REVIEW_TRIGGER_MODES`.
+- **Tests:** `concierge-config.service.test.ts` (+7, 100% all metrics) + `concierge.test.ts` (+8). Total 906 (api 556, shared 163).
+
+**Key decisions:**
+- **Global singleton, no per-expert override** for the consumer MVP (manifest says "global and/or per-expert" — global suffices); per-expert is a documented future extension. Implemented as a manual find→update-or-create (no sentinel id, no Postgres null-unique quirk); seed is create-if-none.
+- **Mode-B gate as an injected boolean** (custom provider over a factory reading `process.env.CONCIERGE_ALLOW_SILENT`), not an inline env read — so the service is deterministically testable in both states. This makes the OD#5 legal gate a deploy-time flag flip, not a code change.
+- **Audit-in-tx** threaded through the mutation (per the M8.4 backbone rule). `getConfig` returns Off launch-defaults with null `updatedAt` when the DB is unseeded.
+
+**Files changed:**
+- `packages/db/prisma/schema.prisma` — `ReviewConfig` model in the Concierge section.
+- `packages/db/prisma/migrations/20260601060000_review_config/migration.sql` — new table (+ app_user GRANT, no RLS).
+- `packages/db/prisma/seed.ts` — idempotent singleton seed (Off).
+- `packages/shared/src/concierge.ts` (new) + `index.ts` exports.
+- `apps/api/src/concierge/{concierge.tokens,concierge-config.service,concierge-config.controller,concierge.module}.ts` (new) + `concierge-config.service.test.ts` (new).
+- `apps/api/src/admin/admin.module.ts` — export `AdminAuditService`.
+- `apps/api/src/app.module.ts` — register `ConciergeModule`.
+- `apps/admin/app/concierge/page.tsx` (new) + `src/lib/admin-client.ts` (+2 fns) + `src/components/AdminFrame.tsx` (nav).
+- `packages/shared/src/concierge.test.ts` (new); PRD manifest M9.1 → `[x]`.
+
+**Notes for next iteration:**
+- **M9.2 (concierge review queue in the expert portal) is the next mostly-mode-agnostic slice.** Build it on the M8.5 `ExpertPortalService` **elevated-but-bounded RLS** pattern (resolve-expert-first, `is_admin` context re-bounded by explicit `tenant_id` + `conversation.expert_id`, short-circuit-empty-when-none) reading `human_review_requests`/`review_responses` (tables already exist) scoped to the reviewer's voice. The host surface is the role-aware `AdminFrame` Expert group.
+- **`ConciergeModule` is the M9 host.** A future M9 "should this answer trigger a review?" check (used by `ChatService` on a low-confidence `done` event) reads this config — wire it through the service (don't re-read `review_configs` elsewhere). It must respect `enabled` + `triggerMode` + `confidenceThreshold` + the daily `volumeCapPerDay` (count today's `human_review_requests`).
+- **M9.3 (async delivery) is the genuinely OD#5-gated piece** + needs an email provider (swap-seam like `PaymentProvider`/`TidyCalProvider`) — a live-stack dep. Don't build silent push until OD#5/NT.1 sign-off flips `CONCIERGE_ALLOW_SILENT`.
+- Sandbox quirk unchanged: full parallel `pnpm test` SIGBUS/SIGILLs random workers (0 assertion failures; 469/414 passed across runs, the rest are "suite failed to run"); per-suite isolated runs are green. Live-DB runbook: binary engine for real queries, regenerate library engine before gates.
