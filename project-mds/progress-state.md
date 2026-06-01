@@ -2,6 +2,7 @@
 
 ## Current State
 - Completed:
+  - NT.3 (technical): Data-retention sweeper (`RetentionService`) — admin-triggered `preview`/`sweep` deleting expired temporary uploads + idle conversations + old usage logs, audited; `apps/admin/app/retention` (PM approval still pending)
   - M11.3: Cache hit/miss instrumentation (`GET /admin/analytics/cache`) + dependency-free `load/smoke.mjs` smoke harness (opt-in, like `e2e/`)
   - M11.1 (harness): Playwright E2E foundation — opt-in `e2e/` workspace, 18 tests/7 specs grounded in real DOM, emulator auth fixtures + env-guarded `connectAuthEmulator` wiring; execution awaits live stack (3 `test.fixme` legs await UI/seed)
   - NT.4 (technical): High-stakes-topic detector → educational-scope prompt rule + disclaimer (live+history) + `high_stakes` logging + topic-trigger CTA (PM/legal sign-off still pending)
@@ -56,10 +57,11 @@
   - M1.3: Vietnamese retrieval quality + NFC normalization
   - M1.2: Hybrid retrieval (vector + keyword RRF fusion)
   - M1.1: Versioned ingestion pipeline
-- Tests: 1020 pass / 0 fail / 0 skip (shared 179, ui 29, db 9, ai 161, api 642)
+- Tests: 1029 pass / 0 fail / 0 skip (shared 179, ui 29, db 9, ai 161, api 651)
 - Build: passing — `pnpm build` (turbo) builds all 7 workspaces. (Note: a stale `apps/admin/.next/cache` can corrupt the standalone build with `Unexpected end of JSON input` — `rm -rf apps/admin/.next/cache` clears it; not a code error.)
 - Gates: typecheck ✅, test ✅ (coverage gate ≥90% met), lint ✅ (incl. stylelint), build ✅, deadcode (knip) ✅
 - Next tasks (priority order):
   1. **M11.1 / M11.3** — execute the Playwright E2E suite + `load/smoke.mjs` against a live stack (Postgres+pgvector + Firebase Auth emulator + 3 services + seed); resolve the 3 `test.fixme` legs as their UI/seed lands (consumer checkout CTA, publish→retrieval round-trip, deletion cascade)
-  2. **M11.4 / NT** — remaining product/legal sign-offs (NT.3 data-retention, NT.4 copy/ToS review, NT.5/NT.6 deferred)
-  3. Remaining Phase-0 Open Decisions (#3, product halves of #2/#6)
+  2. **M11.4 / NT** — remaining sign-offs are now human gates (NT.3 PM approval, NT.4 copy/ToS, NT.5/6 deferred)
+  3. NT.3 follow-up: consultation-transcript expiry + concierge-record anonymization (anonymize-not-delete; left out of sweeper)
+  4. Phase-0 Open Decisions (#3, product halves of #2/#6)

@@ -153,6 +153,11 @@ export type {
 } from "./analytics";
 export { failedQueryListQuerySchema } from "./failed-queries";
 export type { FailedQueryListQueryInput, FailedQueryDto } from "./failed-queries";
+export type {
+  RetentionCounts,
+  RetentionPreviewDto,
+  RetentionSweepResultDto,
+} from "./retention";
 export {
   REVIEW_TRIGGER_MODES,
   reviewTriggerModeSchema,

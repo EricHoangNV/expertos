@@ -2390,3 +2390,38 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - `knip.json` — ignore `load/**`.
 
 **Note for reviewers (env, not code):** a stale `apps/admin/.next/cache` can fail the admin standalone build with `Unexpected end of JSON input` / `Expected end of object`; `rm -rf apps/admin/.next/cache` clears it. Typecheck/pages are unaffected.
+
+## NT.3 — Data-retention sweeper (technical enforcement)
+**Date:** 2026-06-01
+**Ref:** PRD §"Non-Technical Requirements" → "Data-retention + deletion policy" (NT.3)
+
+**What was done:**
+- Built `RetentionService` (`apps/api/src/admin/retention.service.ts`) — the auto-delete "sweeper" the published policy promises and the M5.2 upload pipeline has referenced in comments all along but which never existed. Two ops:
+  - `preview(actor)` — non-destructive dry run, counts eligible rows per category.
+  - `sweep(actor)` — deletes them, writes one immutable audit entry in the same transaction, returns the counts.
+- Three side-effect-free deletion classes: `temporary` uploads past their stamped `expires_at` (chunks cascade), conversations idle past the window by `updated_at` (messages/citations/feedback/saved cascade), usage logs past the window by `occurred_at`.
+- Runs under the admin RLS context (`is_admin` GUC → cross-tenant `deleteMany`, permitted by the `FOR ALL … is_admin()` policies).
+- Env-tunable windows via `retention.config.ts` (`RETENTION_CONVERSATION_DAYS` / `RETENTION_USAGE_LOG_DAYS`, default 730 = the 2-year policy value); typo-guarded positive-int parse. Temporary-upload expiry honours the per-row stamp, not a global constant.
+- Routes: `GET /admin/retention/preview` + `POST /admin/retention/sweep` (`@Roles("admin")`), Cloud-Scheduler-triggerable (no in-app cron, per §"No full infra Day 1").
+- Shared DTOs (`packages/shared/src/retention.ts`): `RetentionCounts` / `RetentionPreviewDto` / `RetentionSweepResultDto`.
+- Admin UI: `apps/admin/app/retention/page.tsx` (preview stats + Run-sweep + result card), nav entry under Admin → "Data retention", client fns `getRetentionPreview`/`runRetentionSweep`.
+- Tests: `retention.service.test.ts` (5) + `retention.config.test.ts` (4), service 100% all metrics. api 642→651.
+
+**Key decisions:**
+- **Admin-triggered, not an in-app cron.** The repo has no scheduler dependency and §"No full infra Day 1" says don't add one; an admin route a Cloud Scheduler job hits keeps it dependency-free and matches the existing reconcile pattern.
+- **Honour the stamped `expires_at` for uploads, not `TEMPORARY_RETENTION_DAYS`.** The constant is 7 (vs the policy DRAFT's 90); the per-row stamp is the authoritative TTL, so the sweep is decoupled from that mismatch and stays correct if the stamp ever varies.
+- **Deliberately excluded consultation transcripts + concierge records.** The policy calls for *anonymize-not-delete* on concierge records, and deleting consultations would distort historical revenue/MRR reporting — both need their own non-deletion treatment, flagged as a follow-up rather than bolted on with wrong semantics.
+- One shared `cutoffs()` computed from a single `now` (with a clock seam) so preview and sweep agree and tests are deterministic.
+
+**Files changed:**
+- `packages/shared/src/retention.ts` (new), `packages/shared/src/index.ts` — DTOs + export.
+- `apps/api/src/admin/retention.{service,controller,config}.ts` (new) + `.test.ts` (2 new) — service/route/config.
+- `apps/api/src/admin/admin.module.ts` — register controller/service + `RETENTION_POLICY` factory.
+- `apps/api/src/uploads/upload-content-types.ts` — comment now points at the real `RetentionService` (was "a future sweeper job").
+- `apps/admin/app/retention/page.tsx` (new), `apps/admin/src/lib/admin-client.ts`, `apps/admin/src/components/AdminFrame.tsx` — admin UI + nav.
+- `project-mds/PRD.md` — NT.3 manifest + section → `[~]` technical-enforcement-done.
+
+**Notes for next iteration:**
+- NT.3 now has the same shape as NT.4: technical enforcement done, **human gate remains** (PM approval + publication of the policy DRAFT). Not code.
+- Follow-up (left intentionally): consultation-transcript expiry (delete `consultation_notes` only, keep the consultation row for revenue) + concierge-record anonymization (null/scrub PII past 1yr rather than delete).
+- Sweep runs the deletes in one transaction; fine at MVP scale. If row counts grow large, batch the `deleteMany` per category to bound lock duration.

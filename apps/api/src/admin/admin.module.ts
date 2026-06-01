@@ -6,18 +6,33 @@ import { AdminUserService } from "./admin-user.service";
 import { AdminUserController } from "./admin-user.controller";
 import { AdminExpertService } from "./admin-expert.service";
 import { AdminExpertController } from "./admin-expert.controller";
+import { RetentionService } from "./retention.service";
+import { RetentionController } from "./retention.controller";
+import { RETENTION_POLICY, resolveRetentionPolicy } from "./retention.config";
 
 /**
  * Admin management portal (M8.4, PRD §"Admin web portal" + §"Foundational security/privacy"):
  * user / subscription / fair-use management, expert-roster management, the immutable admin audit
- * log, and user-data deletion. `AuthModule` supplies {@link RlsService} (the admin cross-tenant RLS
- * boundary); `StructuredLogger` comes from the global {@link ObservabilityModule}.
- * {@link AdminAuditService} is the shared audit sink every mutation writes through.
+ * log, user-data deletion, and the NT.3 data-retention sweeper. `AuthModule` supplies
+ * {@link RlsService} (the admin cross-tenant RLS boundary); `StructuredLogger` comes from the global
+ * {@link ObservabilityModule}. {@link AdminAuditService} is the shared audit sink every mutation
+ * writes through.
  */
 @Module({
   imports: [AuthModule],
-  controllers: [AdminAuditController, AdminUserController, AdminExpertController],
-  providers: [AdminAuditService, AdminUserService, AdminExpertService],
+  controllers: [
+    AdminAuditController,
+    AdminUserController,
+    AdminExpertController,
+    RetentionController,
+  ],
+  providers: [
+    AdminAuditService,
+    AdminUserService,
+    AdminExpertService,
+    RetentionService,
+    { provide: RETENTION_POLICY, useFactory: () => resolveRetentionPolicy() },
+  ],
   exports: [AdminAuditService],
 })
 export class AdminModule {}

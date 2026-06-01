@@ -52,7 +52,8 @@ export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 /**
  * Default retention window (days) for a `temporary` upload (M5.2). A temporary file's chunks are
  * scoped to the asking user's session and are not part of the searchable knowledge base, so the row
- * carries an `expires_at = created_at + this` that a future sweeper job uses to reclaim it. Kept as
+ * carries an `expires_at = created_at + this` that the NT.3 retention sweeper
+ * ({@link import("../admin/retention.service").RetentionService}) uses to reclaim it. Kept as
  * a single named constant so the retention policy lives in one place when it becomes env-driven;
  * `persistent` uploads do not expire and store `null`.
  */

@@ -39,6 +39,7 @@ const NAV: NavItem[] = [
   { href: "/reconcile", label: "Bookings", group: "Admin" },
   { href: "/users", label: "Users", group: "Admin" },
   { href: "/experts", label: "Experts", group: "Admin" },
+  { href: "/retention", label: "Data retention", group: "Admin" },
   { href: "/audit", label: "Audit log", group: "Admin" },
 ];
 

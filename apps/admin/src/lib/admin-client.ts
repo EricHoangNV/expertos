@@ -50,6 +50,8 @@ import type {
   ReviewResponseCreateInput,
   ReviewEscalateInput,
   ReviewEscalationDto,
+  RetentionPreviewDto,
+  RetentionSweepResultDto,
 } from "@expertos/shared";
 
 /**
@@ -635,4 +637,16 @@ export function escalateConciergeReview(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+// ── NT.3 — data-retention sweep ─────────────────────────────────────────────
+
+/** Dry run: how many rows the next retention sweep would delete, per category. No writes. */
+export function getRetentionPreview(token: string): Promise<RetentionPreviewDto> {
+  return request<RetentionPreviewDto>("/admin/retention/preview", token);
+}
+
+/** Run the data-retention sweep (destructive; audited). Returns the per-category delete counts. */
+export function runRetentionSweep(token: string): Promise<RetentionSweepResultDto> {
+  return request<RetentionSweepResultDto>("/admin/retention/sweep", token, { method: "POST" });
 }
