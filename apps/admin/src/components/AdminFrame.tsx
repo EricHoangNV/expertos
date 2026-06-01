@@ -16,6 +16,7 @@ const NAV: NavItem[] = [
   { href: "/knowledge-drafts", label: "Drafts" },
   { href: "/revenue", label: "Revenue" },
   { href: "/entitlements", label: "Entitlements" },
+  { href: "/recommendation-rules", label: "Funnel rules" },
 ];
 
 function Sidebar({ pathname }: { pathname: string }) {

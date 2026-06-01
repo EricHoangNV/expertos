@@ -10,6 +10,10 @@ import type {
   KnowledgeDraftUpdateInput,
   KnowledgeVersionDto,
   PublishStatusValue,
+  RecommendationRuleDto,
+  RecommendationRuleUpdateInput,
+  RecommendationRulesDto,
+  RecommendationTriggerValue,
   RevenueReportDto,
 } from "@expertos/shared";
 
@@ -164,4 +168,23 @@ export function updateEntitlementCell(
     token,
     { method: "PATCH", body: JSON.stringify(body) },
   );
+}
+
+// M8.3 — Admin recommendation-rules editor
+
+/** Every configured recommendation rule plus the consultation types a rule can point at. */
+export function getRecommendationRules(token: string): Promise<RecommendationRulesDto> {
+  return request<RecommendationRulesDto>("/admin/recommendation-rules", token);
+}
+
+/** Save one recommendation rule; the trigger (identity) is in the path, the value in the body. */
+export function updateRecommendationRule(
+  token: string,
+  trigger: RecommendationTriggerValue,
+  body: RecommendationRuleUpdateInput,
+): Promise<RecommendationRuleDto> {
+  return request<RecommendationRuleDto>(`/admin/recommendation-rules/${trigger}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 }

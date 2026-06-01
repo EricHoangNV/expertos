@@ -84,7 +84,12 @@ export type {
   EntitlementCellDto,
   EntitlementMatrixDto,
 } from "./entitlements";
-export { recommendationRespondSchema, bookingReconcileSchema } from "./consultation";
+export {
+  recommendationRespondSchema,
+  bookingReconcileSchema,
+  recommendationTriggerSchema,
+  recommendationRuleUpdateSchema,
+} from "./consultation";
 export type {
   RecommendationTriggerValue,
   ConsultationTypeDto,
@@ -95,6 +100,10 @@ export type {
   RecommendationResponseResultDto,
   BookingReconcileInput,
   BookingReconcileResultDto,
+  RecommendationRuleUpdateInput,
+  RecommendationRuleDto,
+  RecommendationConsultationTypeDto,
+  RecommendationRulesDto,
 } from "./consultation";
 export { billingCheckoutSchema } from "./billing";
 export type {

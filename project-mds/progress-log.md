@@ -1387,3 +1387,37 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 **Notes for next iteration:**
 - The remaining M8.3 sub-deliverables: **recommendation-rules editor** (`recommendation_rules`, another mutation surface — follow this `EntitlementMatrixService` write template: identity-from-path, server-side coherence validation, RLS-exempt config) and **failed/low-confidence query inspector** over `answer_feedback` (read-only — the easiest remaining; copy the `RevenueService` admin cross-tenant RLS pattern).
 - The real `plan_entitlements` upsert joins the M11 Testcontainers list (seam-tested with a mocked tx this session; no live DB).
+
+## M8.3 (partial) — Admin recommendation-rules editor
+**Date:** 2026-06-01
+**Ref:** PRD §"Admin & Expert portals" → M8.3 (recommendation-rules editor sub-deliverable)
+
+**What was done:**
+- New `RecommendationRulesService` (`apps/api/src/consultation/recommendation-rules.service.ts`) — the single write choke point over the `recommendation_rules` config table. `getRules(user)` returns every rule (highest priority first) + the consultation types a rule can point at; `updateRule(user, trigger, input)` upserts one rule keyed by its trigger. Runs inside `RlsService.run` under the admin principal (config tables are RLS-exempt). Mirrors the `EntitlementMatrixService` write template.
+- Server-side coherence (directive §4.20): a keyword trigger (`topic`/`high_intent`) has its `threshold` forced `null`; a threshold trigger (`depth`/`low_confidence`) has its `keywords` forced `[]`. An *enabled* rule that could never fire is rejected (400): a keyword rule with no keywords, a threshold rule with a null threshold, a `depth` rule with threshold < 1. A non-null `consultationTypeKey` is validated to reference an existing consultation type (400 if unknown). `kind` (keyword vs threshold) is derived from the trigger.
+- New `RecommendationRulesController` (`@Roles("admin")`): `GET /admin/recommendation-rules` + `PATCH /admin/recommendation-rules/:trigger` (identity from the path via `ZodValidationPipe(recommendationTriggerSchema)`, body via `ZodValidationPipe(recommendationRuleUpdateSchema)`). Registered in `ConsultationModule` (controller + provider).
+- New shared `recommendationTriggerSchema` + `recommendationRuleUpdateSchema` + `RecommendationRuleDto`/`RecommendationConsultationTypeDto`/`RecommendationRulesDto`/`RecommendationRuleUpdateInput` (`packages/shared/src/consultation.ts`), exported from the index.
+- Admin UI: new `apps/admin/app/recommendation-rules/page.tsx` — one row per rule with a `RuleEditor` (enable checkbox; keyword triggers show a one-per-line keyword `Textarea`, threshold triggers a numeric `Input`; both show priority + a consultation-type `Select`); per-rule Save PATCHes and folds the persisted rule back in, surfacing the server's coherence error inline. New `getRecommendationRules`/`updateRecommendationRule` in `admin-client.ts`; "Funnel rules" nav entry in `AdminFrame`.
+
+**Key decisions:**
+- Per-rule PATCH (not a bulk matrix POST) keeps each save atomic and the error local — the matrix-editor precedent.
+- Coherence validation lives in the service (cross-field, trigger-dependent) rather than the schema — the Zod schema can't see which field a given trigger actually uses.
+- No cache invalidation: recommendation rules aren't cached (read per chat turn through `RecommendationService.recommend`), unlike the answer/retrieval caches.
+- The four triggers are a fixed enum, so the editor edits existing rows (upsert covers a missing seed row); the trigger is the identity, validated by the enum schema on the path.
+
+**Files changed:**
+- `packages/shared/src/consultation.ts` — added the M8.3 recommendation-rules editor schemas + DTOs.
+- `packages/shared/src/index.ts` — exported the new schemas + types.
+- `packages/shared/src/consultation.test.ts` — +10 schema tests (trigger enum + rule update defaults/trim/bounds).
+- `apps/api/src/consultation/recommendation-rules.service.ts` — new write choke point.
+- `apps/api/src/consultation/recommendation-rules.controller.ts` — new admin controller.
+- `apps/api/src/consultation/recommendation-rules.service.test.ts` — +10 service tests.
+- `apps/api/src/consultation/consultation.module.ts` — registered the controller + service; updated the module doc.
+- `apps/admin/src/lib/admin-client.ts` — `getRecommendationRules`/`updateRecommendationRule`.
+- `apps/admin/src/components/AdminFrame.tsx` — "Funnel rules" nav entry.
+- `apps/admin/app/recommendation-rules/page.tsx` — new editor page.
+
+**Notes for next iteration:**
+- The last open M8.3 sub-deliverable is the **failed/low-confidence query inspector** over `answer_feedback` (read-only — the easiest remaining). Copy the `RevenueService`/`EntitlementMatrixService` admin cross-tenant RLS pattern: run under the admin principal so the `is_admin` GUC reads all tenants (no `tenant_id` predicate); add a read-only API route, then a page. `answer_feedback` has no `conversationId` column, so join through `messages` to surface the question/answer text + the 👎 reason.
+- The real `recommendation_rules` upsert joins the M11 Testcontainers list (seam-tested with a mocked tx this session; no live DB).
+- After the query inspector, M8.3 closes and M8.4 (manage users/subs/experts/voice + audit logs + user-data deletion) / M8.5 (expert portal) are the next M8 milestones.

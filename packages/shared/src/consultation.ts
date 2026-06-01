@@ -105,3 +105,86 @@ export interface BookingReconcileResultDto {
   matched: number;
   skipped: number;
 }
+
+// ── M8.3 — admin recommendation-rules editor ───────────────────────────────
+
+/**
+ * Which recommendation trigger a rule is keyed on (mirrors the `recommendation_trigger` DB enum and
+ * the `@expertos/ai` engine). The four triggers are fixed in code, so the editor edits the existing
+ * rows rather than creating arbitrary new ones; the trigger is the rule's identity (carried in the
+ * `PATCH` path, never the body — directive §4.7).
+ */
+export const recommendationTriggerSchema = z.enum([
+  "topic",
+  "depth",
+  "low_confidence",
+  "high_intent",
+]);
+
+/** Guard rails on an editable rule — accidental-absurd-value protection, not product limits. */
+const MAX_THRESHOLD = 1000;
+const MAX_PRIORITY = 1000;
+const MAX_KEYWORDS = 200;
+const MAX_KEYWORD_LEN = 80;
+
+/**
+ * The editable fields of one recommendation rule
+ * (`PATCH /admin/recommendation-rules/:trigger`). Identity (`trigger`) lives in the path, never the
+ * body. Type coherence is derived server-side from the trigger (directive §4.20): a keyword trigger
+ * (`topic`/`high_intent`) ignores `threshold` (forced `null`), and a threshold trigger
+ * (`depth`/`low_confidence`) ignores `keywords` (forced `[]`). The service additionally rejects an
+ * *enabled* rule that could never fire (a keyword rule with no keywords, a threshold rule with no
+ * threshold) and an unknown `consultationTypeKey`.
+ */
+export const recommendationRuleUpdateSchema = z.object({
+  /** Whether the rule is active (a disabled rule never fires). */
+  enabled: z.boolean(),
+  /** Threshold triggers only: `depth` min turns / `low_confidence` max citations (`null` = none). */
+  threshold: z.number().int().min(0).max(MAX_THRESHOLD).nullable().default(null),
+  /** Keyword triggers only: whole-word match terms (`[]` = none). */
+  keywords: z
+    .array(z.string().trim().min(1).max(MAX_KEYWORD_LEN))
+    .max(MAX_KEYWORDS)
+    .default([]),
+  /** Higher wins when several rules fire on the same turn (only one recommendation is surfaced). */
+  priority: z.number().int().min(0).max(MAX_PRIORITY).default(0),
+  /** Which `consultation_types.key` to recommend, or `null` to fall back to the active default. */
+  consultationTypeKey: z.string().trim().min(1).nullable().default(null),
+});
+
+export type RecommendationRuleUpdateInput = z.infer<typeof recommendationRuleUpdateSchema>;
+
+/**
+ * One recommendation rule as shown in the admin editor. `kind` is derived server-side from the
+ * trigger so the UI can show only the relevant control (keyword list vs threshold) without
+ * re-deciding which trigger is which.
+ */
+export interface RecommendationRuleDto {
+  trigger: RecommendationTriggerValue;
+  enabled: boolean;
+  /** Threshold triggers (`depth`/`low_confidence`) only; `null` for keyword triggers. */
+  threshold: number | null;
+  /** Keyword triggers (`topic`/`high_intent`) only; empty for threshold triggers. */
+  keywords: string[];
+  priority: number;
+  /** The configured consultation type's key, or `null` to fall back to the active default. */
+  consultationTypeKey: string | null;
+  /** Whether the trigger matches on keywords or a numeric threshold (derived from `trigger`). */
+  kind: "keyword" | "threshold";
+}
+
+/** A consultation type offered in the rule editor's "recommend" dropdown. */
+export interface RecommendationConsultationTypeDto {
+  key: string;
+  name: string;
+  active: boolean;
+}
+
+/**
+ * The recommendation-rules editor payload (`GET /admin/recommendation-rules`): every configured rule
+ * (highest priority first) plus the consultation types an admin can point a rule at.
+ */
+export interface RecommendationRulesDto {
+  rules: RecommendationRuleDto[];
+  consultationTypes: RecommendationConsultationTypeDto[];
+}
