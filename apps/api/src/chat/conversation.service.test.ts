@@ -23,6 +23,7 @@ function makeTx() {
     },
     message: { findMany: jest.fn(), create: jest.fn() },
     citation: { create: jest.fn().mockResolvedValue({ id: "cit" }) },
+    $queryRawUnsafe: jest.fn(),
   };
 }
 
@@ -270,6 +271,72 @@ describe("ConversationService.get", () => {
 
     await expect(service.get(USER, "conv-x")).rejects.toBeInstanceOf(NotFoundException);
     expect(tx.message.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("ConversationService.search", () => {
+  const SEARCH_ROW = {
+    id: "conv-1",
+    title: "how do I file taxes",
+    expert_id: "ex-1",
+    language: "en",
+    created_at: new Date("2026-06-01T10:00:00.000Z"),
+    updated_at: new Date("2026-06-01T10:05:00.000Z"),
+    message_id: "m-9",
+    snippet: "File via the «portal»",
+  };
+
+  it("maps raw search rows into conversation hits and binds q/limit/offset", async () => {
+    const tx = makeTx();
+    tx.$queryRawUnsafe.mockResolvedValue([SEARCH_ROW]);
+    const { service, run } = makeService(tx);
+
+    const result = await service.search(USER, { q: "portal", limit: 20, offset: 0 });
+
+    expect(run).toHaveBeenCalledWith(USER, expect.any(Function));
+    expect(result).toEqual([
+      {
+        conversation: {
+          id: "conv-1",
+          title: "how do I file taxes",
+          expertId: "ex-1",
+          language: "en",
+          createdAt: "2026-06-01T10:00:00.000Z",
+          updatedAt: "2026-06-01T10:05:00.000Z",
+        },
+        snippet: "File via the «portal»",
+        messageId: "m-9",
+      },
+    ]);
+    // Bound params in order: query text, limit, offset (never interpolated).
+    const [sql, q, limit, offset] = tx.$queryRawUnsafe.mock.calls[0];
+    expect(q).toBe("portal");
+    expect(limit).toBe(20);
+    expect(offset).toBe(0);
+    expect(sql).toContain("websearch_to_tsquery('simple', $1)");
+    expect(sql).toContain("LIMIT $2 OFFSET $3");
+  });
+
+  it("returns a title-only hit with a null snippet and message id", async () => {
+    const tx = makeTx();
+    tx.$queryRawUnsafe.mockResolvedValue([
+      { ...SEARCH_ROW, message_id: null, snippet: null },
+    ]);
+    const { service } = makeService(tx);
+
+    const [hit] = await service.search(USER, { q: "taxes", limit: 20, offset: 0 });
+
+    expect(hit.messageId).toBeNull();
+    expect(hit.snippet).toBeNull();
+    expect(hit.conversation.title).toBe("how do I file taxes");
+  });
+
+  it("returns an empty list when nothing matches", async () => {
+    const tx = makeTx();
+    tx.$queryRawUnsafe.mockResolvedValue([]);
+    const { service } = makeService(tx);
+
+    await expect(service.search(USER, { q: "nope", limit: 20, offset: 0 })).resolves.toEqual([]);
   });
 });
 

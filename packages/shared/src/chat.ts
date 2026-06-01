@@ -140,3 +140,39 @@ export const savedAnswerListQuerySchema = z.object({
 });
 
 export type SavedAnswerListQueryInput = z.infer<typeof savedAnswerListQuerySchema>;
+
+// ──────────────────────────── Conversation search (M3.3) ────────────────────────────
+
+/**
+ * Full-text conversation search (M3.3, PRD §"History & retention"). `q` is the search text:
+ * trimmed, length-bounded, then NFC-normalized at the boundary (directive §36 / Open Decision #9).
+ * The Postgres keyword path searches with the `'simple'` text-search config, which does NOT
+ * normalize, so a query typed in decomposed (NFD) form would silently miss against NFC-stored
+ * Vietnamese content — exactly the M1.2 keyword-path rule. Tenant/user isolation is enforced by
+ * Postgres RLS (directive §4.21), so no `tenant_id`/`user_id` appears here.
+ */
+export const conversationSearchQuerySchema = z.object({
+  /** Search text. NFC-normalized (length-preserving, so it runs after `.max()` safely). */
+  q: z.string().trim().min(1).max(200).transform(normalizeText),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export type ConversationSearchQueryInput = z.infer<typeof conversationSearchQuerySchema>;
+
+/**
+ * One hit in a conversation search (M3.3): the matching conversation plus a highlighted snippet
+ * from its best-matching message. `snippet` is null when only the conversation title matched (no
+ * message body hit), so the client can still surface the title as the reason for the match.
+ *
+ * The snippet wraps matched terms in guillemets (`«match»`) rather than HTML — the API never emits
+ * markup, so a client that renders the excerpt as text is safe (directive §1); a client that wants
+ * styled highlights must HTML-escape first, then replace the guillemet markers.
+ */
+export interface ConversationSearchResultDto {
+  conversation: ConversationSummaryDto;
+  /** A highlighted excerpt of the best-matching message, or null when only the title matched. */
+  snippet: string | null;
+  /** The matching message, or null when the match was on the conversation title alone. */
+  messageId: string | null;
+}

@@ -3,6 +3,8 @@ import type { ChatMessage } from "@expertos/ai";
 import type {
   ConversationDetailDto,
   ConversationListQueryInput,
+  ConversationSearchQueryInput,
+  ConversationSearchResultDto,
   ConversationSummaryDto,
   LanguageValue,
 } from "@expertos/shared";
@@ -45,6 +47,20 @@ interface ConversationSummaryRow {
   language: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** Raw row shape from the full-text {@link ConversationService.search} query. */
+interface ConversationSearchRow {
+  id: string;
+  title: string | null;
+  expert_id: string | null;
+  language: string;
+  created_at: Date;
+  updated_at: Date;
+  /** Best-matching message id, or null when only the title matched. */
+  message_id: string | null;
+  /** `ts_headline` excerpt of the matching message, or null when only the title matched. */
+  snippet: string | null;
 }
 
 /** A resolved source for a finished answer — the prompt builder's citation list, in marker order. */
@@ -238,6 +254,29 @@ export class ConversationService {
     });
   }
 
+  /**
+   * Full-text search over the acting user's conversations (M3.3): a conversation matches when its
+   * title OR any of its user/assistant messages match the query, ranked by `ts_rank` (best message
+   * hit or the title hit, whichever is stronger) then most-recent activity. Each hit carries a
+   * `ts_headline` snippet of its best-matching message (null when only the title matched).
+   *
+   * Like the M1.2 keyword retrieval path this is raw SQL — `ts_rank`/`ts_headline` have no Prisma
+   * Client expression — run inside {@link RlsService.run} so Postgres RLS does the isolation: a
+   * `conversations` row is `user_scoped` (only the owner's chats survive the join) and `messages`
+   * is `tenant_only`, so the join's intersection is exactly the acting user's own messages. The
+   * `'simple'` text-search config (no English stemming) keeps Vietnamese undistorted (OD #9), and
+   * the query text is a bound parameter, never interpolated (directive §1).
+   */
+  async search(
+    user: AuthUser,
+    query: ConversationSearchQueryInput,
+  ): Promise<ConversationSearchResultDto[]> {
+    const rows = await this.rls.run(user, (tx) =>
+      tx.$queryRawUnsafe<ConversationSearchRow[]>(SEARCH_SQL, query.q, query.limit, query.offset),
+    );
+    return (rows as ConversationSearchRow[]).map(toConversationSearchResult);
+  }
+
   private async requireConversation(
     tx: Prisma.TransactionClient,
     conversationId: string,
@@ -251,6 +290,65 @@ export class ConversationService {
     }
     return conversation;
   }
+}
+
+/**
+ * Full-text conversation-search query (M3.3). `$1` = query text, `$2` = limit, `$3` = offset.
+ *
+ * The query is parsed once (the `q` CTE). For each conversation a LATERAL subquery picks its single
+ * strongest-matching user/assistant message (rank + a `ts_headline` snippet); a conversation is a
+ * hit when its title matches or that subquery found a message. Rank is the stronger of the title
+ * hit and the best message hit, breaking ties by recency. `ts_headline` is configured with
+ * guillemet selectors (`StartSel=«,StopSel=»`) instead of the default `<b>` tags so the snippet is
+ * never HTML (directive §1 — see {@link ConversationSearchResultDto}). The enum literals are cast
+ * to `message_role` explicitly. RLS scopes both tables; no `tenant_id`/`user_id` predicate appears.
+ */
+const SEARCH_SQL = `
+  WITH q AS (SELECT websearch_to_tsquery('simple', $1) AS query)
+  SELECT
+    c.id, c.title, c.expert_id, c.language, c.created_at, c.updated_at,
+    best.message_id,
+    best.snippet,
+    GREATEST(
+      ts_rank(to_tsvector('simple', coalesce(c.title, '')), q.query),
+      coalesce(best.rank, 0)
+    ) AS rank
+  FROM conversations c
+  CROSS JOIN q
+  LEFT JOIN LATERAL (
+    SELECT
+      m.id AS message_id,
+      ts_rank(to_tsvector('simple', m.content), q.query) AS rank,
+      ts_headline(
+        'simple', m.content, q.query,
+        'StartSel=«,StopSel=»,MaxFragments=1,MaxWords=18,MinWords=5'
+      ) AS snippet
+    FROM messages m
+    WHERE m.conversation_id = c.id
+      AND m.role IN ('user'::message_role, 'assistant'::message_role)
+      AND to_tsvector('simple', m.content) @@ q.query
+    ORDER BY rank DESC
+    LIMIT 1
+  ) best ON true
+  WHERE to_tsvector('simple', coalesce(c.title, '')) @@ q.query
+     OR best.message_id IS NOT NULL
+  ORDER BY rank DESC, c.updated_at DESC
+  LIMIT $2 OFFSET $3`;
+
+/** Flatten a {@link ConversationSearchRow} into the public {@link ConversationSearchResultDto}. */
+function toConversationSearchResult(row: ConversationSearchRow): ConversationSearchResultDto {
+  return {
+    conversation: {
+      id: row.id,
+      title: row.title,
+      expertId: row.expert_id,
+      language: row.language as LanguageValue,
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
+    },
+    snippet: row.snippet,
+    messageId: row.message_id,
+  };
 }
 
 /** Flatten a {@link CONVERSATION_SUMMARY_SELECT} row into the public {@link ConversationSummaryDto}. */

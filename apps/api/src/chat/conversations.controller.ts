@@ -10,9 +10,12 @@ import {
 import {
   conversationListQuerySchema,
   conversationRenameSchema,
+  conversationSearchQuerySchema,
   type ConversationDetailDto,
   type ConversationListQueryInput,
   type ConversationRenameInput,
+  type ConversationSearchQueryInput,
+  type ConversationSearchResultDto,
   type ConversationSummaryDto,
 } from "@expertos/shared";
 import { CurrentUser } from "../auth/current-user.decorator";
@@ -41,6 +44,19 @@ export class ConversationsController {
     query: ConversationListQueryInput,
   ): Promise<ConversationSummaryDto[]> {
     return this.conversations.list(user, query);
+  }
+
+  /**
+   * Full-text search across the acting user's conversations (titles + message content). Declared
+   * before `@Get(':id')` so the literal `search` segment isn't captured as a conversation id.
+   */
+  @Get("search")
+  search(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(conversationSearchQuerySchema))
+    query: ConversationSearchQueryInput,
+  ): Promise<ConversationSearchResultDto[]> {
+    return this.conversations.search(user, query);
   }
 
   /** One conversation with its full transcript. */

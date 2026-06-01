@@ -553,3 +553,36 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **M3.4 (feedback)** can copy `SavedAnswerService` verbatim for `AnswerFeedback` — same `user_scoped` + `(userId,messageId)` unique + derive-conversation-from-message ownership shape; just add `helpful`/`reason`.
 - The consumer-facing **web** history sidebar + saved-answers view is unbuilt — the API is ready; consume it from `apps/web/src/lib/chat-client.ts` when the UI lands (don't add helpers before then or knip fails).
 - DB note unchanged: run api tests with `PRISMA_CLIENT_ENGINE_TYPE=binary` on this sandbox (LEARNINGS §2); the new tests mock the tx so they don't hit a real engine, but the suite as a whole loads the client.
+
+## M3.3 — Full-text conversation search (message content + titles)
+**Date:** 2026-06-01
+**Ref:** PRD §"Chat experience" / Task Manifest M3.3
+
+**What was done:**
+- Added `ConversationService.search(user, {q, limit, offset})` (`apps/api/src/chat/conversation.service.ts`) — full-text search across the actor's conversations. A conversation matches when its title OR any user/assistant message matches a `websearch_to_tsquery('simple', $1)`. Ranked by the stronger of the title `ts_rank` and the best message hit, ties broken by `updatedAt desc`. Each hit carries a `ts_headline` snippet of its best-matching message (null when only the title matched).
+- New shared `conversationSearchQuerySchema` (`q` trimmed / ≤200 / NFC-normalized — same boundary rule as `chatRequestSchema`; `z.coerce` pagination) + `ConversationSearchResultDto` (`{conversation, snippet, messageId}`) in `packages/shared/src/chat.ts`, exported from the index.
+- New route `GET /conversations/search?q=` on `ConversationsController`, declared before `@Get(":id")` so the literal `search` segment isn't captured as a conversation id.
+- New migration `20260601000000_conversation_search_indexes` — expression GIN indexes on `to_tsvector('simple', content)` (messages) and `to_tsvector('simple', coalesce(title,''))` (conversations).
+- Tests: shared +4 (schema: defaults/normalize/coerce/bounds), api +3 (search: row-map + param-binding, title-only hit, empty). `conversation.service.ts` stays 100%.
+
+**Key decisions:**
+- **Raw SQL, in `ConversationService` (not a sibling service).** `ts_rank`/`ts_headline` have no Prisma Client expression — the same reason the M1.2 `PgVectorStore` keyword path is raw — so this is the first `$queryRawUnsafe` call in this service. Kept it co-located with the other conversation reads rather than spinning up a `ConversationSearchService`; the SQL + row mapper sit at the bottom of the file. The Client-method reads (`list`/`get`/`rename`) are unchanged.
+- **Isolation via RLS, never a manual predicate.** The query joins `conversations` (`user_scoped`) to `messages` (`tenant_only`) inside `RlsService.run`; the intersection is exactly the actor's own messages, so the SQL expresses no `tenant_id`/`user_id` — identical posture to `PgVectorStore`.
+- **`'simple'` text-search config** (no English stemming) keeps Vietnamese undistorted (OD#9), matching the retrieval keyword path; `q` is NFC-normalized at the schema boundary so a decomposed VI query still matches NFC-stored content.
+- **Snippet is plain text, not HTML.** Configured `ts_headline` with `StartSel=«,StopSel=»` instead of the default `<b>…</b>` so the API never emits markup (directive §1 — a text-rendering client is XSS-safe). Documented on the DTO and in the service comment.
+- **GIN indexes** matched verbatim to the query's `to_tsvector` expressions (the only way Postgres uses an expression index); `to_tsvector('simple', …)` resolves to the IMMUTABLE 2-arg form so it's indexable.
+
+**Files changed:**
+- `packages/shared/src/chat.ts` — new `conversationSearchQuerySchema` + `ConversationSearchResultDto`.
+- `packages/shared/src/index.ts` — export the new schema + types.
+- `packages/shared/src/chat.test.ts` — `conversationSearchQuerySchema` tests (+4).
+- `apps/api/src/chat/conversation.service.ts` — `search` method, `ConversationSearchRow` type, `SEARCH_SQL`, `toConversationSearchResult`.
+- `apps/api/src/chat/conversation.service.test.ts` — `$queryRawUnsafe` mock + 3 search tests.
+- `apps/api/src/chat/conversations.controller.ts` — `GET /conversations/search` (before `:id`).
+- `packages/db/prisma/migrations/20260601000000_conversation_search_indexes/migration.sql` — GIN indexes.
+
+**Notes for next iteration:**
+- **Seam-tested only.** The `ts_rank`/`ts_headline`/LATERAL query and GIN-index usage are not exercised against real pgvector here (mocked `$queryRawUnsafe`) — they join the M11 Testcontainers list alongside `PgVectorStore`/`PgExpertStore`. Worth verifying there: the LATERAL `best` subquery returns one row per conversation, the guillemet `ts_headline` selectors render, and the indexes are actually chosen by the planner.
+- **Web search UI is unbuilt** (API only, mirroring M3.2). When it lands, HTML-escape the snippet as text (then optionally restyle the `«»` markers) — do NOT `dangerouslySetInnerHTML` it.
+- **M3.4 (feedback)** is still the next obvious task — copy `SavedAnswerService` for `AnswerFeedback` (same `user_scoped` + `(userId,messageId)` unique + derive-conversation-from-message ownership).
+- DB note unchanged: run api tests with `PRISMA_CLIENT_ENGINE_TYPE=binary` on this sandbox (LEARNINGS §2), or regenerate the client with the binary engine after a `pnpm install` (`cd packages/db && PRISMA_CLIENT_ENGINE_TYPE=binary npx prisma generate`).

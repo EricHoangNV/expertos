@@ -32,7 +32,7 @@
 #### M3 — Chat experience
 - [x] M3.1 Chat UI with streaming + context-retaining follow-ups
 - [x] M3.2 Conversation history + auto-titling + saved answers
-- [ ] M3.3 Full-text conversation search (message content, not just titles)
+- [x] M3.3 Full-text conversation search (message content, not just titles)
 - [ ] M3.4 Insufficient-knowledge path + graceful next step; answer feedback (👍/👎 + reason)
 - [ ] M3.5 Resolve Open Decision #8 (context-window / cost ceiling policy)
 

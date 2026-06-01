@@ -2,6 +2,7 @@ import {
   chatRequestSchema,
   conversationListQuerySchema,
   conversationRenameSchema,
+  conversationSearchQuerySchema,
   savedAnswerCreateSchema,
   savedAnswerListQuerySchema,
 } from "./chat";
@@ -81,6 +82,38 @@ describe("conversationRenameSchema", () => {
   it("rejects an empty or over-long title", () => {
     expect(conversationRenameSchema.safeParse({ title: "   " }).success).toBe(false);
     expect(conversationRenameSchema.safeParse({ title: "x".repeat(101) }).success).toBe(false);
+  });
+});
+
+describe("conversationSearchQuerySchema", () => {
+  it("trims, normalizes the query, and applies pagination defaults", () => {
+    expect(conversationSearchQuerySchema.parse({ q: "  taxes  " })).toEqual({
+      q: "taxes",
+      limit: 20,
+      offset: 0,
+    });
+  });
+
+  it("NFC-normalizes a Vietnamese query so it matches NFC-stored content", () => {
+    const decomposed = "thuế"; // NFD: thuê + combining acute
+    const parsed = conversationSearchQuerySchema.parse({ q: decomposed });
+    expect(parsed.q).toBe("thuế".normalize("NFC"));
+    expect(parsed.q.normalize("NFC")).toBe(parsed.q);
+  });
+
+  it("coerces string pagination params and rejects out-of-range values", () => {
+    expect(conversationSearchQuerySchema.parse({ q: "x", limit: "5", offset: "2" })).toEqual({
+      q: "x",
+      limit: 5,
+      offset: 2,
+    });
+    expect(conversationSearchQuerySchema.safeParse({ q: "x", limit: 0 }).success).toBe(false);
+    expect(conversationSearchQuerySchema.safeParse({ q: "x", offset: -1 }).success).toBe(false);
+  });
+
+  it("rejects an empty or over-long query", () => {
+    expect(conversationSearchQuerySchema.safeParse({ q: "   " }).success).toBe(false);
+    expect(conversationSearchQuerySchema.safeParse({ q: "x".repeat(201) }).success).toBe(false);
   });
 });
 

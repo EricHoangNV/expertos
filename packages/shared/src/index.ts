@@ -44,6 +44,7 @@ export {
   chatRequestSchema,
   conversationListQuerySchema,
   conversationRenameSchema,
+  conversationSearchQuerySchema,
   savedAnswerCreateSchema,
   savedAnswerListQuerySchema,
 } from "./chat";
@@ -56,6 +57,8 @@ export type {
   ConversationDetailDto,
   ConversationListQueryInput,
   ConversationRenameInput,
+  ConversationSearchQueryInput,
+  ConversationSearchResultDto,
   SavedAnswerDto,
   SavedAnswerCreateInput,
   SavedAnswerListQueryInput,
