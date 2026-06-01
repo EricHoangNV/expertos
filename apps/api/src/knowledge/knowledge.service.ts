@@ -12,6 +12,7 @@ import type {
 import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { StructuredLogger } from "../observability/logger.service";
+import { ResponseCacheService } from "../cache/response-cache.service";
 
 /** `select` that yields exactly the fields a {@link KnowledgeVersionDto} needs (+ chunk count). */
 const VERSION_SELECT = {
@@ -75,6 +76,7 @@ export class KnowledgeService {
   constructor(
     private readonly rls: RlsService,
     private readonly logger: StructuredLogger,
+    private readonly cache: ResponseCacheService,
   ) {}
 
   /** The review queue / knowledge list — documents with their latest version, newest activity first. */
@@ -163,7 +165,7 @@ export class KnowledgeService {
    * so only one generation is ever live.
    */
   async approve(user: AuthUser, versionId: string): Promise<KnowledgeVersionDto> {
-    return this.rls.run(user, async (tx) => {
+    const dto = await this.rls.run(user, async (tx) => {
       const version = await this.loadVersion(tx, versionId);
       if (version.status !== "expert_review") {
         throw new ConflictException(`cannot publish a ${version.status} version`);
@@ -208,6 +210,11 @@ export class KnowledgeService {
       });
       return toVersionDto(updated, versionId);
     });
+
+    // Live content changed — drop the tenant's cached retrieval/answers (M6.4 publish-time
+    // invalidation) so the newly-published version is reflected immediately, not after the TTL.
+    await this.cache.invalidateTenant(user);
+    return dto;
   }
 
   /**
@@ -215,7 +222,7 @@ export class KnowledgeService {
    * document's live version, clear the pointer and mark the document archived.
    */
   async archive(user: AuthUser, versionId: string): Promise<KnowledgeVersionDto> {
-    return this.rls.run(user, async (tx) => {
+    const dto = await this.rls.run(user, async (tx) => {
       const version = await this.loadVersion(tx, versionId);
       if (version.status !== "published") {
         throw new ConflictException(`cannot archive a ${version.status} version`);
@@ -245,6 +252,11 @@ export class KnowledgeService {
       // After archiving the live version the document has no published version.
       return toVersionDto(updated, document.publishedVersionId === versionId ? null : document.publishedVersionId);
     });
+
+    // Archiving removes a version from retrieval — drop the tenant's cache so answers that cited
+    // it are not served stale (M6.4 publish-time invalidation).
+    await this.cache.invalidateTenant(user);
+    return dto;
   }
 
   /** Shared simple state move (no chunk/document side effects): assert status, update, log. */

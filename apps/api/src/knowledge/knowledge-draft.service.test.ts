@@ -7,6 +7,7 @@ import { KnowledgeDraftService } from "./knowledge-draft.service";
 import { EmptyDocumentError, type IngestionService } from "../ingestion/ingestion.service";
 import type { RlsService } from "../auth/rls.service";
 import type { StructuredLogger } from "../observability/logger.service";
+import type { ResponseCacheService } from "../cache/response-cache.service";
 import type { AuthUser } from "../auth/auth.types";
 
 const TENANT = "00000000-0000-0000-0000-000000000000";
@@ -65,8 +66,10 @@ function makeHarness() {
   const ingestion = { ingest } as unknown as IngestionService;
   const info = jest.fn();
   const logger = { info } as unknown as StructuredLogger;
-  const service = new KnowledgeDraftService(rls, ingestion, logger);
-  return { service, tx, ingest, info };
+  const invalidateTenant = jest.fn().mockResolvedValue(undefined);
+  const cache = { invalidateTenant } as unknown as ResponseCacheService;
+  const service = new KnowledgeDraftService(rls, ingestion, logger, cache);
+  return { service, tx, ingest, info, invalidateTenant };
 }
 
 describe("KnowledgeDraftService.create", () => {
@@ -247,6 +250,8 @@ describe("KnowledgeDraftService.publish", () => {
     expect(options).toEqual({ publish: true });
     expect(h.tx.knowledgeDraft.update.mock.calls[0][0].data).toEqual({ status: "published" });
     expect(dto.status).toBe("published");
+    // New live knowledge → drop the tenant's caches (M6.4 publish-time invalidation).
+    expect(h.invalidateTenant).toHaveBeenCalledWith(ACTOR);
   });
 
   it("is idempotent: skips re-ingestion when the draft's document already exists", async () => {
@@ -258,12 +263,15 @@ describe("KnowledgeDraftService.publish", () => {
 
     expect(h.ingest).not.toHaveBeenCalled();
     expect(h.tx.knowledgeDraft.update.mock.calls[0][0].data).toEqual({ status: "published" });
+    // Still invalidate on the idempotent retry (a prior crash may have skipped it).
+    expect(h.invalidateTenant).toHaveBeenCalledWith(ACTOR);
   });
 
   it("409s when the draft is not under review", async () => {
     const h = makeHarness();
     await expect(h.service.publish(ACTOR, DRAFT_ID)).rejects.toBeInstanceOf(ConflictException);
     expect(h.ingest).not.toHaveBeenCalled();
+    expect(h.invalidateTenant).not.toHaveBeenCalled();
   });
 
   it("maps an empty-document ingest failure to 400 and leaves the draft unpublished", async () => {
@@ -273,5 +281,6 @@ describe("KnowledgeDraftService.publish", () => {
 
     await expect(h.service.publish(ACTOR, DRAFT_ID)).rejects.toBeInstanceOf(BadRequestException);
     expect(h.tx.knowledgeDraft.update).not.toHaveBeenCalled();
+    expect(h.invalidateTenant).not.toHaveBeenCalled();
   });
 });

@@ -164,3 +164,53 @@ describe("ResponseCacheService answer layer", () => {
     expect(await service.lookupAnswer(USER, "key", "m1")).toBeUndefined();
   });
 });
+
+describe("ResponseCacheService.invalidateTenant", () => {
+  it("drops the tenant's in-process retrieval/answer entries and its semantic rows", async () => {
+    const { service, tx, info } = makeService();
+    tx.semanticCacheEntry.deleteMany.mockResolvedValue({ count: 2 });
+
+    const rKey = service.retrievalKey(USER.tenantId, query());
+    service.setRetrieval(rKey, CHUNKS);
+    const aKey = service.answerKey(USER.tenantId, { text: "q", topK: 8, model: "m1" });
+    await service.storeAnswer(USER, aKey, {
+      text: "A [1].",
+      model: "m1",
+      sourceVersionIds: ["dv1"],
+      citations: [{ ordinal: 1, chunkId: "c1", documentVersionId: "dv1", content: "fact" }],
+    });
+    // Both layers are warm.
+    expect(service.getRetrieval(rKey)).toEqual(CHUNKS);
+
+    await service.invalidateTenant(USER);
+
+    // In-process retrieval gone; in-process answer gone (a lookup now falls through to the DB,
+    // which returns null → undefined).
+    expect(service.getRetrieval(rKey)).toBeUndefined();
+    expect(await service.lookupAnswer(USER, aKey, "m1")).toBeUndefined();
+    // Persistent rows deleted, pinned to the acting tenant (admin/expert bypass RLS).
+    expect(tx.semanticCacheEntry.deleteMany).toHaveBeenLastCalledWith({
+      where: { tenantId: USER.tenantId },
+    });
+    expect(info).toHaveBeenCalledWith(
+      "response cache invalidated for tenant",
+      expect.objectContaining({ semanticDropped: 2 }),
+    );
+  });
+
+  it("leaves a different tenant's in-process entries intact", async () => {
+    const { service, tx } = makeService();
+    tx.semanticCacheEntry.deleteMany.mockResolvedValue({ count: 0 });
+    const otherTenant = "33333333-3333-3333-3333-333333333333";
+
+    const mineKey = service.retrievalKey(USER.tenantId, query());
+    const theirsKey = service.retrievalKey(otherTenant, query());
+    service.setRetrieval(mineKey, CHUNKS);
+    service.setRetrieval(theirsKey, CHUNKS);
+
+    await service.invalidateTenant(USER);
+
+    expect(service.getRetrieval(mineKey)).toBeUndefined();
+    expect(service.getRetrieval(theirsKey)).toEqual(CHUNKS);
+  });
+});

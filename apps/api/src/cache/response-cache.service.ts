@@ -139,6 +139,35 @@ export class ResponseCacheService {
       }),
     );
   }
+
+  // Invalidation ─────────────────────────────────────────────────────────────
+
+  /**
+   * Drop every cached retrieval + answer for one tenant across all three layers — the
+   * publish-time invalidation the knowledge workflow calls when live content changes (a publish
+   * or an archive), so a freshly-published document is reflected immediately instead of waiting
+   * out the TTL. Both in-process LRUs are pruned by their tenant-scoped key prefix (so peer
+   * tenants' hot caches survive), and the persistent `semantic_cache` rows are deleted.
+   *
+   * The `tenantId` predicate on the delete is deliberate even though `semantic_cache` is a
+   * `tenant_only` RLS table: an `admin`/`expert` actor runs with the `is_admin` GUC set (RLS
+   * bypassed for the cross-tenant portals), so an unscoped delete would clear *every* tenant's
+   * cache — the predicate pins it to the acting tenant (directive §4.21).
+   */
+  async invalidateTenant(user: AuthUser): Promise<void> {
+    const retrievalDropped = this.retrievalCache.deletePrefix(
+      join(["retrieval", user.tenantId]) + "\n",
+    );
+    const answerDropped = this.answerCache.deletePrefix(join(["answer", user.tenantId]) + "\n");
+    const { count } = await this.rls.run(user, (tx) =>
+      tx.semanticCacheEntry.deleteMany({ where: { tenantId: user.tenantId } }),
+    );
+    this.logger.info("response cache invalidated for tenant", {
+      retrievalDropped,
+      answerDropped,
+      semanticDropped: count,
+    });
+  }
 }
 
 /**

@@ -18,6 +18,7 @@ import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { StructuredLogger } from "../observability/logger.service";
 import { EmptyDocumentError, IngestionService } from "../ingestion/ingestion.service";
+import { ResponseCacheService } from "../cache/response-cache.service";
 
 /** The full draft row shape this service reads/maps. */
 interface DraftRow {
@@ -62,6 +63,7 @@ export class KnowledgeDraftService {
     private readonly rls: RlsService,
     private readonly ingestion: IngestionService,
     private readonly logger: StructuredLogger,
+    private readonly cache: ResponseCacheService,
   ) {}
 
   /** "Mark valuable": capture a new draft (optionally tied to its source conversation). */
@@ -227,6 +229,12 @@ export class KnowledgeDraftService {
         data: { status: "published" },
       })) as DraftRow,
     );
+
+    // A freshly-published draft adds retrieval-visible knowledge — drop the tenant's cache so
+    // it is reflected immediately rather than after the TTL (M6.4 publish-time invalidation).
+    // Run on every successful publish (incl. the idempotent retry) so a prior crash between
+    // ingest and this point can't leave the cache un-invalidated.
+    await this.cache.invalidateTenant(user);
 
     this.logger.info("knowledge draft published", { draftId, reingested: !alreadyIngested });
     return toDraftDto(row);

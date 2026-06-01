@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from "@nestjs/common";
 import { KnowledgeService } from "./knowledge.service";
 import type { RlsService } from "../auth/rls.service";
 import type { StructuredLogger } from "../observability/logger.service";
+import type { ResponseCacheService } from "../cache/response-cache.service";
 import type { AuthUser } from "../auth/auth.types";
 
 const TENANT = "00000000-0000-0000-0000-000000000000";
@@ -72,8 +73,10 @@ function makeHarness() {
   const rls = { run } as unknown as RlsService;
   const info = jest.fn();
   const logger = { info } as unknown as StructuredLogger;
-  const service = new KnowledgeService(rls, logger);
-  return { service, tx, run, info };
+  const invalidateTenant = jest.fn().mockResolvedValue(undefined);
+  const cache = { invalidateTenant } as unknown as ResponseCacheService;
+  const service = new KnowledgeService(rls, logger, cache);
+  return { service, tx, run, info, invalidateTenant };
 }
 
 describe("KnowledgeService.listDocuments", () => {
@@ -211,6 +214,8 @@ describe("KnowledgeService.approve", () => {
     });
     expect(result.isPublished).toBe(true);
     expect(result.approvedBy).toBe(ACTOR.id);
+    // Publishing changed live content → drop the tenant's caches (M6.4 publish-time invalidation).
+    expect(h.invalidateTenant).toHaveBeenCalledWith(ACTOR);
   });
 
   it("supersedes the previously-published version (archives its row + chunks)", async () => {
@@ -244,6 +249,8 @@ describe("KnowledgeService.approve", () => {
     h.tx.documentVersion.findUnique.mockResolvedValue(vrow({ status: "draft" }));
     await expect(h.service.approve(ACTOR, VERSION_ID)).rejects.toBeInstanceOf(ConflictException);
     expect(h.tx.document.update).not.toHaveBeenCalled();
+    // A rejected publish must not invalidate the cache (nothing changed).
+    expect(h.invalidateTenant).not.toHaveBeenCalled();
   });
 
   it("throws 404 when the owning document has vanished mid-transaction", async () => {
@@ -273,6 +280,8 @@ describe("KnowledgeService.archive", () => {
     });
     expect(result.isPublished).toBe(false);
     expect(result.status).toBe("archived");
+    // Archiving removed content from retrieval → invalidate the tenant's caches.
+    expect(h.invalidateTenant).toHaveBeenCalledWith(ACTOR);
   });
 
   it("does not touch the document when archiving a non-live published version", async () => {
@@ -290,5 +299,6 @@ describe("KnowledgeService.archive", () => {
     const h = makeHarness();
     h.tx.documentVersion.findUnique.mockResolvedValue(vrow({ status: "draft" }));
     await expect(h.service.archive(ACTOR, VERSION_ID)).rejects.toBeInstanceOf(ConflictException);
+    expect(h.invalidateTenant).not.toHaveBeenCalled();
   });
 });

@@ -1324,3 +1324,32 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - **Seam-tested with a mocked tx** — the real `date_trunc`/`FILTER` aggregate, the BigInt round-trip, and the admin cross-tenant RLS visibility need the M11 Testcontainers pass (the standing raw-SQL caveat shared with `PgVectorStore`/conversation-search). No live DB this session.
 - Remaining M8.3: the **failed-query inspector** is the easiest next slice (read-only `answer_feedback`, copy the `RevenueService` admin-RLS pattern). The **matrix/rules editors** are the mutation surfaces — new write routes over `plan_entitlements`/`recommendation_rules` (RLS-exempt config) first, then the page + `admin-client.ts` `update*` fns (don't add a client fn before its page or knip fails).
 - Full `apps/api` parallel suite ran clean this session (53 suites / 446) — no SIGILL this run.
+
+## Publish-time cache invalidation (M6.4 / M8 follow-up)
+**Date:** 2026-06-01
+**Ref:** PRD M6.4 (caching) + M8.1/M8.2 (publish workflow); the standing follow-up flagged across the M6.4/M8.1/M8.2 seam notes ("publish-time invalidation is the M8 follow-up")
+
+**What was done:**
+- Closed the known staleness gap: a knowledge publish/archive left the M6.4 caches serving stale answers/retrieval until the TTL aged out.
+- New `LruCache.deletePrefix(prefix): number` — drops every entry whose key starts with `prefix`, returns the count. Used to prune one tenant's entries (keys are `\n`-delimited segment composites prefixed `retrieval\n<tenantId>\n` / `answer\n<tenantId>\n`), so a publish in one tenant never cold-starts another tenant's hot cache.
+- New `ResponseCacheService.invalidateTenant(user)` — prunes both in-process LRUs by tenant prefix + `deleteMany`s the tenant's `semantic_cache` rows. The `deleteMany` carries an **explicit `tenantId` predicate** (an admin/expert actor runs with `is_admin` GUC set → an unscoped delete under RLS would clear every tenant's cache).
+- Wired it post-commit into `KnowledgeService.approve` (chunks flip live), `KnowledgeService.archive` (chunks leave retrieval), and `KnowledgeDraftService.publish` (new live knowledge). `KnowledgeModule` now `imports: [CacheModule]`.
+
+**Key decisions:**
+- Per-tenant prefix prune over a global cache `clear()` — one tenant's publish shouldn't evict every tenant's hot entries.
+- Invalidate **after** the transaction commits (a rolled-back/rejected publish must not drop the cache); the narrow commit→invalidate race is already bounded by the TTL.
+- Fire on `KnowledgeDraftService.publish` even on the idempotent retry (already-ingested branch), so a crash between ingest and the status flip can't leave the cache un-invalidated.
+- Kept the explicit `tenantId` predicate on the semantic delete (matches the store's own writes; required for admin-context correctness).
+
+**Files changed:**
+- `apps/api/src/cache/lru-cache.ts` — added `deletePrefix`.
+- `apps/api/src/cache/response-cache.service.ts` — added `invalidateTenant`.
+- `apps/api/src/knowledge/knowledge.service.ts` — inject `ResponseCacheService`; invalidate after `approve`/`archive` commit.
+- `apps/api/src/knowledge/knowledge-draft.service.ts` — inject `ResponseCacheService`; invalidate after `publish`.
+- `apps/api/src/knowledge/knowledge.module.ts` — `imports: [CacheModule]`.
+- Tests: `lru-cache.test.ts` (+1 deletePrefix), `response-cache.service.test.ts` (+2 invalidateTenant: drops own / spares peer), and invalidation assertions added to the existing approve/archive/publish service tests (incl. the rejected-transition no-invalidate cases). Harnesses updated to pass a mocked `ResponseCacheService`.
+
+**Notes for next iteration:**
+- Seam-tested with a mocked tx — the real `semantic_cache` `deleteMany` under RLS joins the M11 Testcontainers list (the standing raw-SQL/store caveat).
+- The retrieval-layer key (`retrieval\n<tenant>\n…`) is invalidated too even though publish only changes *published* chunks — coarse but safe; a finer scope (only the affected document's queries) isn't worth the complexity for an in-process hot cache.
+- No new wiring needed for future publishers as long as they route through `KnowledgeService`/`KnowledgeDraftService` (the documented single choke points).

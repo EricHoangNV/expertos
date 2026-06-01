@@ -73,6 +73,23 @@ export class LruCache<V> {
     this.store.delete(key);
   }
 
+  /**
+   * Drops every entry whose key starts with `prefix`, returning the count removed. Keys are
+   * `\n`-delimited segment composites (see `ResponseCacheService`), so a tenant-scoped prefix
+   * like `answer\n<tenantId>\n` matches exactly that tenant's entries — the hook publish-time
+   * invalidation uses so one tenant's publish never nukes another tenant's hot cache.
+   */
+  deletePrefix(prefix: string): number {
+    let removed = 0;
+    for (const key of this.store.keys()) {
+      if (key.startsWith(prefix)) {
+        this.store.delete(key);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
   /** Number of entries currently held (including not-yet-read expired ones). */
   get size(): number {
     return this.store.size;

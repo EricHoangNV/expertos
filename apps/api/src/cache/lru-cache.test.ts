@@ -60,4 +60,18 @@ describe("LruCache", () => {
     expect(cache.get("a")).toBe(1);
     expect(cache.size).toBe(1);
   });
+
+  it("deletes only the entries matching a prefix and reports the count removed", () => {
+    const cache = new LruCache<number>({ maxEntries: 10, ttlMs: 1000, now: () => 0 });
+    cache.set("answer\nt1\nq1", 1);
+    cache.set("answer\nt1\nq2", 2);
+    cache.set("answer\nt2\nq1", 3); // a different tenant — must survive
+
+    const removed = cache.deletePrefix("answer\nt1\n");
+
+    expect(removed).toBe(2);
+    expect(cache.get("answer\nt1\nq1")).toBeUndefined();
+    expect(cache.get("answer\nt1\nq2")).toBeUndefined();
+    expect(cache.get("answer\nt2\nq1")).toBe(3);
+  });
 });
