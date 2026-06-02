@@ -74,6 +74,7 @@ const NAV: NavItem[] = [
   { href: "/concierge", label: "Concierge config", group: "SYSTEM", role: "admin" },
   { href: "/reconcile", label: "Bookings", group: "SYSTEM", role: "admin" },
   { href: "/retention", label: "Data retention", group: "SYSTEM", role: "admin" },
+  { href: "/access-control", label: "Access control", group: "SYSTEM", role: "admin" },
   { href: "/audit", label: "Audit log", group: "SYSTEM", role: "admin" },
 ];
 
@@ -212,6 +213,27 @@ function GoogleIcon() {
 }
 /* eslint-enable no-restricted-syntax */
 
+/**
+ * Hard-deny screen (M14) shown when the signed-in email is not on the admin-portal whitelist (the
+ * `POST /me/admin-session` gate returned 403). No nav, no portal chrome — just the reason and a way
+ * to sign out and try a different account.
+ */
+function AccessDenied({ onSignOut }: { onSignOut: () => void }) {
+  return (
+    <main className="card card-pad" style={{ maxWidth: "32rem", margin: "4rem auto" }}>
+      <div className="eyebrow">Access control</div>
+      <h1 className="h2">Access denied</h1>
+      <p className="muted">
+        Your email is not authorized to access the admin portal. Contact an administrator to request
+        access.
+      </p>
+      <Button variant="ghost" onClick={onSignOut}>
+        Sign out
+      </Button>
+    </main>
+  );
+}
+
 const ROLES = [
   {
     id: "admin" as const,
@@ -280,9 +302,9 @@ function AdminLogin({ onSignIn }: { onSignIn: () => Promise<void> }) {
  * security boundary. Pages render their content as `children`.
  */
 export function AdminFrame({ children }: { children: ReactNode }) {
-  const { user, role, loading, signInWithGoogle, signOutUser, getIdToken } = useAuth();
+  const { user, role, denied, loading, signInWithGoogle, signOutUser, getIdToken } = useAuth();
   const pathname = usePathname();
-  const counts = useNavCounts(user ? role : null, getIdToken);
+  const counts = useNavCounts(user && !denied ? role : null, getIdToken);
 
   if (loading) {
     return (
@@ -294,6 +316,11 @@ export function AdminFrame({ children }: { children: ReactNode }) {
 
   if (!user) {
     return <AdminLogin onSignIn={signInWithGoogle} />;
+  }
+
+  // Whitelist gate (M14): a signed-in but non-whitelisted email gets the hard-deny screen.
+  if (denied) {
+    return <AccessDenied onSignOut={() => void signOutUser()} />;
   }
 
   return (

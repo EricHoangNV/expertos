@@ -54,6 +54,10 @@ import type {
   ReviewEscalationDto,
   RetentionPreviewDto,
   RetentionSweepResultDto,
+  AdminSessionDto,
+  AllowedEmailDto,
+  AllowedEmailCreateInput,
+  AllowedEmailUpdateInput,
 } from "@expertos/shared";
 
 /**
@@ -73,6 +77,21 @@ export type VersionAction = "submit" | "approve" | "request-changes" | "archive"
 /** Lifecycle actions a reviewer can drive a *draft* through (M8.2). */
 export type DraftAction = "submit" | "request-changes" | "reject" | "publish";
 
+/**
+ * A non-2xx API response. Extends {@link Error} (so existing `err instanceof Error` / `err.message`
+ * handling keeps working) and additionally carries the HTTP `status` — the M14 access gate reads it
+ * to distinguish a 403 (not whitelisted → Access Denied) from any other failure.
+ */
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function request<T>(
   path: string,
   token: string,
@@ -87,7 +106,7 @@ async function request<T>(
     },
   });
   if (!res.ok) {
-    throw new Error(await errorMessage(res));
+    throw new ApiError(res.status, await errorMessage(res));
   }
   return (await res.json()) as T;
 }
@@ -559,19 +578,48 @@ export function updateConciergeConfig(
   });
 }
 
-// ── session identity (role gating) ──────────────────────────────────────────
+// ── M14 — admin-portal access control (whitelist) ───────────────────────────
 
-/** The authenticated principal echoed by `GET /me` — the portal reads `role` to gate its nav. */
-interface MeDto {
-  id: string;
-  email: string;
-  displayName: string | null;
-  role: Role;
+/**
+ * Admin-portal sign-in gate. The portal calls this to resolve the session: a whitelisted email
+ * returns the synced session; a non-whitelisted email gets a 403 (the caller maps that to the
+ * Access Denied screen). Replaces the former `GET /me` role lookup (M14).
+ */
+export function adminSession(token: string): Promise<AdminSessionDto> {
+  return request<AdminSessionDto>("/me/admin-session", token, { method: "POST" });
 }
 
-/** Resolve the signed-in principal (used to gate the portal nav by role). */
-export function getMe(token: string): Promise<MeDto> {
-  return request<MeDto>("/me", token);
+/** The admin-portal whitelist, newest first. */
+export function listAllowedEmails(token: string): Promise<AllowedEmailDto[]> {
+  return request<AllowedEmailDto[]>("/admin/access-control", token);
+}
+
+/** Add an email to the whitelist. */
+export function addAllowedEmail(
+  token: string,
+  body: AllowedEmailCreateInput,
+): Promise<AllowedEmailDto> {
+  return request<AllowedEmailDto>("/admin/access-control", token, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Change a whitelist entry's role. */
+export function updateAllowedEmail(
+  token: string,
+  id: string,
+  body: AllowedEmailUpdateInput,
+): Promise<AllowedEmailDto> {
+  return request<AllowedEmailDto>(`/admin/access-control/${id}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Remove an email from the whitelist. */
+export function removeAllowedEmail(token: string, id: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>(`/admin/access-control/${id}`, token, { method: "DELETE" });
 }
 
 // ── M8.5 — expert portal (conversions + AI-answer review) ───────────────────

@@ -40,7 +40,7 @@
 32. **CI workflow_dispatch only** — no push/PR triggers (§8.1)
 33. **Debug logs before guessing** — add console.log to trace values, then fix (§9.1)
 34. **Multi-doc mutations use batches** — delete+count+quota+scan cleanup in one Firestore batch (§7.14)
-35. **Postgres RLS needs a non-superuser app role + FORCE RLS** — app connects as `app_user`, scope via `applyRlsContext` inside a transaction (§4.21)
+35. **Postgres RLS needs a non-superuser app role + FORCE RLS** — app connects as `app_user`, scope via `applyRlsContext` inside a transaction (§4.21); never apply a Prisma-generated migration verbatim — strip `DROP INDEX *_embedding_idx`, hand-add RLS/grant for new tables (§4.21, LEARNINGS #15)
 36. **NFC-normalize all indexed + query text** — decomposed (NFD) diacritics shatter tokenization and silently kill Vietnamese recall; normalize both sides (§1.2)
 37. **Untrusted text in LLM prompts** — retrieved chunks, uploaded docs, and the user question are untrusted; defend with a system-prompt instruction hierarchy + forged-`[n]`-marker neutralization at the single `buildAnswerPrompt` choke point (§1.4b)
 38. **Associate every form label** — the DS `Field` renders `<label>` separately, so pass `htmlFor` + a matching control `id`; an unassociated label is a silent a11y gap visual review won't catch (LEARNINGS #12)
@@ -554,6 +554,7 @@ When a Cloud Function creates a record derived from another document (e.g., a co
 - Per-request scoping is carried in GUCs (`app.current_tenant_id`, `app.current_user_id`, `app.is_admin`) set with `set_config(..., true)` **inside a `$transaction`** via `applyRlsContext` (`@expertos/db`). Outside a transaction the setting is discarded → policies see NULL → deny-by-default.
 - Verify isolation by querying **as `app_user`** (or `SET ROLE app_user`), never as the owner role — the owner always sees everything and gives false confidence.
 - `app_user` is created `NOLOGIN` by the migration; provision its LOGIN + password out of band (Secret Manager), do not hardcode credentials in migrations.
+- **Never apply a Prisma-generated migration verbatim.** The pgvector `*_embedding_idx` indexes and all RLS policies/grants live in raw SQL the schema doesn't model, so every generated diff (a) emits spurious `DROP INDEX "…_embedding_idx"` (applying it silently drops the vector indexes → retrieval degrades) and (b) omits RLS for a new table. Review the diff: delete the `DROP INDEX` lines, append `ENABLE`/`FORCE ROW LEVEL SECURITY` + the matching policy (`tenant_isolation` for a tenant-scoped table) + `GRANT … TO app_user`, then apply with `prisma migrate deploy` (not `migrate dev`, which re-diffs and reintroduces the drift). See LEARNINGS #15.
 
 ---
 

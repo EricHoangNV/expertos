@@ -3888,3 +3888,37 @@ ui build, admin tsc + next lint, root lint:css (stylelint), root knip. (admin ha
 **Notes for next iteration:**
 - M13.7 (admin polish / shared patterns) is largely an audit — `.dark-card`, `.kanban`, `.verdict-card`, role-aware sidebar already exist; `.voice-bar` (M13.7.4) is the one missing primitive, and it's gated on the M13.5 data decision.
 - knip flagged stale `.next` artifacts + a phantom "@expertos/shared unused" — both vanish after `rm -rf apps/*/.next`; not a real finding.
+
+---
+
+## M14 — Access Control Whitelist (invite-only admin portal)
+**Date:** 2026-06-02
+**Ref:** PRD Task Manifest M14 (§ `requirements/PRD-access-control.md`); the full milestone (M14.1–M14.4) in one slice — schema, API, frontend gate + UI.
+
+**What & why:** The admin portal had no access gate — any Firebase account could sign in and see the (role-gated, but visible) portal shell. M14 makes it invite-only: only pre-authorized emails sign in, with their role synced from the whitelist on each sign-in. The consumer app (`role=user` via `GET /me`) is untouched.
+
+**Schema (M14.1.1):** new `AllowedEmail` model (`@@unique([tenantId, email])`, `@@map("allowed_emails")`, `createdBy` FK SetNull) + reverse relations on `Tenant`/`User`. Migration `20260602163107_allowed_emails`: `CREATE TABLE` + `tenant_isolation` RLS (`ENABLE`+`FORCE`, same `tenant_only` family as `users`/`admin_audit_logs`) + `GRANT … app_user`. **Drift gotcha (LEARNINGS #15 + new directive §4.21):** the Prisma-generated diff also wanted to `DROP` the four raw-SQL pgvector `*_embedding_idx` indexes — stripped those before applying so retrieval isn't degraded. Applied with `migrate deploy` (not `migrate dev`).
+
+**Shared (M14.1.2):** `packages/shared/src/access-control.ts` — `allowedEmailRoleSchema` (`z.enum(["expert","admin"])` — portal roles only, never `user`), `allowedEmailCreateSchema` (trim+lowercase+email+max 320), `allowedEmailUpdateSchema`, `AllowedEmailDto`, `AdminSessionDto`; exported from index. +8 shared tests.
+
+**API session gate (M14.2.1):** `AdminSessionService` + `POST /me/admin-session` (no `@Roles` — a freshly whitelisted admin's DB role is still `user` on first sign-in, so the whitelist check is the gate). Runs under a GLOBAL-tenant admin/system context (like `AuthService.resolveUser`), looks up the lowercased email, syncs `user.role` to the whitelist entry when it differs (PRD §5.4), returns the session DTO; 403 for a non-whitelisted (or defensively, non-portal-role) email.
+
+**API CRUD (M14.2.2):** `AccessControlService` + `AccessControlController` — `GET/POST/PATCH/DELETE /admin/access-control` (`@Roles("admin")`, on the `AdminExpertService` template: `RlsService.run` admin context + audit-in-tx). Self-lockout: cannot demote (PATCH to non-admin) or remove your own entry → 400. Duplicate email → 409 (P2002). Audit actions `access_control.email_added/role_changed/email_removed`. +11 api tests.
+
+**Wiring (M14.2.3):** `AdminSessionService` in `auth.module.ts`; `AccessControlService`+`AccessControlController` in `admin.module.ts`. `MeController` now injects `AdminSessionService`.
+
+**Seed (M14.3.1):** idempotent upsert of `eric.nguyen.vn@gmail.com` as `admin` in `seed.ts` (bootstraps the first admin so the gate doesn't lock everyone out).
+
+**Frontend client (M14.3.2):** `adminSession`, `listAllowedEmails`, `addAllowedEmail`, `updateAllowedEmail`, `removeAllowedEmail` in `admin-client.ts`. Added a backward-compatible `ApiError extends Error` (carries `status`) so the gate can distinguish a 403 from a transient failure. Removed now-unused `getMe`/`MeDto` (knip).
+
+**Auth gate + UI (M14.4):** `auth-context.tsx` calls `adminSession()` instead of `getMe()`, adds `denied` state (set only on `ApiError.status === 403`, so a network blip isn't mistaken for a deny). `AdminFrame` renders an Access Denied screen (message + Sign out) when `denied`; new `{ href:"/access-control", group:"SYSTEM", role:"admin" }` nav item. `app/access-control/page.tsx`: add form (email + role `Select` + Add), table (Email, Role badge admin=red/expert=info, Added by, Added at), role toggle + Remove-with-confirm.
+
+**Live validation (no `tsx`):** the `tsx` seed runner is blocked by a pre-existing esbuild arch mismatch (`@esbuild/darwin-arm64` present on a linux/arm64 sandbox — the lockfile was resolved on macOS). Validated the DB layer directly instead: brought up `infra/local-test-db.sh`, applied the migration via `prisma migrate deploy`, confirmed the table + `tenant_isolation` policy + all four pgvector indexes survived, inserted the bootstrap row (schema/data shape), and exercised the policy as `app_user` across three contexts — admin GUC reads+writes, GLOBAL-tenant GUC reads, no-context fails closed (0 rows). Service logic covered by 100%-coverage unit tests; the `tenantId_email` compound key compiled in the API build.
+
+**Tests:** shared +8 (187), api +16 (679, both new services 100%). Full: **1254 pass / 0 fail / 0 skip** (shared 187, ui 218, db 9, ai 161, api 679).
+
+**Gates:** shared build+lint+jest, api build+lint+jest, admin `tsc --noEmit`+`next lint`, web `tsc`, root `lint:css`, root `knip` — all green.
+
+**Notes for next iteration:**
+- M14 leaves no follow-ups; the gate activates the moment the auth-context change ships (seed-before-deploy ordering documented in the PRD handles first-deploy lockout).
+- Highest-value remaining work: M13.7 (admin polish/conformance audit — most primitives exist), then the M13.5 PM/schema decision, then NT human gates / M11.1 fixme legs (external surfaces).

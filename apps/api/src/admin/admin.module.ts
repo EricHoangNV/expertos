@@ -9,6 +9,8 @@ import { AdminExpertController } from "./admin-expert.controller";
 import { RetentionService } from "./retention.service";
 import { RetentionController } from "./retention.controller";
 import { RETENTION_POLICY, resolveRetentionPolicy } from "./retention.config";
+import { AccessControlService } from "./access-control.service";
+import { AccessControlController } from "./access-control.controller";
 
 /**
  * Admin management portal (M8.4, PRD §"Admin web portal" + §"Foundational security/privacy"):
@@ -25,12 +27,14 @@ import { RETENTION_POLICY, resolveRetentionPolicy } from "./retention.config";
     AdminUserController,
     AdminExpertController,
     RetentionController,
+    AccessControlController,
   ],
   providers: [
     AdminAuditService,
     AdminUserService,
     AdminExpertService,
     RetentionService,
+    AccessControlService,
     { provide: RETENTION_POLICY, useFactory: () => resolveRetentionPolicy() },
   ],
   exports: [AdminAuditService],

@@ -171,4 +171,18 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Root cause: an apparent write/flush glitch on the external `/Volumes/OWC-Express-1M2` filesystem — the edited content was written but the file was not fully reconstituted, dropping the tail. The `Edit` tool's "file updated successfully" message does **not** guarantee the untouched remainder survived.
 - Fix: diff against HEAD (`git diff <file>` showed an unexpected second hunk `@@ -1010,32 +1051,4 @@` deleting the tail) and restored the lost lines from `git show HEAD:<file>`. Confirmed the final diff contained **only** the intended insert (no spurious deletions) and the line count matched `HEAD + inserted`.
 
+**Rule:** After a large multi-line `Edit`/`Write` on the `/Volumes/OWC-Express-1M2` volume, verify the whole file (lint or `git diff`), not just the tool's success message — the untouched tail can be silently dropped.
+
+---
+
+## 15. A Prisma-generated migration diff always wants to DROP the raw-SQL pgvector indexes — strip those before applying
+
+**Context:** M14 — adding the `allowed_emails` table. Generating the migration with `prisma migrate dev --create-only` (which, contra #2/item 29, ran non-interactively and *correctly* against a live throwaway DB — it only prompts when it would reset) produced the right `CREATE TABLE`, but **also** four spurious `DROP INDEX "…_embedding_idx"` statements for `chunks` / `semantic_cache` / `upload_chunks` / `voice_examples`.
+
+- Root cause: those `ivfflat`/`hnsw` vector indexes are created in a hand-written raw-SQL migration (`20260531212901_rls_and_vector_index`) and are **not modeled in `schema.prisma`** (Prisma has no native pgvector index type). So every `prisma migrate diff` sees them as drift — "an index in the DB that the schema doesn't declare" — and emits a `DROP INDEX` to "reconcile". Applying that would silently drop the vector indexes → retrieval degrades to a full scan.
+- Fix: delete the `DROP INDEX` lines from the generated migration, keep only the intended `CREATE TABLE`/RLS/grant, then apply with `prisma migrate deploy` (not `migrate dev`, which would re-diff and reintroduce the drift). Validated against a live DB that all four `*_embedding_idx` survived.
+- Same applies to the RLS policies/`FORCE ROW LEVEL SECURITY` and the `app` GUC helper functions — also raw-SQL-only, so a new tenant-scoped table needs its `ENABLE/FORCE RLS` + `tenant_isolation` policy + `GRANT … TO app_user` appended to the generated migration by hand (mirror the `tenant_only` family in the RLS migration).
+
+**Rule:** Never apply a Prisma-generated migration verbatim in this repo — review it and strip any `DROP INDEX *_embedding_idx` (and re-add RLS/grant for new tables), because the pgvector indexes and RLS live in raw SQL the schema doesn't model.
+
 **Rule:** After a large/multi-line `Edit` or `Write` on a long file in this repo, don't trust the success message alone — run `git diff <file>` and confirm the only changes are the ones you intended (no deletions far from your edit) and that `wc -l` ≈ expected. The lint/test gates are the safety net that catches a silent truncation; never skip them after a big edit.

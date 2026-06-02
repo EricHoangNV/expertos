@@ -269,6 +269,7 @@ model Tenant {
   adminAuditLogs       AdminAuditLog[]
   dataDeletionRequests DataDeletionRequest[]
   fairUseFlags         FairUseFlag[]
+  allowedEmails        AllowedEmail[]
 
   @@map("tenants")
 }
@@ -302,10 +303,31 @@ model User {
   dataDeletionRequests DataDeletionRequest[]
   fairUseFlags         FairUseFlag[]
   adminAuditLogs       AdminAuditLog[]              @relation("AuditActor")
+  allowedEmailsCreated AllowedEmail[]               @relation("AllowedEmailCreator")
 
   @@unique([tenantId, email])
   @@index([tenantId])
   @@map("users")
+}
+
+/// Invite-only admin-portal whitelist (M14). A pre-authorized email + the role it is granted on
+/// admin-portal sign-in. Tenant-scoped (GLOBAL today); the role is the full Role enum on the column
+/// but the app layer accepts only `expert` / `admin`. `createdBy` is SetNull so the audit of who
+/// added an entry survives that admin's account deletion.
+model AllowedEmail {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
+  email     String
+  role      Role
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by") @db.Uuid
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator User?  @relation("AllowedEmailCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("allowed_emails")
 }
 
 /// An expert whose knowledge + voice the product renders.

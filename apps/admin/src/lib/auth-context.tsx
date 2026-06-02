@@ -16,17 +16,24 @@ import {
 } from "firebase/auth";
 import type { Role } from "@expertos/shared";
 import { getFirebaseAuth, googleProvider, isFirebaseConfigured } from "./firebase";
-import { getMe } from "./admin-client";
+import { adminSession, ApiError } from "./admin-client";
 
 interface AuthContextValue {
   /** The signed-in Firebase user, or null when signed out. */
   user: User | null;
   /**
-   * The signed-in user's resolved API role (from `GET /me`), or null while it's still resolving /
-   * when signed out. Used to gate the portal nav (an expert sees a narrower set than an admin) — a
-   * UX concern only; the API enforces the real role + RLS boundary on every route.
+   * The signed-in user's resolved API role (from `POST /me/admin-session`), or null while it's still
+   * resolving / when signed out / when denied. Used to gate the portal nav (an expert sees a
+   * narrower set than an admin) — a UX concern only; the API enforces the real role + RLS boundary
+   * on every route.
    */
   role: Role | null;
+  /**
+   * True when the signed-in email is NOT on the admin-portal whitelist (the session call returned a
+   * 403). The frame renders an Access Denied screen (M14). Resets to false while signed out /
+   * resolving.
+   */
+  denied: boolean;
   /** True until the initial auth state has resolved. */
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
@@ -40,6 +47,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
+  const [denied, setDenied] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -53,10 +61,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Resolve the API role once signed in, so the frame can show the right nav for an expert vs admin.
+  // Resolve the admin session once signed in: the whitelist gate (M14) syncs + returns the role, or
+  // 403s for a non-whitelisted email → `denied`. This is what activates the invite-only block.
   useEffect(() => {
     if (!user) {
       setRole(null);
+      setDenied(false);
       return;
     }
     let cancelled = false;
@@ -66,15 +76,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!token) {
           return;
         }
-        const me = await getMe(token);
+        const session = await adminSession(token);
         if (!cancelled) {
-          setRole(me.role);
+          setRole(session.role);
+          setDenied(false);
         }
-      } catch {
-        // A failed lookup leaves role null — the nav falls back to the safe (expert) subset.
-        if (!cancelled) {
-          setRole(null);
+      } catch (err) {
+        if (cancelled) {
+          return;
         }
+        // A 403 means the email is not whitelisted → hard deny. Any other failure (network, token)
+        // leaves role null without flipping the deny screen, so a transient error isn't mistaken for
+        // a deny.
+        setRole(null);
+        setDenied(err instanceof ApiError && err.status === 403);
       }
     })();
     return () => {
@@ -86,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       role,
+      denied,
       loading,
       signInWithGoogle: async () => {
         await signInWithPopup(getFirebaseAuth(), googleProvider);
@@ -98,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return current ? current.getIdToken() : Promise.resolve(null);
       },
     }),
-    [user, role, loading],
+    [user, role, denied, loading],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

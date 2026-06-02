@@ -233,22 +233,22 @@
 > Invite-only admin portal gate. Only pre-authorized emails can sign in; role synced from whitelist on each login. Consumer app unaffected. Full spec: `requirements/PRD-access-control.md`.
 
 ##### M14.1 — Schema + shared types
-- [ ] M14.1.1 Prisma `AllowedEmail` model (`@@unique([tenantId, email])`, `@@map("allowed_emails")`) + reverse relations on `Tenant`/`User`; run `prisma migrate dev`
-- [ ] M14.1.2 `packages/shared/src/access-control.ts`: Zod schemas (`allowedEmailRoleSchema`, `allowedEmailCreateSchema`, `allowedEmailUpdateSchema`) + DTO types (`AllowedEmailDto`, `AdminSessionDto`); export from index
+- [x] M14.1.1 Prisma `AllowedEmail` model (`@@unique([tenantId, email])`, `@@map("allowed_emails")`) + reverse relations on `Tenant`/`User`; run `prisma migrate dev`
+- [x] M14.1.2 `packages/shared/src/access-control.ts`: Zod schemas (`allowedEmailRoleSchema`, `allowedEmailCreateSchema`, `allowedEmailUpdateSchema`) + DTO types (`AllowedEmailDto`, `AdminSessionDto`); export from index
 
 ##### M14.2 — API: admin session + CRUD
-- [ ] M14.2.1 `AdminSessionService` + `POST /me/admin-session`: whitelist check → role sync → session DTO; 403 for non-whitelisted emails (no `@Roles` — any authenticated user can call)
-- [ ] M14.2.2 `AccessControlService` + `AccessControlController`: `GET/POST/PATCH/DELETE /admin/access-control` (`@Roles("admin")`); self-lockout protection (cannot remove/demote own email); audit logging (`access_control.email_added/role_changed/email_removed`); 409 on duplicate email
-- [ ] M14.2.3 Register `AdminSessionService` in `auth.module.ts`; register access-control controller + service in `admin.module.ts`
+- [x] M14.2.1 `AdminSessionService` + `POST /me/admin-session`: whitelist check → role sync → session DTO; 403 for non-whitelisted emails (no `@Roles` — any authenticated user can call)
+- [x] M14.2.2 `AccessControlService` + `AccessControlController`: `GET/POST/PATCH/DELETE /admin/access-control` (`@Roles("admin")`); self-lockout protection (cannot remove/demote own email); audit logging (`access_control.email_added/role_changed/email_removed`); 409 on duplicate email
+- [x] M14.2.3 Register `AdminSessionService` in `auth.module.ts`; register access-control controller + service in `admin.module.ts`
 
 ##### M14.3 — Seed + frontend client
-- [ ] M14.3.1 Seed `eric.nguyen.vn@gmail.com` as `role: admin` in `packages/db/prisma/seed.ts` (upsert — bootstraps first admin)
-- [ ] M14.3.2 Admin client functions: `adminSession`, `listAllowedEmails`, `addAllowedEmail`, `updateAllowedEmail`, `removeAllowedEmail`
+- [x] M14.3.1 Seed `eric.nguyen.vn@gmail.com` as `role: admin` in `packages/db/prisma/seed.ts` (upsert — bootstraps first admin)
+- [x] M14.3.2 Admin client functions: `adminSession`, `listAllowedEmails`, `addAllowedEmail`, `updateAllowedEmail`, `removeAllowedEmail`
 
 ##### M14.4 — Auth gate + UI
-- [ ] M14.4.1 Auth context: replace `getMe(token)` with `adminSession(token)`; add `denied: boolean` state (set on 403); expose on `AuthContextValue`
-- [ ] M14.4.2 `AdminFrame`: Access Denied screen when `denied === true` ("Your email is not authorized…" + Sign out button)
-- [ ] M14.4.3 Access Control page (`app/access-control/page.tsx`): add form (email + role select + Add), table (Email, Role badge, Added by, Added at, Actions), role toggle + Remove with confirmation; nav item under SYSTEM group (`role: "admin"`)
+- [x] M14.4.1 Auth context: replace `getMe(token)` with `adminSession(token)`; add `denied: boolean` state (set on 403); expose on `AuthContextValue`
+- [x] M14.4.2 `AdminFrame`: Access Denied screen when `denied === true` ("Your email is not authorized…" + Sign out button)
+- [x] M14.4.3 Access Control page (`app/access-control/page.tsx`): add form (email + role select + Add), table (Email, Role badge, Added by, Added at, Actions), role toggle + Remove with confirmation; nav item under SYSTEM group (`role: "admin"`)
 
 ### Phase 2 — Retention & Engagement (§"Phase 2 — Retention & Engagement") — not started
 - [ ] Deferred: CI/CD pipeline, mobile (React Native), notifications, voice/TTS, folders/export, follow-up suggestions, confidence indicator, personalized memory, persistent user/customer knowledge, consultation depth, reconciliation dashboard

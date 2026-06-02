@@ -1,5 +1,17 @@
 export { ROLES, roleSchema, satisfiesRole } from "./roles";
 export type { Role } from "./roles";
+export {
+  allowedEmailRoleSchema,
+  allowedEmailCreateSchema,
+  allowedEmailUpdateSchema,
+} from "./access-control";
+export type {
+  AllowedEmailRole,
+  AllowedEmailCreateInput,
+  AllowedEmailUpdateInput,
+  AllowedEmailDto,
+  AdminSessionDto,
+} from "./access-control";
 export { normalizeText } from "./text";
 export {
   CONTENT_SCOPES,

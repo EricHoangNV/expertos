@@ -11,8 +11,9 @@
   - M13.4 (Plans & Entitlements matrix): DONE — staged-edit `.matrix-table`, real plan pricing (`prices[]` + `PlanPrice` join), per-cell batch PATCH.
   - M13.6 (Concierge review queue two-pane): DONE — `.review-pane` (`.queue-list` + `.review-detail`), Open/Mine/Done `.seg`, `.dark-card` question, selectable `.verdict-card`, refined-answer textarea, Push/Escalate → respond/escalate. `Badge` gained an optional `dot` prop. Deviations: Claim/Dismiss omitted (no endpoint), Mine=`claimedAt`-set, no user email/voice in DTO.
   - M13.5 (Voice profile page): DEFERRED — mockup (dimension bars/do-don't/terminology/fidelity) has NO schema backing; needs a PM/schema decision before building. See log.
-- Tests: 1230 pass / 0 fail / 0 skip (shared 179, ui 218, db 9, ai 161, api 663). (admin has no jest suite.)
-- Gates (run per-workspace — `turbo` SIGILLs here): shared/ui/api build/eslint/jest + admin `tsc --noEmit` + `next lint` + web `tsc` + root `lint:css` + root `knip` all clean. (`next build` blocked in-sandbox by missing linux/arm64 SWC — environmental.)
+- M14 (Access Control Whitelist) — invite-only admin portal gate: COMPLETE (M14.1–M14.4). `AllowedEmail` model + RLS migration; `POST /me/admin-session` whitelist gate (role-sync, 403); `/admin/access-control` CRUD (self-lockout + audit + 409); auth-context `denied` + AdminFrame Access Denied screen; Access Control page; bootstrap admin seeded.
+- Tests: 1254 pass / 0 fail / 0 skip (shared 187, ui 218, db 9, ai 161, api 679). (admin has no jest suite.)
+- Gates (run per-workspace — `turbo` SIGILLs here): shared/ui/api build/eslint/jest + admin `tsc --noEmit` + `next lint` + web `tsc` + root `lint:css` + root `knip` all clean. (`next build` blocked in-sandbox by missing linux/arm64 SWC — environmental; `tsx` seed also blocked by an esbuild darwin/linux arch mismatch — migration validated via `prisma migrate deploy` + raw SQL instead.)
 
 - Next tasks (priority order):
   1. **M13.7** — Admin polish & shared patterns: role-aware sidebar + ds.css conformance audit (most primitives already exist; `.voice-bar` is gated on the M13.5 decision).

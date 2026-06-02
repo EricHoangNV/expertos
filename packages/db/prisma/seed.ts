@@ -223,6 +223,16 @@ async function main() {
     await prisma.reviewConfig.create({ data: {} });
   }
 
+  // Bootstrap the admin-portal whitelist (M14). Seed the first admin email so the access gate
+  // doesn't lock everyone out on first deploy (PRD-access-control §9). Idempotent: upsert by the
+  // natural key keeps the role at `admin` even if the row already exists.
+  const BOOTSTRAP_ADMIN_EMAIL = "eric.nguyen.vn@gmail.com";
+  await prisma.allowedEmail.upsert({
+    where: { tenantId_email: { tenantId: GLOBAL_TENANT_ID, email: BOOTSTRAP_ADMIN_EMAIL } },
+    update: { role: "admin" },
+    create: { tenantId: GLOBAL_TENANT_ID, email: BOOTSTRAP_ADMIN_EMAIL, role: "admin" },
+  });
+
   const [tenants, features, plans, entitlements] = await Promise.all([
     prisma.tenant.count(),
     prisma.feature.count(),
