@@ -4621,3 +4621,26 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 **Notes for next iteration:**
 - Unchanged from prior: M15.3.3/.4 host-validation (sandbox OOMs the live stack, §3.4.1); M13.5.3/.4/.5 + M13.7.4 (voice widgets — blocked on PM/schema); M11.4 / NT.3 / NT.4 (human sign-off gates). All remaining open manifest items are host-only or human-gated.
 - Resolve the `dashboard.ts` drift above.
+
+## Session triage: all open tasks externally blocked; settled DIRECTIVES §3.4.1 drift + cleared drift warning
+**Date:** 2026-06-02
+**Ref:** PRD Task Manifest (12 open `[ ]` items) + DIRECTIVES §3.4.1
+
+**What was done:**
+- Triaged every open `[ ]` manifest item; confirmed none is completable end-to-end from this sandbox: M11.4/NT.3-6 = human/PM/legal sign-offs; OD#6 + Phase 2/3 = deferred; M13.5.3/.4/.5 + M13.7.4 = PM/schema-blocked (forbidden to invent voice-characterization fields experts legally sign off on); M15.3.3/.4 = E2E specs written/committed/static-gate-clean, need a host Playwright run.
+- Empirically verified the host-run E2E workflow CANNOT work in this sandbox: probed `host.docker.internal:3001/3000/3002/9099` → "connection blocked by network policy"; confirmed `no_proxy`=`localhost,127.0.0.1,::1` (excludes host.docker.internal). So the firewall, not just the 4GB RAM ceiling, blocks the live stack.
+- Re-ran the only validatable gates on the committed E2E specs: `e2e` `tsc` + `eslint` both clean (incl. `concierge-review.spec.ts`, `knowledge-approval.spec.ts`).
+- Handled the uncommitted DIRECTIVES.MD §3.4.1 working-tree change. The OWC mount surfaced it in stages mid-session: at session start `git diff` showed a 15+/5- rewrite to "Run Playwright Against the Host's Dev Servers"; the mount then settled (index 2c418da→4fb3e85) to a clean +1/−1 note that KEEPS the correct "write specs + static gates only" rule and merely adds the network-policy reason. The settled version matches my empirical finding, so I committed it (128748f) rather than reverting prior-session intent.
+
+**Key decisions:**
+- Did NOT fabricate make-work, start a deferred Phase 2 feature (scope decision = user's), or build the schema-blocked voice widgets (PM/legal gate). Surfaced the blockage instead.
+- Committed the §3.4.1 correction (not reverted): it's an evidence-backed, single-line doc improvement that preserves the accurate "do NOT run the live stack in-sandbox" rule and records the verified network-policy block — prevents the next agent from chasing a host.docker.internal workflow that's firewalled.
+- Followed §3.4.2 integrity discipline given the active mount flakiness: verified line count (948) + tail + staged==disk before/after `git add`; diff stat stayed +1/−1.
+
+**Files changed:**
+- `project-mds/DIRECTIVES.MD` — §3.4.1 intro now states the sandbox network policy blocks `host.docker.internal` (alongside the existing 4GB-OOM reason). Committed 128748f, pushed to origin/main.
+- `project-mds/progress-state.md` — cleared the now-stale "⚠ Unexplained working-tree drift" warning (both drifted files committed: admin dashboard f500850, DIRECTIVES 128748f); updated Last-commit line; rewrote next-tasks to state all open items are externally blocked + the firewall-allowlist prerequisite for host E2E.
+
+**Notes for next iteration:**
+- The project's Phase 1 is functionally launch-ready. To make further progress a human must: (a) start the host dev stack AND allowlist `host.docker.internal:3000-3002,9099` (or add it to `no_proxy`) so the M15.3.3/.4/.5 E2E specs can be run, OR (b) approve the voice-profile schema model so M13.5.3/.4/.5 + M13.7.4 can be built, OR (c) clear the NT human sign-off gates. None is an autonomous coding task.
+- Tree is clean as of 128748f.
