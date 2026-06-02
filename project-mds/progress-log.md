@@ -3504,3 +3504,25 @@ Wired into `apps/web/app/chat/page.tsx`: `AssistantAnswer` shows `<ChatTypingInd
 - M13.1.2 (count badges): fetch counts from `/knowledge` (status=expert-review), `/admin/failed-queries`, `/concierge-reviews` (open) and render `<span className="tag">` inside the `.navitem`. The `.side .navitem .tag` ds.css class (mono, semi-transparent, margin-left:auto) is ready.
 - `next build` cannot run in this sandbox (missing linux/arm64 SWC native binary) — validate admin via `tsc --noEmit` + `next lint` + root `knip` instead.
 - Dashboard nav points at `/` which is still the old "Review queues" landing; M13.2 replaces that page with the real dashboard.
+
+---
+
+## M13.1.2 — Count badges on sidebar nav items (2026-06-02)
+
+**What:** Added attention-count badges to the three admin nav items the mockup flags (Knowledge, Low-confidence queries, Concierge queue), rendered as the existing ds.css `.side .navitem .tag` chip (mono, semi-transparent, right-floated via `margin-left:auto`).
+
+**How:**
+- `apps/admin/src/lib/use-nav-counts.ts` — new `useNavCounts(role, getIdToken)` hook + `NavCounts` interface. Once `/me` resolves the role it fires the three existing review/queue APIs in parallel, best-effort (one API failure leaves only its own count `null`):
+  - knowledge needing review → `listDocuments(token, "expert_review").length` (expert + admin)
+  - open concierge → `getConciergeReviews` for `requested` + `in_review` summed (expert + admin); fetched as two status-filtered calls because the list API filters a single status and its default ordering surfaces `answered` first
+  - flagged low-confidence answers → `getFailedQueries(token, {limit})` (admin only — skipped for experts)
+  - display-capped at `CAP=99` → renders "99+"; UX-only signal (API still enforces role + tenant RLS).
+- `apps/admin/src/components/AdminFrame.tsx` — `NavItem` gained an optional `badge: keyof NavCounts`; set on `/knowledge`, `/failed-queries`, `/concierge-reviews`. `NavLink` now renders `<span className="tag">` (hidden until the count loads and is `> 0`). Hook called in `AdminFrame` with `user ? role : null` so it no-ops until signed in; `counts` threaded through `Sidebar` → `NavLink`.
+
+**No CSS added** — reused the ready `.tag` class. No new test harness (admin has no jest suite, consistent with M13.1.1).
+
+**Gates:** admin `tsc --noEmit` clean, `next lint` clean, root `knip` clean, `pnpm test` (admin) passes (no tests). `next build` still blocked in-sandbox (linux/arm64 SWC binary — environmental).
+
+**Notes for next iteration:**
+- M13.1.3 / M13.1.4: bottom-pinned user identity (avatar + name + role label + sign-out on dark) and topbar breadcrumb + role badge ("ADMIN VIEW" `.badge-red` / "EXPERT VIEW" `.badge-amber`).
+- Counts fetch once on mount; no live refresh. If a future task wants live counts (e.g. after acting in the queue), expose a re-fetch from the hook or lift to a context.

@@ -15,14 +15,15 @@
   - M12.9.1 mobile sidebar overlay (`ChatSidebarDrawer` + `ChatMenuButton` + topbar `leading` slot): DONE
   - M12.9.4 loading/empty states (`Skeleton`/`ChatTypingIndicator`/`ChatEmptyState`): DONE
 - M13 (Admin & Expert Portal UI Overhaul) — admin portal rebuild to the approved mockups:
-  - **M13.1.1 sidebar nav restructure: DONE** — `AdminFrame` `NAV` regrouped into the mockup's OPERATE / MONETIZE / EXPERT PORTAL groups (+ ANALYTICS / SYSTEM for the remaining working pages so none are orphaned); each item carries `group` + `role`, `Sidebar` renders `GROUP_ORDER` filtering by role; Dashboard nav item added (`/` root, exact-match active). Count badges = M13.1.2.
+  - M13.1.1 sidebar nav restructure: DONE — `AdminFrame` `NAV` regrouped into OPERATE / MONETIZE / EXPERT PORTAL (+ ANALYTICS / SYSTEM); per-item `group`+`role`, role-filtered `GROUP_ORDER` render; Dashboard `/` exact-match active.
+  - **M13.1.2 count badges: DONE** — `use-nav-counts.ts` `useNavCounts` fetches knowledge-review / open-concierge / flagged-query counts once `/me` resolves; best-effort per badge, capped 99→"99+"; `NavItem.badge` → `.side .navitem .tag` chip on Knowledge / Low-confidence / Concierge queue.
 - Tests: 1221 pass / 0 fail / 0 skip (shared 179, ui 213, db 9, ai 161, api 659).
 - Gates (run per-workspace — `turbo` SIGILLs in this sandbox): admin `tsc --noEmit` clean, `next lint` clean, root `knip` clean. (admin has no jest suite; `next build` blocked in-sandbox by the missing linux/arm64 SWC native binary — environmental, not code.)
 
 - Next tasks (priority order):
-  1. **M13.1.2** — count badges on nav items (knowledge needing review, flagged queries, open concierge) → `.navitem .tag`, fetched from existing APIs.
-  2. **M13.1.3 / M13.1.4** — bottom-pinned user identity + topbar breadcrumb/role-badge.
-  3. **M12.9.2 / M12.9.3** — ds.css conformance audit + dark-sidebar render check (quick wins).
+  1. **M13.1.3 / M13.1.4** — bottom-pinned user identity + topbar breadcrumb/role-badge.
+  2. **M12.9.2 / M12.9.3** — ds.css conformance audit + dark-sidebar render check (quick wins).
+  3. **M13.2** — dashboard (admin home) KPI cards + funnel/pipeline/SLA cards.
   4. **M11.1 fixme legs** / **NT human gates** — await external surfaces / PM sign-off.
 
 ### Reusable building blocks for remaining UI work

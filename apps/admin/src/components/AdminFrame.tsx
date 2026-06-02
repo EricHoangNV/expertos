@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Badge, Button, Content, cx, Shell, Topbar } from "@expertos/ui";
 import type { Role } from "@expertos/shared";
 import { useAuth } from "../lib/auth-context";
+import { CAP, useNavCounts, type NavCounts } from "../lib/use-nav-counts";
 import "./admin-login.css";
 
 /**
@@ -30,15 +31,20 @@ interface NavItem {
    * boundary, so a direct hit still 403s for a non-admin).
    */
   role: "expert" | "admin";
+  /**
+   * Which {@link NavCounts} value feeds this item's `.navitem .tag` count badge (M13.1.2), if any.
+   * Omitted for items that don't carry a count.
+   */
+  badge?: keyof NavCounts;
 }
 
 const NAV: NavItem[] = [
   // OPERATE — core operational content views.
   { href: "/", label: "Dashboard", group: "OPERATE", role: "admin" },
-  { href: "/knowledge", label: "Knowledge", group: "OPERATE", role: "expert" },
+  { href: "/knowledge", label: "Knowledge", group: "OPERATE", role: "expert", badge: "knowledgeReview" },
   { href: "/knowledge-drafts", label: "Conversation → Knowledge", group: "OPERATE", role: "expert" },
   { href: "/answers", label: "AI answers", group: "OPERATE", role: "expert" },
-  { href: "/failed-queries", label: "Low-confidence queries", group: "OPERATE", role: "admin" },
+  { href: "/failed-queries", label: "Low-confidence queries", group: "OPERATE", role: "admin", badge: "failedQueries" },
   // MONETIZE — business / billing views.
   { href: "/entitlements", label: "Plans & Entitlements", group: "MONETIZE", role: "admin" },
   { href: "/revenue", label: "Revenue", group: "MONETIZE", role: "admin" },
@@ -47,7 +53,7 @@ const NAV: NavItem[] = [
   { href: "/recommendation-rules", label: "Funnel rules", group: "MONETIZE", role: "admin" },
   // EXPERT PORTAL — expert-scoped views.
   { href: "/voice-profiles", label: "Voice profiles", group: "EXPERT PORTAL", role: "expert" },
-  { href: "/concierge-reviews", label: "Concierge queue", group: "EXPERT PORTAL", role: "expert" },
+  { href: "/concierge-reviews", label: "Concierge queue", group: "EXPERT PORTAL", role: "expert", badge: "conciergeOpen" },
   { href: "/conversions", label: "Conversions", group: "EXPERT PORTAL", role: "expert" },
   // ANALYTICS — admin reporting.
   { href: "/analytics", label: "Usage & cost", group: "ANALYTICS", role: "admin" },
@@ -61,20 +67,40 @@ const NAV: NavItem[] = [
   { href: "/audit", label: "Audit log", group: "SYSTEM", role: "admin" },
 ];
 
-function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+function NavLink({
+  item,
+  pathname,
+  counts,
+}: {
+  item: NavItem;
+  pathname: string;
+  counts: NavCounts;
+}) {
   // Root ("/") must match exactly so it doesn't light up for every nested route.
   const active =
     item.href === "/"
       ? pathname === "/"
       : pathname === item.href || pathname.startsWith(`${item.href}/`);
+  // Count badge (M13.1.2): show only once loaded and non-zero; a count at the cap reads "99+".
+  const count = item.badge != null ? counts[item.badge] : null;
+  const showBadge = count != null && count > 0;
   return (
     <Link href={item.href} className={cx("navitem", active && "active")}>
       {item.label}
+      {showBadge && <span className="tag">{count >= CAP ? `${CAP}+` : count}</span>}
     </Link>
   );
 }
 
-function Sidebar({ pathname, role }: { pathname: string; role: Role | null }) {
+function Sidebar({
+  pathname,
+  role,
+  counts,
+}: {
+  pathname: string;
+  role: Role | null;
+  counts: NavCounts;
+}) {
   // Admin items appear only for a resolved admin; everyone else sees the expert subset (the API
   // is the real gate, so this just keeps the nav honest about what the signed-in user can open).
   const visible = NAV.filter((item) => item.role === "expert" || role === "admin");
@@ -93,7 +119,7 @@ function Sidebar({ pathname, role }: { pathname: string; role: Role | null }) {
           <div key={group}>
             <div className="navgroup">{group}</div>
             {items.map((item) => (
-              <NavLink key={item.href} item={item} pathname={pathname} />
+              <NavLink key={item.href} item={item} pathname={pathname} counts={counts} />
             ))}
           </div>
         );
@@ -183,8 +209,9 @@ function AdminLogin({ onSignIn }: { onSignIn: () => Promise<void> }) {
  * security boundary. Pages render their content as `children`.
  */
 export function AdminFrame({ children }: { children: ReactNode }) {
-  const { user, role, loading, signInWithGoogle, signOutUser } = useAuth();
+  const { user, role, loading, signInWithGoogle, signOutUser, getIdToken } = useAuth();
   const pathname = usePathname();
+  const counts = useNavCounts(user ? role : null, getIdToken);
 
   if (loading) {
     return (
@@ -199,7 +226,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Shell sidebar={<Sidebar pathname={pathname} role={role} />}>
+    <Shell sidebar={<Sidebar pathname={pathname} role={role} counts={counts} />}>
       <Topbar>
         <span className="grow muted">{user.email ?? user.uid}</span>
         <Button variant="ghost" size="sm" onClick={() => void signOutUser()}>
