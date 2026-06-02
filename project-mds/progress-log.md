@@ -4321,3 +4321,25 @@ Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:
 
 **Notes for next iteration:**
 - M15.2.2 (AdminFrame tests) next: role-aware nav filtering (admin sees all groups, expert sees only EXPERT PORTAL — `NAV.filter`), breadcrumb, nav count badges (`useNavCounts` → mock `listDocuments`/`getConciergeReviews`/`getFailedQueries`), sidebar footer identity, and the access-denied gate (`renderWithProviders(<AdminFrame/>, { denied: true })`). Put these tests under `src/components/` (in knip project scope) so the `@testing-library/*` imports resolve as used → then remove the apps/admin knip `ignoreDependencies` block.
+
+---
+
+## M15.2.2 — AdminFrame tests (admin jest suite)
+
+**Task:** M15.2.2 — component tests for `AdminFrame` (the shared admin/expert portal chrome): role-aware nav filtering, breadcrumb, nav count badges, sidebar footer identity, and the M14 access-denied gate. Second task of M15.2; harness (M15.2.1) was already in place.
+
+**What was added** (admin 6 → 18 tests, `apps/admin/src/components/AdminFrame.test.tsx`, +12):
+- **Role-aware nav (2):** admin renders all 5 group headers (Operate/Monetize/Expert portal/Analytics/System) + admin-only items (Revenue, Access control, Dashboard); an expert renders only OPERATE+EXPERT PORTAL groups (MONETIZE/ANALYTICS/SYSTEM absent) with the expert item subset (Voice profiles, Knowledge) and no admin-only items. Asserts against the resolved-role render (`await findByText("Admin view"/"Expert view")`) since the role resolves async via `POST /me/admin-session`.
+- **Breadcrumb + role badge (3):** `.crumb .label` prefix ("Admin" / "Expert Portal") + `.crumb-page` active-page label resolved from the mocked pathname (`/revenue`→Revenue, `/`→Dashboard, `/concierge-reviews`→Concierge queue), targeted via `container.querySelector` to disambiguate from the same-text nav links.
+- **Count badges (3):** mocks the three queue APIs (`/knowledge/documents`, `/concierge-reviews` [dynamic handler splitting requested vs in_review by the `status` query param], `/admin/failed-queries`) → asserts the `.navitem .tag` count via the link's accessible name ("Knowledge 3", "Concierge queue 3", "Low-confidence queries 7"); a 150-length list caps to "99+"; default-404 APIs leave the count null → no trailing-digit chip.
+- **Identity footer + sign-out (2):** avatar initials ("TM") + display name + "Admin · ExpertOS" role label; clicking the footer "Sign out" clears the mock user (the firebase `signOut` mock sets user null) → the frame falls back to the "Sign in to the console" screen.
+- **Auth gates (2):** `denied:true` → "Access denied" screen with no nav groups / no page body; `user:null` → sign-in screen with the Google button, no page body.
+
+**Key decisions / honest notes:**
+- **knip ignore stays.** The M15.2.1 note said to trim the `apps/admin` testing-library `ignoreDependencies` once page tests land under `app/**`/`src/**`. I verified empirically that removing it makes knip flag all 3 `@testing-library/*` as unused — because the root knip config globally ignores `**/*.test.tsx`, so the only usage (the test files, via `test/render`'s re-export) is in ignored files, and `test/render.tsx` itself sits outside the `app/**`+`src/**` project scope. So the ignore is correct and stays; the trim note does not apply. (Web passing without the ignore is incidental, not a counter-example I could reproduce into admin.)
+- Used the exact accessible name "Knowledge" (not `/Knowledge$/`) for the expert nav assertion — the regex also matched "Conversation → Knowledge".
+
+**Gates:** admin `tsc` clean, `next lint` clean, `jest` 18/18 pass, root `knip` + `lint:css` clean. Test-file-only addition (knip.json untouched, reverted after the trim experiment) → other workspaces unaffected (1382 → 1394 total tests).
+
+**Notes for next iteration:**
+- M15.2.3 (Dashboard tests) next: KPI cards over mocked `getRevenueReport`/`getFunnelAnalytics`/`getValidationAnalytics`, funnel bar proportions, low-confidence list (`getFailedQueries`), knowledge pipeline badges (`getKnowledgePipeline`), concierge SLA card (`getConciergeAnalytics`). The dashboard is `apps/admin/app/page.tsx` — render it directly (no AdminFrame wrap needed; it's a page body) via `renderWithProviders` with `role:"admin"`.
