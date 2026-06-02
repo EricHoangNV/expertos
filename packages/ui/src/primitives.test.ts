@@ -9,6 +9,7 @@ import { Content, Shell, Topbar } from "./Shell";
 import { ChatLayout } from "./ChatLayout";
 import { ChatSearch, type ChatSearchResultItem } from "./ChatSearch";
 import { ChatSidebar } from "./ChatSidebar";
+import { ChatVoicePicker, type ChatVoiceOption } from "./ChatVoicePicker";
 import { ChatTopbar } from "./ChatTopbar";
 import {
   AVATAR_TONES,
@@ -527,6 +528,74 @@ describe("ChatTopbar — conversation header with editable title (M12.3.1)", () 
     const asideEl = aside as ReactElement;
     expect(cls(asideEl)).toBe("chat-topbar-aside");
     expect(kids(asideEl)).toBe("voice + identity");
+  });
+});
+
+describe("ChatVoicePicker — expert voice chips (M12.3.2)", () => {
+  const noop = () => {};
+  const opts: ChatVoiceOption[] = [
+    { id: "jp", name: "James Pierce" },
+    { id: "an", name: "Anh Nguyen" },
+  ];
+
+  /** Destructure the picker's children: [label, neutralChip, [expertChips]]. */
+  const parts = (el: ReactElement) => {
+    const [label, neutral, experts] = kids(el) as [ReactElement, ReactElement, ReactElement[]];
+    return { label, neutral, experts };
+  };
+
+  it("renders the `.chat-voice-picker` with a VOICE label, a Neutral chip, and one chip per expert", () => {
+    const el = ChatVoicePicker({ options: opts, onSelect: noop }) as ReactElement;
+    expect(cls(el)).toBe("chat-voice-picker");
+    const { label, neutral, experts } = parts(el);
+    expect(cls(label)).toBe("label");
+    expect(kids(label)).toBe("Voice");
+    expect(neutral.type).toBe(Chip);
+    expect(kids(neutral)).toBe("Neutral");
+    expect(experts).toHaveLength(2);
+    expect(experts[0].type).toBe(Chip);
+  });
+
+  it("marks the Neutral chip active when no expert is selected (default)", () => {
+    const el = ChatVoicePicker({ options: opts, onSelect: noop }) as ReactElement;
+    const { neutral, experts } = parts(el);
+    expect((neutral.props as { active?: unknown }).active).toBe(true);
+    expect((experts[0].props as { active?: unknown }).active).toBe(false);
+    expect((experts[1].props as { active?: unknown }).active).toBe(false);
+  });
+
+  it("marks the matching expert chip active and de-activates Neutral", () => {
+    const el = ChatVoicePicker({ options: opts, activeId: "an", onSelect: noop }) as ReactElement;
+    const { neutral, experts } = parts(el);
+    expect((neutral.props as { active?: unknown }).active).toBe(false);
+    expect((experts[0].props as { active?: unknown }).active).toBe(false);
+    expect((experts[1].props as { active?: unknown }).active).toBe(true);
+  });
+
+  it("fires onSelect with the expert id ('' for Neutral) when a chip is chosen", () => {
+    const onSelect = jest.fn();
+    const el = ChatVoicePicker({ options: opts, activeId: "jp", onSelect }) as ReactElement;
+    const { neutral, experts } = parts(el);
+    (neutral.props as { onClick: () => void }).onClick();
+    expect(onSelect).toHaveBeenLastCalledWith("");
+    (experts[1].props as { onClick: () => void }).onClick();
+    expect(onSelect).toHaveBeenLastCalledWith("an");
+  });
+
+  it("carries an expert-colored avatar with initials inside each expert chip", () => {
+    const el = ChatVoicePicker({ options: opts, onSelect: noop }) as ReactElement;
+    const { experts } = parts(el);
+    const [avatar, name] = kids(experts[0]) as [ReactElement, string];
+    expect(cls(avatar)).toMatch(/^avatar chat-voice-avatar tone-/);
+    expect(kids(avatar)).toBe("JP");
+    expect(name).toBe("James Pierce");
+  });
+
+  it("disables every chip when disabled (no voice change mid-stream)", () => {
+    const el = ChatVoicePicker({ options: opts, onSelect: noop, disabled: true }) as ReactElement;
+    const { neutral, experts } = parts(el);
+    expect((neutral.props as { disabled?: unknown }).disabled).toBe(true);
+    expect((experts[0].props as { disabled?: unknown }).disabled).toBe(true);
   });
 });
 

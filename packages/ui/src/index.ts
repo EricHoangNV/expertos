@@ -32,6 +32,8 @@ export { ChatTopbar } from "./ChatTopbar";
 export type { ChatTopbarProps } from "./ChatTopbar";
 export { ChatSearch } from "./ChatSearch";
 export type { ChatSearchProps, ChatSearchResultItem } from "./ChatSearch";
+export { ChatVoicePicker } from "./ChatVoicePicker";
+export type { ChatVoicePickerProps, ChatVoiceOption } from "./ChatVoicePicker";
 export {
   ChatConversationList,
   AVATAR_TONES,

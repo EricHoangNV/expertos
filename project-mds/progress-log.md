@@ -2823,3 +2823,32 @@ Built the dark-rail conversation search input and wired it to the existing M3.3 
 - M12.3.2: add a `voices`/`activeVoiceId`/`onSelectVoice` prop set (or a child component) for `.chip`/`.chip.active` pills with a "VOICE" `.label`, mount in the `.chat-topbar-aside` slot, and delete the chat-content expert `<Select>`. Reuse `Chip` from ui.
 - M12.3.3: avatar (`avatarInitials`/`avatarTone`) + name + EN/VI `.badge`, right end of the aside.
 - Rebuild ui to `dist/` before web typecheck whenever you touch ui exports.
+
+## M12.3.2 — Voice picker (`.chip` pills in the topbar)
+**Date:** 2026-06-02
+**Ref:** PRD §M12 Task Manifest M12.3.2; requirements/ui-reference-spec.md §"Topbar / Conversation Header"
+
+**What was done:**
+- New `packages/ui/src/ChatVoicePicker.tsx` `ChatVoicePicker` — presentational `.chat-voice-picker`: a "Voice" `.label` followed by `.chip`/`.chip.active` pills (reuses the existing `Chip` primitive). A leading "Neutral" chip (active when `activeId === ""`) precedes one chip per expert voice; each expert chip carries a small expert-colored `.avatar` (initials via `avatarInitials`, tone via `avatarTone`) so the active voice reads at a glance. `disabled` greys every chip so the voice can't change mid-stream.
+- ds.css: `.chat-voice-picker` (flex row, wraps) + `.chat-voice-avatar` (20px micro-avatar) added under the M12.3 conversation-header block.
+- Exported `ChatVoicePicker` + `ChatVoicePickerProps`/`ChatVoiceOption` from `packages/ui/src/index.ts`.
+- Wired into `apps/web/app/chat/page.tsx`: mounted in `ChatTopbar`'s `.chat-topbar-aside` slot (children), mapping `experts` → `{id,name}`, `activeId={expertId}`, `onSelect={setExpertId}`, `disabled={busy}`; hidden when `experts.length === 0`. **Removed** the old `<Field label="Expert voice"><Select>…` block from `chat-content` (the picker now lives in the header per the mockup). `Select` import retained — still used by `UploadPanel`'s Mode field.
+- Tests: +6 in `packages/ui/src/primitives.test.ts` (render/label/Neutral+expert chips, default-active Neutral, active-expert switch, onSelect ""/id, avatar initials+tone, disabled). 100% coverage on the new file.
+
+**Key decisions:**
+- Kept the component decoupled from the web `ExpertVoice` type via a local `ChatVoiceOption {id,name}` — same pattern as `ChatConversationItem`, so ui has no dependency on app types.
+- Reused the existing `Chip` primitive (already meets the hit-target rule, `.chip`/`.chip.active`) rather than hand-rolling buttons.
+- "Neutral" rendered as a first-class chip (id `""`) so the no-expert voice stays selectable, matching the previous `<Select>`'s "Neutral (no expert voice)" option.
+- Reused the M12.2.3 `avatarInitials`/`avatarTone` helpers + `.avatar.tone-*` classes (already exported) for the micro-avatar.
+
+**Files changed:**
+- `packages/ui/src/ChatVoicePicker.tsx` — new component
+- `packages/ui/src/ds.css` — `.chat-voice-picker` + `.chat-voice-avatar`
+- `packages/ui/src/index.ts` — exports
+- `packages/ui/src/primitives.test.ts` — +6 tests + import
+- `apps/web/app/chat/page.tsx` — mount picker in topbar aside, remove chat-content expert `<Select>`
+- `project-mds/PRD.md`, `progress-state.md`, `progress-log.md` — status/progress
+
+**Notes for next iteration:**
+- M12.3.3 (user identity): avatar (`avatarInitials`/`avatarTone`) + name + EN/VI `.badge`, right end of the same `.chat-topbar-aside` slot — append it after the `<ChatVoicePicker>` in the topbar children. The aside is already a flex row (`gap: var(--s3)`).
+- Rebuild ui to `dist/` (`npm run build` in packages/ui) before web typecheck whenever you touch ui exports — web resolves `@expertos/ui` from `dist/`, not src.

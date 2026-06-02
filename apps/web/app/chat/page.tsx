@@ -13,6 +13,7 @@ import {
   ChatSidebar,
   ChatTopbar,
   ChatUsageMeter,
+  ChatVoicePicker,
   DEFAULT_LAYOUT_DIRECTION,
   Field,
   Input,
@@ -798,24 +799,17 @@ export default function ChatPage() {
         onEditStart={startRename}
         onCommit={() => void commitRename()}
         onCancel={() => setEditingTitle(false)}
-      />
-      <main className="card card-pad chat-content">
-        <Field label="Expert voice" htmlFor="expert">
-          <Select
-            id="expert"
-            value={expertId}
-            onChange={(e) => setExpertId(e.target.value)}
+      >
+        {experts.length > 0 && (
+          <ChatVoicePicker
+            options={experts.map((e) => ({ id: e.expertId, name: e.displayName }))}
+            activeId={expertId}
+            onSelect={setExpertId}
             disabled={busy}
-          >
-            <option value="">Neutral (no expert voice)</option>
-            {experts.map((e) => (
-              <option key={e.expertId} value={e.expertId}>
-                {e.displayName}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
+          />
+        )}
+      </ChatTopbar>
+      <main className="card card-pad chat-content">
         <div>
           {messages.map((m, i) => (
             <Card key={i} className="card-pad">

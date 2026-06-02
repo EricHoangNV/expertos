@@ -123,7 +123,7 @@
 
 ##### M12.3 — Conversation header (topbar)
 - [x] M12.3.1 Topbar component: conversation title (auto-titled from M3.2), editable on click — **DONE** (`packages/ui/src/ChatTopbar.tsx` `ChatTopbar`: `.topbar .chat-topbar` strip with click-to-rename title [heading→`.input`, commit on Enter/blur, cancel on Escape] + right-aligned `.chat-topbar-aside` slot for M12.3.2–3; ds.css `.chat-topbar*`; wired into `/chat` with title state + `renameConversation` PATCH (M3.2) + post-turn auto-title sync; +6 ui tests, 100% coverage)
-- [ ] M12.3.2 Voice picker: "VOICE" `.label` + `.chip` / `.chip.active` pills for each expert voice; wired to existing experts API; selecting a chip switches the active expert for the conversation
+- [x] M12.3.2 Voice picker: "VOICE" `.label` + `.chip` / `.chip.active` pills for each expert voice; wired to existing experts API; selecting a chip switches the active expert for the conversation — **DONE** (`packages/ui/src/ChatVoicePicker.tsx` `ChatVoicePicker`: `.chat-voice-picker` "Voice" `.label` over `.chip`/`.chip.active` pills — a leading "Neutral" chip + one expert-colored-`.avatar` chip per voice; ds.css `.chat-voice-picker`/`.chat-voice-avatar`; presentational. Wired into the `.chat-topbar-aside` slot of `ChatTopbar` in `/chat`, replacing the old expert `<Select>` in chat-content; `onSelect("")`=neutral, reuses `expertId` on the next turn; hidden when no expert voices exist; +6 ui tests, 100% coverage)
 - [ ] M12.3.3 User identity display: avatar + name + language badge (EN/VI) right-aligned
 
 ##### M12.4 — Chat messages area
