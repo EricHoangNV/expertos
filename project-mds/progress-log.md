@@ -2999,3 +2999,22 @@ Built the dark-rail conversation search input and wired it to the existing M3.3 
 **Notes for next iteration:**
 - M12.5 (sources rail): the sources drawer in `AnswerView` is already decoupled from prose (`AnswerProse`) and now gated by `sourcesOpen`. To build the rail, lift the `.sources` list rendering out of `AnswerView` into the `.sources-rail` pane (ChatLayout `rail` slot) for studio mode, and reuse the `sourcesOpen` toggle for the classic/focus drawer fallback (M12.5.4).
 - M12.4.5/.6: `ConsultationPrompt` and `HighStakesNotice` + the inline insufficient/degraded cards still live in `apps/web/app/chat/page.tsx` (now inside `AssistantTurn`) — those are the restyle targets.
+
+---
+
+## M12.4.5 — Consultation recommendation card (ChatConsultationCard)
+
+Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.tsx` into a presentational ds.css primitive `packages/ui/src/ChatConsultationCard.tsx`, matching the UI reference spec (warm amber background card + icon + heading + description + three actions).
+
+**Component** (`ChatConsultationCard`): a `.consult-card` (`--amber-50` bg, amber border, `--r-lg`) with a `.consult-card-head` row (a `currentColor` calendar SVG icon in `--amber-600` + a `--font-display` bold `.consult-card-title`, default "This looks worth a working session"), an optional `.consult-card-desc` paragraph (the M7.1 rule's `reason`), and a `.consult-card-actions` row: primary Book (`bookLabel` prop) + ghost "Maybe later" + ghost "Ask another question". Each action is omitted when its callback is absent; all three disable while `busy`; follow-up content (an error note) renders as `children`. Pure/presentational (no hooks) — the page owns auth + network.
+
+**ds.css**: new `.consult-card*` block appended after `.msg-actions`. Tokens only (`--amber-50`/`--amber-600`/`--ink-900`/`--ink-700`/`--font-display`/spacing/`--r-lg`); the `#F0DDB8` border matches the existing `.badge-amber` border (ds.css is the token source-of-truth, exempt from the app hardcoded-color guard).
+
+**Wiring** (`apps/web/app/chat/page.tsx`): `ConsultationPrompt` now composes `ChatConsultationCard`, retaining its auth + `respondToRecommendation` funnel-attribution state (M10.2 — book/maybe_later/ask_another recorded against the recommendation id, TidyCal link opened on book). New `expertName` prop threads `message.expertName` to build the spec's "Book with [Expert]" label, falling back through `Book {consultationType.name}` → `Book with {expertName}` → "Book a consultation". The booked/dismissed states are unchanged. `index.ts` exports the component + props type.
+
+**Tests**: +7 in `primitives.test.ts` (default heading/description/children, description omission, Book label + handler + default, ghost Maybe-later/Ask-another handlers, per-callback omission, busy-disables-all). `packages/ui` 113 tests pass, `ChatConsultationCard.tsx` 100% all metrics.
+
+**Gates:** ui test/lint/build ✅; web typecheck/lint ✅; knip ✅. Turbo crashes SIGILL in-sandbox (known) → ran per-package; rebuilt `packages/ui` `dist/` so web typecheck resolves the new export.
+
+**Notes for next iteration:**
+- M12.4.6: `HighStakesNotice` + the inline insufficient-knowledge `Card` + the degraded `Badge` still live in `apps/web/app/chat/page.tsx` (inside `AssistantTurn`) — restyle those to the design-system card/badge patterns next.

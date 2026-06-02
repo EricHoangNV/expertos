@@ -537,3 +537,28 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
 .msg-actions .msg-actions-bar {
   display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
 }
+
+/* Consultation recommendation card (M12.4.5) — a warm amber card under an answer
+   when a funnel rule fires (M7.1): calendar icon + heading, the rule's reason, and
+   the three M7.2 actions (Book primary, Maybe later / Ask another ghost). */
+.consult-card {
+  display: flex; flex-direction: column; gap: var(--s3);
+  background: var(--amber-50);
+  border: 1px solid #F0DDB8;
+  border-radius: var(--r-lg);
+  padding: var(--s4) var(--s5);
+}
+.consult-card .consult-card-head {
+  display: flex; align-items: center; gap: var(--s2);
+}
+.consult-card .consult-card-icon {
+  display: inline-flex; color: var(--amber-600);
+}
+.consult-card .consult-card-title {
+  margin: 0;
+  font-family: var(--font-display); font-weight: 700; color: var(--ink-900);
+}
+.consult-card .consult-card-desc { margin: 0; color: var(--ink-700); }
+.consult-card .consult-card-actions {
+  display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+}

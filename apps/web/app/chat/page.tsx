@@ -7,6 +7,7 @@ import {
   Card,
   ChatAnswerActions,
   ChatAssistantMessage,
+  ChatConsultationCard,
   ChatConversationList,
   type ChatConversationItem,
   ChatLayout,
@@ -118,7 +119,13 @@ function updateLast(messages: UiMessage[], fn: (m: UiMessage) => UiMessage): UiM
  * link in a new tab (a generic confirmation when no link is configured yet); the other two dismiss
  * the prompt — all three are recorded against the recommendation id for funnel attribution (M10.2).
  */
-function ConsultationPrompt({ recommendation }: { recommendation: ConsultationRecommendationDto }) {
+function ConsultationPrompt({
+  recommendation,
+  expertName,
+}: {
+  recommendation: ConsultationRecommendationDto;
+  expertName?: string;
+}) {
   const { getIdToken } = useAuth();
   const [status, setStatus] = useState<"open" | "busy" | "booked" | "dismissed">("open");
   const [error, setError] = useState<string | null>(null);
@@ -165,23 +172,22 @@ function ConsultationPrompt({ recommendation }: { recommendation: ConsultationRe
   }
 
   const busy = status === "busy";
+  const bookLabel = recommendation.consultationType
+    ? `Book ${recommendation.consultationType.name}`
+    : expertName
+      ? `Book with ${expertName}`
+      : "Book a consultation";
   return (
-    <Card className="card-pad">
-      <Badge tone="amber">Consultation</Badge>
-      <p>{recommendation.reason}</p>
-      <Button variant="primary" onClick={() => void respond("book")} disabled={busy}>
-        {recommendation.consultationType
-          ? `Book ${recommendation.consultationType.name}`
-          : "Book a consultation"}
-      </Button>
-      <Button variant="ghost" onClick={() => void respond("maybe_later")} disabled={busy}>
-        Maybe later
-      </Button>
-      <Button variant="ghost" onClick={() => void respond("ask_another")} disabled={busy}>
-        Ask another
-      </Button>
+    <ChatConsultationCard
+      description={recommendation.reason}
+      bookLabel={bookLabel}
+      busy={busy}
+      onBook={() => void respond("book")}
+      onMaybeLater={() => void respond("maybe_later")}
+      onAskAnother={() => void respond("ask_another")}
+    >
       {error && <Badge tone="red">{error}</Badge>}
-    </Card>
+    </ChatConsultationCard>
   );
 }
 
@@ -349,7 +355,7 @@ function AssistantTurn({ message }: { message: UiMessage }) {
       )}
       {message.done && message.highStakes && <HighStakesNotice />}
       {message.done && message.recommendation && (
-        <ConsultationPrompt recommendation={message.recommendation} />
+        <ConsultationPrompt recommendation={message.recommendation} expertName={message.expertName} />
       )}
       {message.done && message.messageId && (
         <AnswerActions

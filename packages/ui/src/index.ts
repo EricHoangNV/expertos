@@ -44,6 +44,8 @@ export { ChatAssistantMessage } from "./ChatAssistantMessage";
 export type { ChatAssistantMessageProps } from "./ChatAssistantMessage";
 export { ChatAnswerActions } from "./ChatAnswerActions";
 export type { ChatAnswerActionsProps } from "./ChatAnswerActions";
+export { ChatConsultationCard } from "./ChatConsultationCard";
+export type { ChatConsultationCardProps } from "./ChatConsultationCard";
 export {
   ChatConversationList,
   AVATAR_TONES,

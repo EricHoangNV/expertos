@@ -14,6 +14,7 @@ import { ChatUserIdentity } from "./ChatUserIdentity";
 import { ChatUserMessage } from "./ChatUserMessage";
 import { ChatAssistantMessage } from "./ChatAssistantMessage";
 import { ChatAnswerActions } from "./ChatAnswerActions";
+import { ChatConsultationCard } from "./ChatConsultationCard";
 import { AnswerProse } from "./AnswerProse";
 import { ChatTopbar } from "./ChatTopbar";
 import {
@@ -1215,5 +1216,85 @@ describe("ChatAnswerActions — answer action bar (M12.4.4)", () => {
     expect((yes.props as { variant?: unknown }).variant).toBe("subtle");
     expect((yes.props as { disabled?: unknown }).disabled).toBe(true);
     expect((no.props as { disabled?: unknown }).disabled).toBe(true);
+  });
+});
+
+describe("ChatConsultationCard — consultation recommendation card (M12.4.5)", () => {
+  const noop = () => {};
+  /** [head, descriptionOrFalse, actions, children] children of `.consult-card`. */
+  const parts = (el: ReactElement): unknown[] => kids(el) as unknown[];
+  /** The three action slots: [book, maybe-later, ask-another]. */
+  const actionKids = (el: ReactElement): unknown[] =>
+    kids(parts(el)[2] as ReactElement) as unknown[];
+
+  it("renders a warm `.consult-card` with the default heading + description + children", () => {
+    const el = ChatConsultationCard({
+      description: "Let's dig in.",
+      children: "err",
+    }) as ReactElement;
+    expect(cls(el)).toBe("consult-card");
+    const [head, desc, , children] = parts(el);
+    const title = (kids(head as ReactElement) as unknown[])[1] as ReactElement;
+    expect(cls(title)).toBe("consult-card-title");
+    expect(kids(title)).toBe("This looks worth a working session");
+    expect(cls(desc as ReactElement)).toBe("consult-card-desc");
+    expect(kids(desc as ReactElement)).toBe("Let's dig in.");
+    expect(children).toBe("err");
+  });
+
+  it("omits the description paragraph when none is given", () => {
+    expect(parts(ChatConsultationCard({}) as ReactElement)[1]).toBeFalsy();
+  });
+
+  it("renders the Book primary action with the supplied label + handler", () => {
+    const onBook = jest.fn();
+    const book = actionKids(
+      ChatConsultationCard({ bookLabel: "Book with John", onBook }) as ReactElement,
+    )[0] as ReactElement;
+    expect(book.type).toBe(Button);
+    expect((book.props as { variant?: unknown }).variant).toBe("primary");
+    expect(kids(book)).toBe("Book with John");
+    (book.props as { onClick: () => void }).onClick();
+    expect(onBook).toHaveBeenCalledTimes(1);
+  });
+
+  it("defaults the Book label to 'Book a consultation'", () => {
+    const book = actionKids(ChatConsultationCard({ onBook: noop }) as ReactElement)[0] as ReactElement;
+    expect(kids(book)).toBe("Book a consultation");
+  });
+
+  it("renders ghost Maybe-later + Ask-another actions with their handlers", () => {
+    const onMaybeLater = jest.fn();
+    const onAskAnother = jest.fn();
+    const [, maybe, ask] = actionKids(
+      ChatConsultationCard({ onMaybeLater, onAskAnother }) as ReactElement,
+    ) as ReactElement[];
+    expect((maybe.props as { variant?: unknown }).variant).toBe("ghost");
+    expect(kids(maybe)).toBe("Maybe later");
+    expect((ask.props as { variant?: unknown }).variant).toBe("ghost");
+    expect(kids(ask)).toBe("Ask another question");
+    (maybe.props as { onClick: () => void }).onClick();
+    (ask.props as { onClick: () => void }).onClick();
+    expect(onMaybeLater).toHaveBeenCalledTimes(1);
+    expect(onAskAnother).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits each action whose callback is not supplied", () => {
+    const [book, maybe, ask] = actionKids(ChatConsultationCard({}) as ReactElement);
+    expect(book).toBeFalsy();
+    expect(maybe).toBeFalsy();
+    expect(ask).toBeFalsy();
+  });
+
+  it("disables all actions while busy", () => {
+    const el = ChatConsultationCard({
+      onBook: noop,
+      onMaybeLater: noop,
+      onAskAnother: noop,
+      busy: true,
+    }) as ReactElement;
+    for (const action of actionKids(el) as ReactElement[]) {
+      expect((action.props as { disabled?: unknown }).disabled).toBe(true);
+    }
   });
 });
