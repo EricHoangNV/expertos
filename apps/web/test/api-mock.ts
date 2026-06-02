@@ -9,6 +9,13 @@ export interface MockApiResponse {
   status?: number;
   /** JSON body returned from `res.json()` (and serialized for `res.text()`). */
   body?: unknown;
+  /**
+   * Server-Sent-Events frames for a streaming endpoint (the `POST /chat` turn). Each entry is
+   * serialized to a `data: <json>\n\n` frame and exposed as `res.body` (a `ReadableStream`), so the
+   * `streamChat` SSE parser drives `onEvent` exactly as it does against the live API. Mutually
+   * exclusive with `body` in practice (a streaming response has no JSON body).
+   */
+  sse?: unknown[];
 }
 
 export interface MockApiRequest {
@@ -82,6 +89,18 @@ function parseBody(init?: RequestInit): unknown {
   }
 }
 
+/** Build a `ReadableStream` of UTF-8 `data: <json>\n\n` SSE frames from a list of events. */
+function sseStream(events: readonly unknown[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  const frames = events.map((ev) => encoder.encode(`data: ${JSON.stringify(ev)}\n\n`));
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const frame of frames) controller.enqueue(frame);
+      controller.close();
+    },
+  });
+}
+
 /** Install the mock as `global.fetch`. Idempotent; pair with `resetApiMocks`. */
 export function installFetchMock(): void {
   global.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -102,12 +121,16 @@ export function installFetchMock(): void {
       ? await handler(req)
       : { status: 404, body: { error: "not_mocked", method, pathname } };
     const status = result.status ?? 200;
-    const body = result.body ?? null;
+    const jsonBody = result.body ?? null;
+    // A streaming endpoint exposes its frames as `res.body` (a ReadableStream of `data:` SSE
+    // chunks); a plain endpoint leaves `body` null and serves JSON via `json()`/`text()`.
+    const stream = result.sse ? sseStream(result.sse) : null;
     return {
       ok: status >= 200 && status < 300,
       status,
-      json: async () => body,
-      text: async () => (body == null ? "" : JSON.stringify(body)),
-    } as Response;
+      body: stream,
+      json: async () => jsonBody,
+      text: async () => (jsonBody == null ? "" : JSON.stringify(jsonBody)),
+    } as unknown as Response;
   }) as typeof fetch;
 }

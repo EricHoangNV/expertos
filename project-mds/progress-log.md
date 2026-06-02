@@ -4165,3 +4165,38 @@ Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:
 **Gates:** web `tsc` clean, `next lint` clean (test/ + __mocks__/ outside next-lint scope), `jest` 5/5 pass, root `knip` clean. No source code touched → other workspaces unaffected (1280 → 1285 total tests).
 
 **Next:** M15.1.2 (chat page tests) builds on this harness; M15.2 (admin) needs its own mirror of this harness in `apps/admin`.
+
+---
+
+## M15.1.2 — Web chat page jest suite
+**Date:** 2026-06-02
+**Ref:** PRD Task Manifest M15.1.2 (Test Coverage — web chat page tests)
+
+**What was done:**
+- New `apps/web/app/chat/page.test.tsx` (10 tests) driving the real `/chat` page through the M15.1.1 harness (real Auth + Locale providers over firebase + manual-fetch mocks):
+  - empty state ("Start a new conversation"), signed-out sign-in prompt
+  - send flow: type → click Send → user bubble echoes the question, streamed prose appends, POST /chat body carries the typed text
+  - citation render-after-resolve: no "1 passage" before answer; after the `done` frame the sources rail shows the passage count + "All citations resolved to a real chunk" trust badge
+  - voice-picker selection: select the expert chip → placeholder follows the voice → next turn's POST /chat body carries `expertId`
+  - layout-direction switch: click "Focus" in the (open-by-default) Tweaks panel → persisted to localStorage + the persistent rail drops
+  - stream error path: POST /chat → 500 → "chat request failed (500)" surfaced
+  - the three post-answer notices: insufficient-knowledge body, high-stakes disclaimer (`HIGH_STAKES_DISCLAIMERS.en`), fair-use degrade note
+- Extended the harness fetch mock (`apps/web/test/api-mock.ts`) with SSE support: `mockApi("POST","/chat",{ sse: [event,...] })` serializes each event to a `data: <json>\n\n` frame and exposes them as a `ReadableStream` `res.body`, so `streamChat`'s SSE parser runs for real.
+- Polyfilled `TextEncoder`/`TextDecoder`/`ReadableStream` from node built-ins in `jest.setup.ts` (jsdom omits them; the chat SSE path needs them).
+
+**Key decisions:**
+- Mocked at the `fetch`/SSE layer rather than stubbing `streamChat` — exercises the real SSE parser + the page's delta/done reducers, matching the harness philosophy (mock the network, run the app code).
+- Asserted the citation resolve via the sources-rail header ("1 passage" + trust badge) — a clean render-after-resolve signal that's stable in the studio+wide default (jsdom matchMedia returns matches:true).
+- Removed `@testing-library/dom` + `@testing-library/user-event` from knip `ignoreDependencies` (knip now resolves them as used once a non-harness test imports user-event); left `@testing-library/react`.
+
+**Files changed:**
+- `apps/web/app/chat/page.test.tsx` — new (10 tests)
+- `apps/web/test/api-mock.ts` — `sse` field on `MockApiResponse` + `sseStream()` ReadableStream builder
+- `apps/web/jest.setup.ts` — node-builtin polyfills for TextEncoder/TextDecoder/ReadableStream
+- `knip.json` — dropped two now-redundant `ignoreDependencies` entries
+
+**Gates:** web `tsc` clean, `next lint` clean, `jest` 15/15 pass (5 harness + 10 chat), root `knip` clean. No source code touched (test infra + test only) → other workspaces unaffected (1285 → 1295 total tests).
+
+**Notes for next iteration:**
+- M15.1.3 (history page) can reuse the same harness; conversation detail uses `GET /conversations/:id` (path with id — mock the exact `/conversations/<id>` pathname), saved answers `POST /saved-answers`.
+- The SSE mock helper is reusable for any future streaming-endpoint test.

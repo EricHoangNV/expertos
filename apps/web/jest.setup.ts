@@ -1,9 +1,19 @@
 // Web jest harness setup (M15.1.1): jest-dom matchers, the firebase + fetch mocks,
 // jsdom gaps the app touches, and per-test state reset.
 import "@testing-library/jest-dom";
+import { TextDecoder, TextEncoder } from "node:util";
+import { ReadableStream } from "node:stream/web";
 import { resetAuthState } from "./test/auth-state";
 import { installFetchMock, resetApiMocks } from "./test/api-mock";
 import { resetRouterState } from "./test/router-state";
+
+// jsdom's global doesn't expose the text-encoding / streaming primitives the chat SSE
+// path needs (`streamChat` uses TextDecoder + ReadableStream.getReader()). Pull them from
+// Node's built-ins so the streaming fetch mock works under jsdom.
+const g = globalThis as Record<string, unknown>;
+if (!g.TextEncoder) g.TextEncoder = TextEncoder;
+if (!g.TextDecoder) g.TextDecoder = TextDecoder;
+if (!g.ReadableStream) g.ReadableStream = ReadableStream;
 
 // `src/lib/firebase.ts` reads this at module-eval to decide `isFirebaseConfigured`.
 // Set it so `AuthProvider` registers its (mocked) auth listener instead of short-circuiting.

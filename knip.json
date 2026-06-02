@@ -38,9 +38,7 @@
     "ts-jest",
     "@types/jest",
     "@prisma/client",
-    "@testing-library/react",
-    "@testing-library/dom",
-    "@testing-library/user-event"
+    "@testing-library/react"
   ],
   "ignore": ["**/*.test.ts", "**/*.test.tsx", "**/jest*.config.*", "load/**"]
 }
