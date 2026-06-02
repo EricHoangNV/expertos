@@ -23,6 +23,7 @@ import { SourcesRail } from "./SourcesRail";
 import { SourcesRailHeader } from "./SourcesRailHeader";
 import { SourceCard } from "./SourceCard";
 import { SourcesDrawer } from "./SourcesDrawer";
+import { TweaksPanel } from "./TweaksPanel";
 import { AnswerProse } from "./AnswerProse";
 import { ChatTopbar } from "./ChatTopbar";
 import {
@@ -1928,5 +1929,51 @@ describe("SourcesDrawer — slide-over sources fallback (M12.5.4)", () => {
     expect(props.header).toBe("SOURCES");
     expect(props.emptyLabel).toBe("none");
     expect(props.children).toBe("cards");
+  });
+});
+
+describe("TweaksPanel — floating layout-preferences panel (M12.7.1)", () => {
+  const noop = () => {};
+  /** Panel children: [head, ...sections]. */
+  const parts = (el: ReactElement): unknown[] => kids(el) as unknown[];
+  const head = (el: ReactElement): ReactElement => parts(el)[0] as ReactElement;
+
+  it("renders the `.tweaks-panel` dialog labelled 'Tweaks'", () => {
+    const el = TweaksPanel({ onClose: noop }) as ReactElement;
+    expect(cls(el)).toBe("tweaks-panel");
+    const props = el.props as { role?: unknown; "aria-label"?: unknown };
+    expect(props.role).toBe("dialog");
+    expect(props["aria-label"]).toBe("Tweaks");
+  });
+
+  it("renders a `.h3` 'Tweaks' heading in the header", () => {
+    const h = head(TweaksPanel({ onClose: noop }) as ReactElement);
+    expect(cls(h)).toBe("tweaks-panel-head");
+    const [title] = kids(h) as unknown[];
+    const titleEl = title as ReactElement;
+    expect(titleEl.type).toBe("h3");
+    expect(cls(titleEl)).toBe("h3");
+    expect(kids(titleEl)).toBe("Tweaks");
+  });
+
+  it("fires onClose from the close (X) button", () => {
+    const onClose = jest.fn();
+    const h = head(TweaksPanel({ onClose }) as ReactElement);
+    const close = (kids(h) as unknown[])[1] as ReactElement;
+    const props = close.props as { className?: unknown; "aria-label"?: unknown; onClick: () => void };
+    expect(props.className).toBe("btn btn-subtle btn-icon");
+    expect(props["aria-label"]).toBe("Close tweaks panel");
+    props.onClick();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the preference sections from the children slot after the header", () => {
+    const el = TweaksPanel({ onClose: noop, children: "sections" }) as ReactElement;
+    expect(parts(el)[1]).toBe("sections");
+  });
+
+  it("merges a caller className", () => {
+    const el = TweaksPanel({ onClose: noop, className: "extra" }) as ReactElement;
+    expect(cls(el)).toBe("tweaks-panel extra");
   });
 });

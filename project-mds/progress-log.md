@@ -3278,3 +3278,33 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 
 **Notes for next iteration:**
 - M12.6 is fully done. Next M12 leg is **M12.7 Tweaks panel** (floating bottom-right card; `.seg` segmented control wired to the page's existing `direction` state + localStorage persistence; density options + trust-badge/concierge toggles; show/hide button in the topbar). The page already owns `LayoutDirection` state from M12.1.3 — M12.7.2 just needs the UI control + persistence.
+
+## M12.7.1 — Tweaks floating panel chrome (2026-06-02)
+
+**What:** Built `TweaksPanel` (`packages/ui/src/TweaksPanel.tsx`), the floating layout-preferences overlay anchored bottom-right of the chat view (PRD §"UI Reference Spec" #7 / requirements/ui-reference-spec.md "7. Tweaks Panel"). This task is the panel **chrome only** — header + close X + shadowed card; the preference sections (direction `.seg` M12.7.2, density `.seg` + `.switch` toggles M12.7.3) and the topbar show/hide affordance (M12.7.4) are later legs.
+
+**Component:**
+- `role="dialog"` `aria-label="Tweaks"` `.tweaks-panel` container with a `.tweaks-panel-head` row: an `<h3 className="h3">Tweaks</h3>` (real `<h3>` so it inherits `--font-display`, plus the spec's `.h3` class) and a `.btn .btn-subtle .btn-icon` close (X) button (`aria-label="Close tweaks panel"`, currentColor SVG — matches the `ChatUploadPopover` close pattern).
+- A `children` slot below the header for the sections the next tasks fill.
+- Props: `onClose` (required), `children`, `className` (merged via `cx`). Presentational, no hooks — directly invocable for the unit suite.
+
+**ds.css** (`.tweaks-panel*` block, all tokens — no hardcoded hex/px):
+- `position: fixed; right/bottom: var(--s5); z-index: 50; width: 320px; max-width: calc(100vw - var(--s6)); max-height: calc(100vh - var(--s6)); overflow-y: auto` — viewport-clamped so it never overflows on small screens.
+- `--surface` bg, `--line` border, `--r-lg` radius, `--sh-lg` shadow ("card with shadow"), `var(--s5)` padding, column flex with `var(--s4)` gap.
+- `.tweaks-panel-head` = space-between row for the heading + close.
+
+**Wiring:** None yet — deliberate. The panel has no content until M12.7.2 and no open/close trigger until M12.7.4; wiring an empty, untoggleable panel now would overlap those tasks. The export lives on the `packages/ui` entry (`index.ts`), so knip treats it as public API (not dead code). dist rebuilt so the `.tweaks-panel` ds.css ships.
+
+**Tests:** +5 ui tests in `primitives.test.ts` (`.tweaks-panel` dialog + label; `.h3` heading text; close-button class/label/onClick; children slot after header; className merge). ui suite 169 → 174, 100% coverage on `TweaksPanel.tsx`. Full ui suite green (174/174).
+
+**Gates:** per-workspace (turbo SIGILLs in sandbox) — `tsc --noEmit` ui + web ✅, `eslint` ui ✅, `stylelint` (lint:css) ✅, `knip` ✅, ui `jest` ✅ 100% cov. Rebuilt `packages/ui` dist (`tsc -p tsconfig.build.json`).
+
+**Files changed:**
+- `packages/ui/src/TweaksPanel.tsx` — new component.
+- `packages/ui/src/ds.css` — `.tweaks-panel*` block.
+- `packages/ui/src/index.ts` — export `TweaksPanel` + `TweaksPanelProps`.
+- `packages/ui/src/primitives.test.ts` — +5 tests.
+- `project-mds/PRD.md`, `project-mds/progress-state.md`, `project-mds/progress-log.md` — manifest + state + log.
+
+**Notes for next iteration:**
+- M12.7.2 (direction `.seg` control) is the natural next leg: render a `.seg` segmented control of `LAYOUT_DIRECTIONS` inside `TweaksPanel` (option copy from `LAYOUT_DIRECTION_INFO`), lift the chat page's `direction` from a const `useState` to a settable one, persist to localStorage (use `isLayoutDirection` to validate on restore). M12.7.4 then adds the topbar "Hide/Show tweaks" button that mounts/unmounts `TweaksPanel`.

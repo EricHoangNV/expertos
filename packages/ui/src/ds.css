@@ -737,3 +737,20 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
 .upload-popover .upload-popover-types {
   display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2);
 }
+
+/* Tweaks floating panel (M12.7) — layout-preferences overlay, bottom-right of
+   the chat view. Shadowed surface card holding the direction/density controls. */
+.tweaks-panel {
+  position: fixed; right: var(--s5); bottom: var(--s5); z-index: 50;
+  width: 320px; max-width: calc(100vw - var(--s6));
+  max-height: calc(100vh - var(--s6)); overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-lg);
+  padding: var(--s5);
+  display: flex; flex-direction: column; gap: var(--s4);
+}
+.tweaks-panel .tweaks-panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s2);
+}

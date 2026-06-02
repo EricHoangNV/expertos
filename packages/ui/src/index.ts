@@ -62,6 +62,8 @@ export { SourceCard } from "./SourceCard";
 export type { SourceCardProps } from "./SourceCard";
 export { SourcesDrawer } from "./SourcesDrawer";
 export type { SourcesDrawerProps } from "./SourcesDrawer";
+export { TweaksPanel } from "./TweaksPanel";
+export type { TweaksPanelProps } from "./TweaksPanel";
 export {
   ChatConversationList,
   AVATAR_TONES,
