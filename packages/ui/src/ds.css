@@ -393,6 +393,68 @@ kbd { font-family: var(--font-mono); font-size: 11px; background: var(--paper-2)
 .chat-density-comfy .chat-thread { gap: var(--s6); }
 
 /* ============================================================
+   Loading & empty states (consumer web) — M12.9.4
+   Skeleton shimmer placeholders (conversation-list loading), the streaming
+   typing indicator (under the assistant avatar), and the "start a new
+   conversation" empty state for an empty thread. Decorative motion is
+   suppressed under prefers-reduced-motion (see the block at the file end).
+   ============================================================ */
+
+/* Skeleton shimmer — a neutral placeholder block; the paired class sets size/shape. */
+.skeleton {
+  display: block;
+  border-radius: var(--r-sm);
+  background: linear-gradient(90deg, var(--paper-2) 25%, var(--line) 37%, var(--paper-2) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+@keyframes skeleton-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+/* Conversation-list loading skeleton (M12.2.3 loading state) — rows mirroring `.chat-convo`
+   on the dark rail, so the shimmer uses translucent white instead of the paper tones. */
+.chat-side .chat-convos-skeleton { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) 11px; }
+.chat-side .chat-convo-skel { display: flex; align-items: center; gap: var(--s2); }
+.chat-side .skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,.05) 25%, rgba(255,255,255,.13) 37%, rgba(255,255,255,.05) 63%);
+  background-size: 400% 100%;
+}
+.chat-convo-skel-avatar { width: 28px; height: 28px; border-radius: 50%; flex: none; }
+.chat-convo-skel-lines { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
+.chat-convo-skel-title { height: 11px; width: 78%; }
+.chat-convo-skel-time { height: 9px; width: 42%; }
+
+/* Streaming typing indicator (M12.9.4) — three pulsing dots inside the assistant message,
+   shown while a turn streams before any prose arrives. */
+.typing { display: inline-flex; align-items: center; gap: 5px; padding: var(--s2) 0; }
+.typing .typing-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+  background: var(--ink-400);
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+.typing .typing-dot:nth-child(2) { animation-delay: .18s; }
+.typing .typing-dot:nth-child(3) { animation-delay: .36s; }
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { opacity: .3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+/* Chat empty state (M12.9.4) — centered "start a new conversation" prompt that fills the
+   chat scroll region before the first message. */
+.chat-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s3); text-align: center; min-height: 100%; padding: var(--s10) var(--s4);
+}
+.chat-empty .chat-empty-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 56px; height: 56px; border-radius: var(--r-pill);
+  background: var(--red-50); color: var(--red-600);
+}
+.chat-empty .chat-empty-title { font-size: 20px; }
+.chat-empty .chat-empty-desc { margin: 0; max-width: 38ch; }
+
+/* ============================================================
    Sources rail (consumer web — right panel) — M12.5
    The content container that fills the 320px `.chat-rail` grid area: a
    scrollable column with a `--line` left border showing the cited sources for
@@ -805,3 +867,19 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
    toolbar group; the icon hugs the label. */
 .chat-tweaks-toggle { display: inline-flex; align-items: center; gap: var(--s2); }
 .chat-tweaks-toggle .chat-tweaks-toggle-icon { flex: none; }
+
+/* ============================================================
+   Reduced motion (M12.9.4) — honor the OS "reduce motion" preference: the
+   decorative skeleton shimmer + typing-dot bounce + slide-over drawer animations
+   are non-essential, so disable them for users who opt out.
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .typing .typing-dot,
+  .sources-drawer-backdrop,
+  .sources-drawer,
+  .chat-sidebar-drawer-backdrop,
+  .chat-sidebar-drawer {
+    animation: none;
+  }
+}

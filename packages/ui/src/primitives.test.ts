@@ -11,6 +11,9 @@ import { ChatSearch, type ChatSearchResultItem } from "./ChatSearch";
 import { ChatSidebar } from "./ChatSidebar";
 import { ChatSidebarDrawer } from "./ChatSidebarDrawer";
 import { ChatMenuButton } from "./ChatMenuButton";
+import { Skeleton } from "./Skeleton";
+import { ChatTypingIndicator } from "./ChatTypingIndicator";
+import { ChatEmptyState } from "./ChatEmptyState";
 import { ChatVoicePicker, type ChatVoiceOption } from "./ChatVoicePicker";
 import { ChatUserIdentity } from "./ChatUserIdentity";
 import { ChatUserMessage } from "./ChatUserMessage";
@@ -1061,14 +1064,23 @@ describe("ChatConversationList — RECENT history list (M12.2.3)", () => {
     expect(kids(group)).toBe("Recent");
   });
 
-  it("shows the loading vs settled empty note when there are no conversations", () => {
+  it("shows shimmering skeleton rows while loading, and the settled note otherwise (M12.9.4)", () => {
     const loadingEl = ChatConversationList({ items: [], onSelect: noop, loading: true }) as ReactElement;
-    const [, loadingNote] = kids(loadingEl) as ReactElement[];
-    expect(cls(loadingNote)).toBe("chat-convos-empty muted");
-    expect(kids(loadingNote)).toBe("Loading…");
+    // The nav announces its busy state for assistive tech.
+    expect((loadingEl.props as { "aria-busy"?: unknown })["aria-busy"]).toBe(true);
+    const [, loadingChild] = kids(loadingEl) as ReactElement[];
+    // The loading child is the skeleton block (not the settled empty note).
+    const skeleton = (loadingChild.type as (p: unknown) => ReactElement)(loadingChild.props);
+    expect(cls(skeleton)).toBe("chat-convos-skeleton");
+    const rows = kids(skeleton) as ReactElement[];
+    expect(rows).toHaveLength(4);
+    const [avatar] = kids(rows[0]) as ReactElement[];
+    expect(cls(avatar)).toContain("chat-convo-skel-avatar");
 
     const settledEl = ChatConversationList({ items: [], onSelect: noop }) as ReactElement;
+    expect((settledEl.props as { "aria-busy"?: unknown })["aria-busy"]).toBeUndefined();
     const [, settledNote] = kids(settledEl) as ReactElement[];
+    expect(cls(settledNote)).toBe("chat-convos-empty muted");
     expect(kids(settledNote)).toBe("No conversations yet.");
   });
 
@@ -2051,6 +2063,69 @@ describe("ChatMenuButton — topbar sidebar menu toggle (M12.9.1)", () => {
   it("merges a caller className", () => {
     const el = ChatMenuButton({ onOpen: () => {}, className: "extra" }) as ReactElement;
     expect(cls(el)).toBe("btn btn-subtle btn-icon chat-menu-btn extra");
+  });
+});
+
+describe("Skeleton — shimmer loading placeholder (M12.9.4)", () => {
+  it("renders an aria-hidden `.skeleton` block", () => {
+    const el = Skeleton({}) as ReactElement;
+    expect(el.type).toBe("span");
+    expect(cls(el)).toBe("skeleton");
+    expect((el.props as { "aria-hidden"?: unknown })["aria-hidden"]).toBe("true");
+  });
+
+  it("merges a caller size/shape className", () => {
+    const el = Skeleton({ className: "chat-convo-skel-title" }) as ReactElement;
+    expect(cls(el)).toBe("skeleton chat-convo-skel-title");
+  });
+});
+
+describe("ChatTypingIndicator — streaming typing dots (M12.9.4)", () => {
+  it("renders a polite `.typing` status with an accessible label and three hidden dots", () => {
+    const el = ChatTypingIndicator({}) as ReactElement;
+    expect(cls(el)).toBe("typing");
+    const props = el.props as { role?: unknown; "aria-label"?: unknown };
+    expect(props.role).toBe("status");
+    expect(props["aria-label"]).toBe("Generating answer");
+    const dots = kids(el) as ReactElement[];
+    expect(dots).toHaveLength(3);
+    for (const dot of dots) {
+      expect(cls(dot)).toBe("typing-dot");
+      expect((dot.props as { "aria-hidden"?: unknown })["aria-hidden"]).toBe("true");
+    }
+  });
+
+  it("accepts a custom label and merged className", () => {
+    const el = ChatTypingIndicator({ label: "Đang trả lời", className: "x" }) as ReactElement;
+    expect(cls(el)).toBe("typing x");
+    expect((el.props as { "aria-label"?: unknown })["aria-label"]).toBe("Đang trả lời");
+  });
+});
+
+describe("ChatEmptyState — empty-thread prompt (M12.9.4)", () => {
+  it("renders a `.chat-empty` block: hidden icon, display title, and muted description", () => {
+    const el = ChatEmptyState({
+      title: "Start a new conversation",
+      description: "Ask anything about your business.",
+    }) as ReactElement;
+    expect(cls(el)).toBe("chat-empty");
+    const [icon, title, desc] = kids(el) as ReactElement[];
+    expect(cls(icon)).toBe("chat-empty-icon");
+    expect((icon.props as { "aria-hidden"?: unknown })["aria-hidden"]).toBe("true");
+    expect(title.type).toBe("h2");
+    expect(cls(title)).toBe("chat-empty-title h2");
+    expect(kids(title)).toBe("Start a new conversation");
+    expect(cls(desc)).toBe("chat-empty-desc muted");
+    expect(kids(desc)).toBe("Ask anything about your business.");
+  });
+
+  it("omits the description and renders children when given", () => {
+    const child = { type: "button", props: {}, key: null } as ReactElement;
+    const el = ChatEmptyState({ title: "Empty", children: child }) as ReactElement;
+    const parts = kids(el) as unknown[];
+    // [icon, title, false (no desc), child]
+    expect(parts[2]).toBeFalsy();
+    expect(parts[3]).toBe(child);
   });
 });
 

@@ -1,4 +1,5 @@
 import { cx } from "./cx";
+import { Skeleton } from "./Skeleton";
 
 /** The fixed avatar-color palette (ds.css `.avatar.tone-*`); one is picked deterministically per expert. */
 export const AVATAR_TONES = ["crimson", "green", "info", "amber", "ink"] as const;
@@ -76,10 +77,28 @@ export interface ChatConversationListProps {
   loading?: boolean;
 }
 
+/** Skeleton placeholder rows (M12.9.4) shown while the first page of history loads. */
+function ConversationListSkeleton() {
+  return (
+    <div className="chat-convos-skeleton" aria-hidden="true">
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="chat-convo-skel">
+          <Skeleton className="chat-convo-skel-avatar" />
+          <div className="chat-convo-skel-lines">
+            <Skeleton className="chat-convo-skel-title" />
+            <Skeleton className="chat-convo-skel-time" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * The dark-rail conversation history list (M12.2.3) — a "RECENT" `.navgroup` label over
  * `.navitem` rows, each with an expert-colored `.avatar` (initials), a truncated title, a
  * relative timestamp, and an optional unread dot. The active conversation gets `.navitem.active`.
+ * While the first page loads (M12.9.4) the rows are shimmering skeletons instead of a bare note.
  * Presentational only: the chat page loads the history API (M3.2), resolves expert names, sorts
  * most-recent-first, and passes the rows in; choosing one fires `onSelect` so the page opens it.
  */
@@ -90,10 +109,14 @@ export function ChatConversationList({
   loading = false,
 }: ChatConversationListProps) {
   return (
-    <nav className="chat-convos" aria-label="Recent conversations">
+    <nav className="chat-convos" aria-label="Recent conversations" aria-busy={loading || undefined}>
       <div className="navgroup">Recent</div>
       {items.length === 0 ? (
-        <p className="chat-convos-empty muted">{loading ? "Loading…" : "No conversations yet."}</p>
+        loading ? (
+          <ConversationListSkeleton />
+        ) : (
+          <p className="chat-convos-empty muted">No conversations yet.</p>
+        )
       ) : (
         items.map((item) => {
           const expert = item.expertName?.trim();

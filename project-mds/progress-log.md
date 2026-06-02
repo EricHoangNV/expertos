@@ -3456,3 +3456,28 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 
 **Notes for next iteration:**
 - M12.9.1 done. Remaining M12.9: M12.9.2 ds.css conformance sweep (grep new CSS/TSX for hardcoded hex/px off the ds.css scale; confirm upload=info-blue vs knowledge=crimson); M12.9.3 dark-sidebar render check; M12.9.4 loading/empty states (skeleton conversation list, "Start a new conversation" empty chat, streaming spinner under the assistant avatar).
+
+---
+
+## M12.9.4 — Loading/empty states (skeleton list, empty chat, streaming indicator)
+
+**What:** Final substantive M12.9 feature — the loading, empty, and streaming UI states the chat rebuild was missing.
+
+Three new ds.css primitives in `packages/ui/src/`:
+- `Skeleton.tsx` — an `aria-hidden` `.skeleton` shimmer block; size/shape supplied by a paired ds.css class so no off-scale px leaks into markup. Reusable.
+- `ChatTypingIndicator.tsx` — three pulsing `.typing-dot`s wrapped in a polite `role="status"` with an accessible label ("Generating answer", overridable for VI). The streaming indicator shown under the assistant avatar (PRD §"State Mapping": "Ellipsis or typing indicator under expert avatar").
+- `ChatEmptyState.tsx` — centered `.chat-empty` "start a new conversation" prompt: speech-bubble glyph + `.h2` title + muted description + optional `children` slot.
+
+`ChatConversationList` loading state (M12.2.3) now renders 4 shimmering skeleton rows (local `ConversationListSkeleton`, mirroring the `.chat-convo` row shape) instead of a bare "Loading…" note; the `<nav>` carries `aria-busy` while loading.
+
+ds.css "Loading & empty states (M12.9.4)" block: `.skeleton` + `skeleton-shimmer` keyframe (with a dark-rail translucent-white variant scoped under `.chat-side` so the shimmer reads on `--ink-900`), `.chat-convos-skeleton`/`.chat-convo-skel*` row layout, `.typing` + `typing-bounce` keyframe, `.chat-empty*`. Added a `prefers-reduced-motion: reduce` block at the file end disabling the shimmer, typing-dot bounce, and the existing slide-over drawer animations (sources + sidebar) — the decorative motion is non-essential.
+
+Wired into `apps/web/app/chat/page.tsx`: `AssistantAnswer` shows `<ChatTypingIndicator/>` while a turn streams before any prose arrives (was a literal "…"; a finished-but-empty turn now renders nothing); the chat content swaps in `<ChatEmptyState/>` for the message thread while `messages` is empty.
+
+**Tests:** +6 ui tests (Skeleton, ChatTypingIndicator, ChatEmptyState) + rewrote the ChatConversationList loading test to assert skeleton rows + `aria-busy`. ui jest 213 pass, 100% coverage on all new components.
+
+**Gates:** ui jest 213 pass / 100% coverage; `tsc --noEmit` clean for ui + web + admin (after rebuilding `packages/ui` dist); `next lint` clean; `stylelint` clean (fixed 2 `at-rule-empty-line-before` on the new `@keyframes`); `knip` clean. (Ran per-workspace — `turbo` SIGILLs in this sandbox.)
+
+**Notes for next iteration:**
+- M12.9.4 done. Remaining M12.9: M12.9.2 (ds.css conformance audit — grep all M12 CSS/TSX for hardcoded hex/px off the ds.css scale; confirm upload=info-blue vs knowledge=crimson distinction) and M12.9.3 (dark-sidebar render check). Both are largely verification sweeps over already-built components.
+- Then M13 (admin portal UI overhaul).

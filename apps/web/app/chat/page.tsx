@@ -10,6 +10,7 @@ import {
   ChatConsultationCard,
   ChatConversationList,
   type ChatConversationItem,
+  ChatEmptyState,
   ChatInputBar,
   ChatInputHelper,
   ChatLayout,
@@ -21,6 +22,7 @@ import {
   ChatStateNotice,
   ChatTopbar,
   ChatTweaksToggle,
+  ChatTypingIndicator,
   ChatUploadPopover,
   ChatUsageMeter,
   ChatUserIdentity,
@@ -271,10 +273,13 @@ function ConsultationPrompt({
  * drawer + render-after-resolve) once any prose has arrived, showing a streaming placeholder until
  * then. Markers stay non-interactive mid-stream (`interactive={message.done}`); the inline sources
  * drawer is driven by the action-bar "View sources" toggle (`sourcesOpen`, M12.4.4).
+ *
+ * Before any prose arrives, a streaming turn shows the {@link ChatTypingIndicator} (M12.9.4);
+ * a finished-but-empty turn (e.g. an aborted stream) renders nothing.
  */
 function AssistantAnswer({ message, sourcesOpen }: { message: UiMessage; sourcesOpen: boolean }) {
   if (!message.content) {
-    return <p>{message.done ? "" : "…"}</p>;
+    return message.done ? null : <ChatTypingIndicator />;
   }
   return (
     <AnswerView
@@ -1118,21 +1123,28 @@ export default function ChatPage() {
         />
       </ChatTopbar>
       <main className="card card-pad chat-content">
-        <div className="chat-thread">
-          {messages.map((m, i) =>
-            m.role === "user" ? (
-              <ChatUserMessage key={i} content={m.content} />
-            ) : (
-              <Card key={i} className="card-pad">
-                <AssistantTurn
-                  message={m}
-                  onOpenSourcesDrawer={railVisible ? undefined : setDrawerCitations}
-                  showVerifiedBadge={showVerifiedBadge}
-                />
-              </Card>
-            ),
-          )}
-        </div>
+        {messages.length === 0 ? (
+          <ChatEmptyState
+            title="Start a new conversation"
+            description="Ask anything about your business — answers are grounded in published expert knowledge, with sources you can check."
+          />
+        ) : (
+          <div className="chat-thread">
+            {messages.map((m, i) =>
+              m.role === "user" ? (
+                <ChatUserMessage key={i} content={m.content} />
+              ) : (
+                <Card key={i} className="card-pad">
+                  <AssistantTurn
+                    message={m}
+                    onOpenSourcesDrawer={railVisible ? undefined : setDrawerCitations}
+                    showVerifiedBadge={showVerifiedBadge}
+                  />
+                </Card>
+              ),
+            )}
+          </div>
+        )}
 
         {error && <Badge tone="red">{error}</Badge>}
       </main>
