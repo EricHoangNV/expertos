@@ -106,6 +106,119 @@
 - [ ] NT.5 Plan pricing & fair-use limits finalized with PM, stated in plain language at purchase — DEFERRED (post-launch)
 - [ ] NT.6 Payment/billing terms (refunds, cancellation, proration) approved + reflected in Stripe config + UI copy — DEFERRED (post-launch)
 
+#### M12 — Frontend UI Overhaul (§"UI Reference Spec" in `requirements/ui-reference-spec.md`)
+
+> All backend APIs exist (M1–M11 complete). This milestone rebuilds the web frontend to match the approved UI mockup. Each task is independently shippable. Reference: `requirements/ui-reference-spec.md`.
+
+##### M12.1 — Chat layout shell (three-pane grid)
+- [ ] M12.1.1 Create `.chat-layout` CSS: three-pane grid (sidebar 248px + chat flex:1 + sources-rail 320px) using ds.css tokens; responsive breakpoints (collapse sources-rail < 1280px, collapse sidebar < 900px)
+- [ ] M12.1.2 Extract `ChatLayout` component wrapping sidebar + main + rail; integrate into `/chat` route replacing the current single-card layout
+- [ ] M12.1.3 Layout direction switcher state (classic / studio / focus) — studio = default three-pane; classic = two-pane + sources drawer overlay; focus = no sidebar + sources drawer
+
+##### M12.2 — Sidebar (conversation list + navigation)
+- [ ] M12.2.1 Sidebar component: ExpertOS `.logo` wordmark (white on dark), close/collapse button, "+ New conversation" `.btn-primary` full-width
+- [ ] M12.2.2 Conversation search input (`.input` on dark bg, "Search all messages..." placeholder); wired to existing full-text search API (M3.3)
+- [ ] M12.2.3 Conversation list: "RECENT" `.navgroup` label; conversation items with expert-colored avatar circle (initials), truncated title, relative time, unread dot; `.navitem.active` for current; sorted most-recent-first; wired to history API (M3.2)
+- [ ] M12.2.4 Usage meter at sidebar bottom: "questions this month" label, "N / M" count, `.bar` progress (crimson fill), plan badge (`.label`), "Upgrade" link (crimson); wired to `/me/entitlements` API (M6.1)
+
+##### M12.3 — Conversation header (topbar)
+- [ ] M12.3.1 Topbar component: conversation title (auto-titled from M3.2), editable on click
+- [ ] M12.3.2 Voice picker: "VOICE" `.label` + `.chip` / `.chip.active` pills for each expert voice; wired to existing experts API; selecting a chip switches the active expert for the conversation
+- [ ] M12.3.3 User identity display: avatar + name + language badge (EN/VI) right-aligned
+
+##### M12.4 — Chat messages area
+- [ ] M12.4.1 User message bubble: `.msg-user` — dark bg (`--ink-900`), white text, `--r-lg`, max-width ~70%, right-aligned or left-aligned per layout direction
+- [ ] M12.4.2 Assistant message: `.msg-assistant` — expert avatar (colored circle + initials), expert name (bold), "AI RENDITION" `.badge-ink`, "grounded in published knowledge + your upload" source label (`.muted` mono), optional "VERIFIED" `.badge-green`
+- [ ] M12.4.3 Answer prose with inline citations: existing `AnswerView` component (M4.2) with `.cite` crimson markers + `.cite.upload` blue markers; render-after-resolve behavior preserved
+- [ ] M12.4.4 Action bar below each completed answer: "View sources (N)" toggle (`.btn-ghost`), "Save" (`.btn-ghost`), thumbs up/down feedback — refactor existing `AnswerFeedback` + `SaveAnswer` into a horizontal bar layout
+- [ ] M12.4.5 Consultation recommendation card: warm background card with icon + heading + description + "Book with [Expert]" (`.btn-primary`) + "Maybe later" / "Ask another question" (`.btn-ghost`) — restyle existing `ConsultationPrompt`
+- [ ] M12.4.6 Insufficient-knowledge, high-stakes, and degraded states: restyle existing cards to match the design system badge/card patterns
+
+##### M12.5 — Sources rail (right panel)
+- [ ] M12.5.1 `.sources-rail` container: 320px sticky right panel, `--line` left border, scrollable; shows sources for the currently selected/latest answer
+- [ ] M12.5.2 Rail header: "SOURCES" `.label` + passage count + `.trust-badge` ("ALL CITATIONS RESOLVED TO A REAL CHUNK" outlined crimson pill with checkmark)
+- [ ] M12.5.3 Source cards: numbered, match percentage (mono, right-aligned), document icon (crimson for knowledge / blue for upload), title + version badge, location provenance (`.source-prov` mono), excerpt with left crimson/blue border (`.source-quote`); wired to existing citation data from `AnswerView`
+- [ ] M12.5.4 Sources drawer fallback: when sources-rail is hidden (classic/focus mode or narrow viewport), sources open as a slide-over drawer instead
+
+##### M12.6 — Input bar (bottom, sticky)
+- [ ] M12.6.1 `.input-bar` sticky bottom container: attach document button (`.btn-subtle` icon left), text input ("Ask [Expert] anything about your business..." placeholder), send button (crimson circle with arrow icon, right)
+- [ ] M12.6.2 Upload attachment flow: clicking attach opens existing `UploadPanel` as a popover/dropdown above the input bar; show file type chips (XLSX, CSV, PDF, DOCX) + "TEMPORARY / NOT INDEXED" label after upload
+- [ ] M12.6.3 Helper text below input: "Enter to send / Shift + Enter newline" (left), "N questions left this month" (right, from entitlements API)
+- [ ] M12.6.4 Keyboard behavior: Enter sends (unless Shift held); auto-resize textarea
+
+##### M12.7 — Tweaks panel (layout preferences)
+- [ ] M12.7.1 Tweaks floating panel: "Tweaks" header + close X, bottom-right overlay, card with shadow
+- [ ] M12.7.2 Chat layout direction: `.seg` segmented control (classic / studio / focus) with one-line descriptions; persisted to localStorage
+- [ ] M12.7.3 Density options: `.seg` segmented control (compact / regular / comfy); toggle switches for "Verified trust badge" + "Concierge review offer"
+- [ ] M12.7.4 "Hide tweaks" / "Show tweaks" button in the topbar toolbar
+
+##### M12.8 — Login page (already built)
+- [x] M12.8.1 Two-panel login: left panel (logo + headline + Google sign-in + legal text), right panel (dark bg with "DRIVEN BY EXCELLENCE" eyebrow); responsive collapse
+- [ ] M12.8.2 Post-login redirect: after Google sign-in, redirect to `/chat` (existing); handle returning users (skip login if session active)
+
+##### M12.9 — Polish & responsive
+- [ ] M12.9.1 Mobile responsive: sidebar as slide-over overlay (< 900px), sources rail hidden, input bar full-width
+- [ ] M12.9.2 ds.css conformance: no hardcoded colors/px; all new components use ds.css tokens; upload = info-blue, knowledge = crimson distinction maintained
+- [ ] M12.9.3 Dark sidebar: ensure all sidebar elements (logo, nav items, search, usage) render correctly on `--ink-900` background
+- [ ] M12.9.4 Loading/empty states: skeleton loaders for conversation list, "Start a new conversation" empty state for chat area, spinner for streaming
+
+#### M13 — Admin & Expert Portal UI Overhaul (§"Admin & Expert Portal UI Reference Spec" in `requirements/ui-reference-spec.md`)
+
+> All admin/expert APIs exist (M8, M9, M10 complete). This milestone rebuilds the admin portal to match the approved UI mockups. The existing `AdminFrame` + `.shell` layout is the foundation. Each task is independently shippable. Reference: `requirements/ui-reference-spec.md` (Admin section).
+
+##### M13.1 — Sidebar & navigation overhaul
+- [ ] M13.1.1 Restructure sidebar nav groups to match mockup: OPERATE (Dashboard, Knowledge + count badge, Conversation -> Knowledge, Low-confidence queries + count badge), MONETIZE (Plans & Entitlements, Revenue, Users & Subscriptions), EXPERT PORTAL (Voice profiles, Concierge queue + count badge)
+- [ ] M13.1.2 Count badges on nav items: fetch counts from existing APIs (knowledge needing review, flagged queries, open concierge items) and render as `.navitem .tag`
+- [ ] M13.1.3 Bottom-pinned user identity: avatar (initials + colored circle) + name + role label ("Admin . ExpertOS"); Sign out button (`.btn-ghost` on dark)
+- [ ] M13.1.4 Topbar: breadcrumb ("ADMIN > Page Name" `.label`), role badge ("ADMIN VIEW" `.badge-red` / "EXPERT VIEW" `.badge-amber`), notification bell icon, "All screens" link
+
+##### M13.2 — Dashboard (admin home)
+- [ ] M13.2.1 Page header: greeting "Good morning, [Name]" (`.h1`), subtitle with validation loop text (`.lede`), time-range segmented control (7d / 30d / QTD `.seg`); wire to existing analytics APIs
+- [ ] M13.2.2 KPI stat cards: 4-up grid of `.stat` cards (MRR, Active Subscribers, Citation Resolve Rate, Consult Conversions) with `.v` display value + `.d` delta (`.up`/`.down`); wire to `/admin/analytics/usage` + `/admin/analytics/validation` + `/admin/revenue/report`
+- [ ] M13.2.3 Questions Answered card: large number + badge row (GROUNDED `.badge-green`, LOW-CONF `.badge-red`, INSUFFICIENT `.badge-ink` with percentages) + stacked bar chart (new `.progress-bar-stacked`); wire to `/admin/analytics/usage`
+- [ ] M13.2.4 Consultation Funnel card: horizontal bar rows (Questions -> Recommend -> Booked -> Revenue) using `.bar` with proportional fills + bottom summary text; wire to `/admin/analytics/funnel`
+- [ ] M13.2.5 Low-Confidence Queries card: `.eyebrow` header + query list (confidence circle badge on red-amber scale, question text, metadata `.muted`, "Draft knowledge" `.btn-ghost`); wire to `/admin/failed-queries`
+- [ ] M13.2.6 Knowledge Pipeline card: status rows with badge tones (DRAFT `.badge-ink`, AI PROCESSING `.badge-info`, EXPERT REVIEW `.badge-amber`, PUBLISHED `.badge-green`) + counts; "Review queue ->" link; wire to `/knowledge` API
+- [ ] M13.2.7 Concierge SLA card: dark card variant (`.dark-card`, `--ink-900` bg, white text), "CONCIERGE SLA" label + queue count badge, large time display, "Open queue ->" button; wire to `/admin/analytics/concierge`
+
+##### M13.3 — Knowledge approval (kanban board)
+- [ ] M13.3.1 Page header: eyebrow "VERSIONED . EXPERT-REVIEWED", heading "Knowledge approval", "+ New note" (`.btn-ghost`) + "Upload (MD / PDF / XLSX)" (`.btn-primary`) actions
+- [ ] M13.3.2 Status pipeline: horizontal numbered step indicator (1 Draft, 2 AI Processing, 3 Expert Review active crimson, 4 Published) with descriptive text below
+- [ ] M13.3.3 Kanban board: 4-column `.kanban` layout (DRAFT, AI PROCESSING, EXPERT REVIEW, PUBLISHED); each column is a `.kanban-col` (card-based, scrollable); wire to existing `/knowledge` list API with status filters
+- [ ] M13.3.4 Kanban cards per status: Draft (title + file-type badge + expert), AI Processing (title + file badge + progress description + crimson progress bar), Expert Review (title + version badge + change description + "Approve & publish" `.btn-primary` + "Diff" `.btn-ghost`, highlighted amber border on active card), Published (title + version "LIVE" `.badge-green` + approval info + citation count)
+- [ ] M13.3.5 Conversation-to-Knowledge section below kanban: `.eyebrow` header, heading, pipeline breadcrumb pills, `.table` with columns (RECURRING QUESTION, FREQUENCY badge, BEST EXISTING ANSWER, EXPERT, "Draft" `.btn-primary`); wire to `/knowledge-drafts` + `/admin/failed-queries`
+
+##### M13.4 — Plans & Entitlements matrix
+- [ ] M13.4.1 Page header: eyebrow "CONFIGURATION, NOT CODE", heading, subtitle explaining the matrix, "Reset to seed" (`.btn-ghost`) + "Publish changes" (`.btn-primary`)
+- [ ] M13.4.2 Matrix table (`.matrix-table`): column headers (Free $0, Plus $4.99/mo, Premium $9.99/mo highlighted bold); row types: boolean (checkmark), metered (editable number input + unit label), enum (`.badge-ink` label), boolean toggle (`.switch`); Premium column visually emphasized
+- [ ] M13.4.3 Cell rendering: boolean = crimson checkmark or em-dash; metered = editable input with unit ("/day", "retained") or "UNLIMITED" label; enum = badge; toggle = `.switch` (crimson when on); special: "+1 credit" text next to checkmark
+- [ ] M13.4.4 Footer info cards: 2-up grid below matrix, "FAIR USE" (`.badge-amber`) card explaining degrade-not-block + "QUOTA CELLS" (`.badge-info`) card about OD#4; wire to existing `/admin/entitlements` API
+
+##### M13.5 — Voice profile page (Expert Portal)
+- [ ] M13.5.1 Page header: expert avatar (large, colored) + name (`.h1`) + meta (role, topics, profile version, example count `.muted`) + "AWAITING YOUR SIGN-OFF" `.badge-amber` + "Approve voice vN" `.btn-primary`
+- [ ] M13.5.2 Warning banner: full-width amber card with warning icon, text about reputation/voice/facts separation
+- [ ] M13.5.3 Voice Profile card (left): dimension bars (`.voice-bar` -- segmented crimson bar on gray track for Directness/Level of detail/Warmth with value labels), Structure `.chip` list, Terminology `.chip` list (mono), Rendition policy `.seg` (First person / Third person)
+- [ ] M13.5.4 Do & Don't Rules card (right): green checkmark + "do" rules, red X + "don't" rules
+- [ ] M13.5.5 Voice comparison card (right): "SAME FACTS . VOICE OFF VS ON" header + "FACTS IDENTICAL" `.badge-green`; two `.panel` blocks showing neutral vs voiced answer with visual distinction (muted border vs crimson accent)
+- [ ] M13.5.6 Voice Examples table (full width): `.table` with TOPIC, SOURCE, FIDELITY (color-coded score badge green/amber), Action ("Approve" / "Edit then approve" `.btn-ghost`); header with example count + "N NEED YOUR REVIEW" `.badge-red`; wire to existing `/voice-profiles` API
+
+##### M13.6 — Concierge review queue (Expert Portal)
+- [ ] M13.6.1 Two-pane layout: queue list (~380px left) + review detail (flex:1 right), inside the existing `.shell` content area
+- [ ] M13.6.2 Queue list: header "QUEUE . N OPEN" + "SLA 24H" `.badge-amber`, filter `.seg` (Open / Mine / Done), queue items (question text truncated, mode badge "AUTO . SILENT" `.badge-ink` or "USER-PROMPTED" `.badge-amber`, confidence badge `.badge-red`, time elapsed); active item highlighted; wire to `/concierge-reviews` list API
+- [ ] M13.6.3 Review detail header: mode indicator badge, confidence badge, SLA time badge (all with dots), "Claim" `.btn-ghost`
+- [ ] M13.6.4 User question section: `.label` with user email + voice name, dark card (`.dark-card` / `.msg-user` style) with question text, context line (`.muted`) explaining retrieval score + flag reason
+- [ ] M13.6.5 AI answer section: `.label` explaining "user saw this", `.panel` with "AI RENDITION" `.badge-ink` + "low confidence" + answer text
+- [ ] M13.6.6 Verdict section: "YOUR VERDICT" `.label`, three `.verdict-card` options (Bad: X + "flags source chunks", Good: checkmark + "deliver as-is", Great: star + "-> voice example"); selectable with hover/active state
+- [ ] M13.6.7 Refined answer section: `.label` + `.textarea` pre-filled with original, flywheel info text (`.muted`) explaining immediate + global effects
+- [ ] M13.6.8 Action bar: "Push refined update" (`.btn-primary` + icon), "Escalate to paid consultation" (`.btn-dark` + icon), "Dismiss" (`.btn-ghost`), "User notified by email on delivery" (`.muted`); wire to `/concierge-reviews/:id` respond/escalate APIs
+
+##### M13.7 — Admin polish & shared patterns
+- [ ] M13.7.1 Role-aware sidebar: admin sees all groups; expert sees only EXPERT PORTAL group (existing `AdminFrame` role logic, restyle to match mockup grouping)
+- [ ] M13.7.2 Dark card component (`.dark-card`): reusable `--ink-900` bg, white text, `--r-lg` radius card for Concierge SLA, user question bubbles
+- [ ] M13.7.3 Kanban component: reusable `.kanban` + `.kanban-col` for any status-pipeline view
+- [ ] M13.7.4 Voice dimension bar component (`.voice-bar`): segmented bar with N filled crimson segments on gray track
+- [ ] M13.7.5 ds.css conformance: no hardcoded colors/px; all badge tones match Design System rules (Draft=ink, Processing=info, Review=amber, Published=green)
+
 ### Phase 2 — Retention & Engagement (§"Phase 2 — Retention & Engagement") — not started
 - [ ] Deferred: CI/CD pipeline, mobile (React Native), notifications, voice/TTS, folders/export, follow-up suggestions, confidence indicator, personalized memory, persistent user/customer knowledge, consultation depth, reconciliation dashboard
 

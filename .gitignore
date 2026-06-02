@@ -38,3 +38,4 @@ requirements/
 *.tfstate
 *.tfstate.backup
 .terraform.lock.hcl
+.gstack/

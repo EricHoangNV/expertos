@@ -193,6 +193,8 @@ ${LATEST_VERDICTS}
 - project-mds/FEEDBACKS.MD — verdicts summarized above; read the full review section only if you need remediation details
 - project-mds/LEARNINGS.MD — read before writing new learnings
 - project-mds/REQUESTS.MD — open requests summarized above
+- requirements/ui-reference-spec.md — **READ BEFORE any M12 task.** Component-by-component spec mapping the approved UI mockup to ds.css classes.
+- requirements/Design System.md — design tokens, usage rules, component catalog. Read for M12 tasks.
 
 ## Steps
 1. Read the Quick Reference in project-mds/DIRECTIVES.MD (just the summary table at top — ~33 lines). Confirm you've read it before proceeding.
@@ -210,6 +212,19 @@ ${LATEST_VERDICTS}
    Fail fast on risky work. Save easy wins for later.
 4. Read ONLY the PRD section for your chosen task (e.g., the \"Paywall, Entitlements & Feature Gating\" section for the subscription milestone).
    Read relevant § sections in DIRECTIVES.MD for any rules that apply. Then implement.
+4b. **If your task is an M12 (Frontend UI) task:**
+   - Read \\\`requirements/ui-reference-spec.md\\\` BEFORE implementing. It maps every component to exact ds.css classes.
+   - Read \\\`requirements/Design System.md\\\` for token rules and usage constraints.
+   - Read \\\`packages/ui/src/ds.css\\\` for available classes — use them, do not reinvent.
+   - **Verification checklist for every UI component you build:**
+     a. Uses ONLY ds.css tokens (--red-600, --ink-900, etc.) — zero hardcoded hex values or pixel sizes outside ds.css scale.
+     b. Component class names match the spec in ui-reference-spec.md (e.g., .sources-rail, .msg-user, .input-bar).
+     c. Upload sources use info-blue (.cite.upload, badge-info); knowledge sources use crimson (.cite, badge-red). Never mix.
+     d. Fonts: headings = --font-display (Sora), body = --font-text (Public Sans), metadata = --font-mono (Spline Sans Mono).
+     e. Interactive targets >= 44px.
+     f. Existing components are REUSED, not rebuilt: AnswerView (M4.2), AnswerFeedback, SaveAnswer, ConsultationPrompt, UploadPanel.
+     g. The three layout directions (classic/studio/focus) degrade gracefully — test at 1280px, 900px, and 375px widths.
+   - After implementing, grep your new CSS/TSX files for hardcoded hex (#) and px values not from the ds.css scale. Fix any violations before committing.
 5. Run ALL feedback loops:
    - TypeScript: pnpm typecheck (must pass with no errors)
    - Tests: pnpm test (must pass)

@@ -1,0 +1,110 @@
+.admin-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ink-900);
+  background-image:
+    radial-gradient(ellipse 80% 40% at 50% 0%, rgba(176, 18, 26, 0.15), transparent);
+}
+
+.admin-login-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-lg);
+  padding: var(--s8) var(--s6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+.admin-login-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-login-logo {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
+}
+
+.admin-login-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--ink-900);
+  margin: 0;
+}
+
+.admin-login-roles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.admin-login-role {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.admin-login-role:hover {
+  border-color: var(--ink-400);
+}
+
+.admin-login-role.selected {
+  border-color: var(--red-300);
+  background: var(--red-50);
+}
+
+.admin-login-role-radio {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--ink-300);
+  flex: none;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s;
+}
+
+.admin-login-role.selected .admin-login-role-radio {
+  border-color: var(--red-600);
+}
+
+.admin-login-role.selected .admin-login-role-radio::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red-600);
+}
+
+.admin-login-role-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-login-role-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--ink-900);
+}
+
+.admin-login-role-desc {
+  font-size: 13px;
+  color: var(--ink-500);
+  margin-top: 2px;
+}
+
