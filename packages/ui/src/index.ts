@@ -109,3 +109,11 @@ export {
   isDensity,
 } from "./prefs";
 export type { Density } from "./prefs";
+export {
+  LOCALES,
+  DEFAULT_LOCALE,
+  isLocale,
+  translate,
+  createTranslator,
+} from "./i18n";
+export type { Locale, Messages, TranslateParams, Translator } from "./i18n";

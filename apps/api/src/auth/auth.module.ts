@@ -6,6 +6,7 @@ import { firebaseAuthProvider } from "./firebase-admin.provider";
 import { FirebaseAuthGuard } from "./firebase-auth.guard";
 import { FirebaseTokenVerifier } from "./firebase-token-verifier";
 import { MeController } from "./me.controller";
+import { ProfileService } from "./profile.service";
 import { RlsService } from "./rls.service";
 import { RolesGuard } from "./roles.guard";
 import { TokenVerifier } from "./token-verifier";
@@ -22,6 +23,7 @@ import { TokenVerifier } from "./token-verifier";
     { provide: TokenVerifier, useClass: FirebaseTokenVerifier },
     AuthService,
     AdminSessionService,
+    ProfileService,
     RlsService,
     { provide: APP_GUARD, useClass: FirebaseAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

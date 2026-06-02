@@ -1,14 +1,24 @@
-import { Controller, Get, Post } from "@nestjs/common";
-import type { AdminSessionDto } from "@expertos/shared";
+import { Body, Controller, Get, Patch, Post } from "@nestjs/common";
+import {
+  localeUpdateSchema,
+  type AdminSessionDto,
+  type LocaleUpdateInput,
+  type UserProfileDto,
+} from "@expertos/shared";
 import { CurrentUser } from "./current-user.decorator";
 import { Roles } from "./roles.decorator";
 import { AdminSessionService } from "./admin-session.service";
+import { ProfileService } from "./profile.service";
+import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import type { AuthUser } from "./auth.types";
 
 /** Returns the authenticated principal — the front-end uses it to hydrate session state. */
 @Controller("me")
 export class MeController {
-  constructor(private readonly adminSession: AdminSessionService) {}
+  constructor(
+    private readonly adminSession: AdminSessionService,
+    private readonly profile: ProfileService,
+  ) {}
 
   @Get()
   me(@CurrentUser() user: AuthUser): AuthUser {
@@ -34,5 +44,17 @@ export class MeController {
   @Post("admin-session")
   adminSessionResolve(@CurrentUser() user: AuthUser): Promise<AdminSessionDto> {
     return this.adminSession.resolve(user);
+  }
+
+  /**
+   * Persist the acting user's preferred locale (M13.1). Any authenticated user may update their own
+   * profile — no `@Roles` gate; ownership is enforced by RLS inside {@link ProfileService}.
+   */
+  @Patch("locale")
+  updateLocale(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(localeUpdateSchema)) body: LocaleUpdateInput,
+  ): Promise<UserProfileDto> {
+    return this.profile.updateLocale(user, body.locale);
   }
 }

@@ -26,7 +26,6 @@ import {
   ChatUploadPopover,
   ChatUsageMeter,
   ChatUserIdentity,
-  type ChatLanguage,
   ChatUserMessage,
   ChatVoicePicker,
   DEFAULT_DENSITY,
@@ -57,6 +56,7 @@ import type {
 } from "@expertos/shared";
 import { HIGH_STAKES_DISCLAIMER } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
+import { useLocale, useT } from "../../src/lib/i18n";
 import { AnswerView } from "../../src/components/answer-view";
 import {
   fetchExperts,
@@ -597,9 +597,12 @@ export default function ChatPage() {
   const { user, getIdToken } = useAuth();
   const [experts, setExperts] = useState<ExpertVoice[]>([]);
   const [expertId, setExpertId] = useState("");
-  // Answer language (M12.3.3) — toggled from the user-identity EN/VI badge in the
-  // header; reused on the next turn (M1 supports EN + VI retrieval).
-  const [language, setLanguage] = useState<ChatLanguage>("en");
+  // Locale (M13.1) — the app-wide locale owned by the LocaleProvider. Drives both the
+  // UI language (via the `chat` translator below) and the answer language sent to the
+  // chat API, unifying what used to be a chat-local `language` state (M12.3.3). Toggled
+  // from the user-identity EN/VI badge in the header; persisted to localStorage + profile.
+  const { locale, setLocale } = useLocale();
+  const tChat = useT("chat");
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
@@ -781,9 +784,9 @@ export default function ChatPage() {
   const inputPlaceholder = useMemo(() => {
     const expert = experts.find((e) => e.expertId === expertId);
     return expert
-      ? `Ask ${expert.displayName} anything about your business…`
-      : "Ask anything about your business…";
-  }, [experts, expertId]);
+      ? tChat("askPlaceholder", { name: expert.displayName })
+      : tChat("askPlaceholderGeneric");
+  }, [experts, expertId, tChat]);
 
   // Resolved citations for the latest assistant answer — feed both the sources-rail
   // header count (M12.5.2) and the source cards (M12.5.3). Render-after-resolve: only
@@ -971,7 +974,7 @@ export default function ChatPage() {
     let resolvedConversationId = conversationId;
     try {
       await streamChat(
-        { text, conversationId, expertId: expertId || undefined, language },
+        { text, conversationId, expertId: expertId || undefined, language: locale },
         token,
         (event) => {
           if (event.type === "delta") {
@@ -1022,7 +1025,7 @@ export default function ChatPage() {
     getIdToken,
     experts,
     expertId,
-    language,
+    locale,
     conversationId,
     editingTitle,
     loadConversations,
@@ -1116,17 +1119,17 @@ export default function ChatPage() {
         <ChatUserIdentity
           name={user.displayName}
           email={user.email}
-          language={language}
+          language={locale}
           onLanguageToggle={
-            busy ? undefined : () => setLanguage((prev) => (prev === "en" ? "vi" : "en"))
+            busy ? undefined : () => setLocale(locale === "en" ? "vi" : "en")
           }
         />
       </ChatTopbar>
       <main className="card card-pad chat-content">
         {messages.length === 0 ? (
           <ChatEmptyState
-            title="Start a new conversation"
-            description="Ask anything about your business — answers are grounded in published expert knowledge, with sources you can check."
+            title={tChat("emptyTitle")}
+            description={tChat("emptyDescription")}
           />
         ) : (
           <div className="chat-thread">

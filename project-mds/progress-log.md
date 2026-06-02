@@ -3922,3 +3922,28 @@ ui build, admin tsc + next lint, root lint:css (stylelint), root knip. (admin ha
 **Notes for next iteration:**
 - M14 leaves no follow-ups; the gate activates the moment the auth-context change ships (seed-before-deploy ordering documented in the PRD handles first-deploy lockout).
 - Highest-value remaining work: M13.7 (admin polish/conformance audit — most primitives exist), then the M13.5 PM/schema decision, then NT human gates / M11.1 fixme legs (external surfaces).
+
+## M13.1 — i18n framework (EN + VI)
+**Date:** 2026-06-02
+**Ref:** PRD §"M13 — UI Internationalization (i18n)" → M13.1
+
+**What was done:**
+- Pure i18n core in `@expertos/ui` (`packages/ui/src/i18n.ts`): `Locale`/`LOCALES`/`DEFAULT_LOCALE`/`isLocale`, `Messages` catalog shape, `translate(messages, key, params)` (dot-path lookup + `{placeholder}` interpolation, key-fallback on miss, never throws), `createTranslator(messages, namespace?)`. Mirrors the pure-helper pattern of `layout.ts`/`prefs.ts`; 100% unit-tested (`i18n.test.ts`, +8 ui tests → 226).
+- API self-service locale persistence: `ProfileService.updateLocale` (`apps/api/src/auth/profile.service.ts`) writes the user's own row under `RlsService.run` (RLS-scoped self-write; `users` is in the `tenant_only` family); `PATCH /me/locale` on `MeController` with `ZodValidationPipe(localeUpdateSchema)`; registered in `auth.module`. Shared `localeUpdateSchema` + `UserProfileDto` (`packages/shared/src/profile.ts`). +1 api test → 680, `profile.service.ts` 100%.
+- Web React layer (`apps/web/src/lib/i18n/`): `LocaleProvider`/`useLocale`/`useT` context + hooks; EN/VI `dictionaries.ts` (starter `chat` namespace); `profile-client.ts` (`GET /me` seed + `PATCH /me/locale`). Resolution order: SSR default → same-device localStorage (`expertos:locale`) → profile locale on sign-in; switching writes through to both localStorage and the profile; `<html lang>` synced via effect. Wrapped in `app/layout.tsx`.
+- Unified the toggle: chat page's local `language` state (M12.3.3) lifted to the global locale — `locale`/`setLocale` from `useLocale()` now drive BOTH the UI language (via `useT("chat")` on the empty state + input placeholder) AND the answer language sent to `streamChat`. Removed the now-dead `ChatLanguage` import + `setLanguage` state.
+
+**Key decisions:**
+- Lightweight `t()` helper over `next-intl`: avoids locale routing/middleware and the in-sandbox `next build` SWC block; matches the repo's "pure helper + app-owned React state" architecture.
+- Core in `packages/ui` (pure, directly testable in the node env — no DOM renderer), React context/hooks in `apps/web` (no jest gate; validated by tsc/lint). Keeps `packages/ui` components hook-free per the established test strategy.
+- Reused the existing `User.locale` column + `AuthUser.locale` (already returned by `GET /me`) — no migration needed.
+- Scoped M13.1 to framework + toggle + persistence; full string extraction is M13.2–M13.5 (only a representative `chat` namespace wired now to prove the loop end-to-end without dead exports).
+
+**Files changed:**
+- `packages/ui/src/i18n.ts` (new) + `i18n.test.ts` (new) + `index.ts` (exports)
+- `packages/shared/src/profile.ts` (new) + `index.ts` (exports)
+- `apps/api/src/auth/profile.service.ts` (new) + `profile.service.test.ts` (new) + `me.controller.ts` (PATCH /me/locale) + `auth.module.ts` (provider)
+- `apps/web/src/lib/i18n/{dictionaries,profile-client,locale-context,index}.ts(x)` (new)
+- `apps/web/app/layout.tsx` (LocaleProvider) + `apps/web/app/chat/page.tsx` (global locale + `useT`)
+
+**Gates:** shared/ui/api build+lint+jest (ui 226, api 680), web tsc + next lint, root lint:css + knip — all green. Total 1263 tests.

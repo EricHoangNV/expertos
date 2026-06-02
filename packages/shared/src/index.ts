@@ -1,5 +1,7 @@
 export { ROLES, roleSchema, satisfiesRole } from "./roles";
 export type { Role } from "./roles";
+export { localeUpdateSchema } from "./profile";
+export type { LocaleUpdateInput, UserProfileDto } from "./profile";
 export {
   allowedEmailRoleSchema,
   allowedEmailCreateSchema,
