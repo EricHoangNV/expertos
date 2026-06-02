@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Bar, Card, Stat, StackedBar, cx } from "@expertos/ui";
+import Link from "next/link";
+import { Badge, Bar, Card, Stat, StackedBar, cx, relativeTime } from "@expertos/ui";
 import type {
+  FailedQueryDto,
   FunnelAnalyticsDto,
   QuestionsAnalyticsDto,
   RevenueReportDto,
@@ -11,6 +13,7 @@ import type {
 import { AdminFrame } from "../src/components/AdminFrame";
 import { useAuth } from "../src/lib/auth-context";
 import {
+  getFailedQueries,
   getFunnelAnalytics,
   getQuestionsAnalytics,
   getRevenueReport,
@@ -102,11 +105,15 @@ function mrrDelta(report: RevenueReportDto): { text: string; trend: "up" | "down
   return { text: `${change >= 0 ? "+" : ""}${(change * 100).toFixed(1)}% vs last mo`, trend };
 }
 
+/** How many flagged/low-confidence queries the dashboard preview card shows. */
+const LOWCONF_PREVIEW = 6;
+
 interface DashboardData {
   revenue: RevenueReportDto;
   funnel: FunnelAnalyticsDto;
   validation: ValidationAnalyticsDto;
   questions: QuestionsAnalyticsDto;
+  failedQueries: FailedQueryDto[];
 }
 
 /**
@@ -213,6 +220,75 @@ function FunnelCard({ data }: { data: FunnelAnalyticsDto }) {
   );
 }
 
+/** Confidence-circle tone on a red→amber scale (lower confidence reads redder). */
+function confTone(confidence: number): "conf-low" | "conf-mid" {
+  return confidence < 0.6 ? "conf-low" : "conf-mid";
+}
+
+/**
+ * Low-Confidence & Failed Queries card (M13.2.5): a preview of the answers users flagged unhelpful — the
+ * signal that drives the content roadmap. Each row shows a confidence circle (red→amber scale, or a
+ * neutral dash when the answer cited nothing / has no recorded score), the question, and a muted
+ * metadata line (reason · model · time + an insufficient-knowledge badge). "Open pipeline →" and the
+ * per-row "Draft knowledge" links route to the full inspector / draft pipeline (the dashboard card is
+ * a read-only preview). Wired to {@link getFailedQueries} (`/admin/failed-queries`).
+ */
+function LowConfidenceCard({ rows }: { rows: FailedQueryDto[] }) {
+  return (
+    <Card pad className="lowconf-card">
+      <div className="lowconf-head">
+        <div>
+          <div className="eyebrow">Inspect · low-confidence &amp; failed queries</div>
+          <h2 className="h3">Drives the content roadmap</h2>
+        </div>
+        <Link href="/failed-queries" className="btn btn-ghost btn-sm">
+          Open pipeline →
+        </Link>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="muted">No flagged answers yet — nothing to triage.</p>
+      ) : (
+        <div className="lowconf-list">
+          {rows.map((row) => {
+            const hasScore = row.confidence != null && Number.isFinite(row.confidence);
+            return (
+              <div className="lowconf-item" key={row.feedbackId}>
+                <div
+                  className={cx(
+                    "conf-circle",
+                    hasScore && confTone(row.confidence as number),
+                  )}
+                  title={hasScore ? `confidence ${(row.confidence as number).toFixed(2)}` : "no score"}
+                >
+                  {hasScore ? `${Math.round((row.confidence as number) * 100)}` : "—"}
+                </div>
+                <div className="lowconf-body">
+                  <p className="lowconf-q">
+                    {row.question ?? <span className="muted">— (question not found)</span>}
+                  </p>
+                  <div className="lowconf-meta muted">
+                    {row.insufficientKnowledge && <Badge tone="amber">Insufficient</Badge>}
+                    <span>{row.reason ?? "no reason given"}</span>
+                    {row.model != null && <span className="mono">· {row.model}</span>}
+                    <span className="mono">· {relativeTime(row.createdAt)}</span>
+                  </div>
+                </div>
+                <Link
+                  href="/knowledge-drafts"
+                  className="btn btn-ghost btn-sm lowconf-action"
+                >
+                  Draft knowledge
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function AdminHomePage() {
   const { user, getIdToken } = useAuth();
   const [range, setRange] = useState<Range>("30d");
@@ -230,13 +306,14 @@ export default function AdminHomePage() {
         setError("Please sign in to continue.");
         return;
       }
-      const [revenue, funnel, validation, questions] = await Promise.all([
+      const [revenue, funnel, validation, questions, failedQueries] = await Promise.all([
         getRevenueReport(token, 3),
         getFunnelAnalytics(token, days),
         getValidationAnalytics(token, days),
         getQuestionsAnalytics(token, days),
+        getFailedQueries(token, { limit: LOWCONF_PREVIEW }),
       ]);
-      setData({ revenue, funnel, validation, questions });
+      setData({ revenue, funnel, validation, questions, failedQueries });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard.");
     }
@@ -310,6 +387,8 @@ export default function AdminHomePage() {
       {data != null && <QuestionsCard data={data.questions} />}
 
       {data != null && <FunnelCard data={data.funnel} />}
+
+      {data != null && <LowConfidenceCard rows={data.failedQueries} />}
     </AdminFrame>
   );
 }

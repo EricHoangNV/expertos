@@ -3704,3 +3704,30 @@ shared/ui/api build+lint+jest, admin tsc + next lint, web tsc, root lint:css (st
 
 **Tests:** 1225 pass / 0 fail / 0 skip (shared 179, ui 217, db 9, ai 161, api 661). Gates green:
 ui build, admin tsc + next lint, root lint:css (stylelint), root knip.
+
+## M13.2.5 — Dashboard Low-Confidence & Failed Queries card
+**Date:** 2026-06-02
+**Ref:** PRD §M13.2.5 (Admin & Expert Portal UI Overhaul → Dashboard); requirements/ui-reference-spec.md §"Low-Confidence & Failed Queries Card"
+
+**What was done:**
+- Added a `LowConfidenceCard` to the admin dashboard (`apps/admin/app/page.tsx`) — a read-only preview of the answers users flagged unhelpful, the signal that drives the content roadmap.
+- Header: `.eyebrow` "Inspect · low-confidence & failed queries" + `.h3` heading "Drives the content roadmap" + an "Open pipeline →" ghost link to `/failed-queries`.
+- Each row: a confidence circle (`.conf-circle`, red→amber scale via `confTone`, neutral dash when no recorded score), the question (2-line clamp), a muted metadata line (insufficient-knowledge `.badge-amber` · reason · model · relative time), and a per-row "Draft knowledge" ghost link to `/knowledge-drafts`.
+- Wired into the dashboard's single `Promise.all` load via `getFailedQueries(token, { limit: 6 })`; stored on `DashboardData.failedQueries`.
+- New ds.css `.lowconf-*` + `.conf-circle` block (after `.funnel-summary`).
+
+**Key decisions:**
+- The `FailedQueryDto` carries no "asked Nx" frequency or expert name (the mockup's meta line), so the muted line uses the signals that actually exist — reason, model, insufficient flag, time. No invented data.
+- "Draft knowledge" / "Open pipeline →" are navigation links (the dashboard card is a preview), not inline draft-create — drafting happens in the `/knowledge-drafts` pipeline.
+- Confidence threshold 0.6 splits red (low) vs amber (mid); `Number.isFinite` guards the score before rendering (DIRECTIVES #9).
+- Confidence circle is a 44px target (hit-target line) styled in ds.css with tokens only (no `--amber-300` exists → amber circle border uses `--amber-600`).
+
+**Files changed:**
+- `apps/admin/app/page.tsx` — `LowConfidenceCard` + `confTone` helper, `getFailedQueries`/`relativeTime`/`Link`/`FailedQueryDto` imports, `DashboardData.failedQueries` + load wiring + render.
+- `packages/ui/src/ds.css` — `.lowconf-*`/`.conf-circle` block after `.funnel-summary`.
+
+**Tests:** 1225 pass / 0 fail / 0 skip (shared 179, ui 217, db 9, ai 161, api 661). Gates green:
+ui build, admin tsc + next lint, root lint:css (stylelint), root knip. (admin has no jest suite.)
+
+**Notes for next iteration:**
+- M13.2.6 (Knowledge Pipeline card, `/knowledge` by status) + M13.2.7 (Concierge SLA dark card, `/admin/analytics/concierge`) remain to finish the dashboard. M13.2.7 should introduce the reusable `.dark-card` (M13.7.2).
