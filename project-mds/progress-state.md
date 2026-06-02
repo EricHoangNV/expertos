@@ -8,13 +8,13 @@
 - M13 (Admin & Expert Portal UI Overhaul) — admin portal rebuild to the approved mockups:
   - M13.1: DONE — sidebar nav regrouped (OPERATE/MONETIZE/EXPERT PORTAL + ANALYTICS/SYSTEM), count badges, identity footer + sign-out, role-aware topbar.
   - M13.2 (Dashboard): DONE — greeting + 7d/30d/QTD `.seg`, KPI grid, Questions Answered (`StackedBar`), Funnel, Low-Confidence, Knowledge Pipeline, Concierge SLA. New rollups `/admin/analytics/questions` + `/knowledge-pipeline`.
-  - M13.3 (Knowledge kanban): DONE — status-pipeline steps + 4-col `.kanban` + Conversation→Knowledge table.
+  - M13.3 (Knowledge kanban): DONE — status-pipeline steps (now interactive filter toggles, highlight tracks first non-empty stage) + 4-col `.kanban` + Conversation→Knowledge table. Fixed a state-machine bug: `KnowledgeService.transition()` (submit/requestChanges) now updates `document.status` in lockstep (board/analytics count by it) — see LEARNINGS #16.
   - M13.4 (Plans & Entitlements matrix): DONE — staged-edit `.matrix-table`, real plan pricing (`PlanPrice` join), per-cell batch PATCH.
   - M13.6 (Concierge review queue two-pane): DONE — `.review-pane`, Open/Mine/Done `.seg`, `.dark-card` question, `.verdict-card`, Push/Escalate. `Badge` gained `dot`. Deviations: Claim/Dismiss omitted (no endpoint).
   - M13.5 (Voice profile page): DEFERRED — mockup (dimension bars/do-don't/terminology/fidelity) has NO schema backing; needs a PM/schema decision before building. See log.
 - M14 (Access Control Whitelist) — invite-only admin portal gate: COMPLETE. `AllowedEmail` model + RLS; `POST /me/admin-session` whitelist gate; `/admin/access-control` CRUD (self-lockout + audit); AdminFrame Access Denied; bootstrap admin seeded.
 - Tests: 1263 pass / 0 fail / 0 skip (shared 187, ui 226, db 9, ai 161, api 680). (admin has no jest suite.)
-- Gates (run per-workspace — `turbo` SIGILLs here): shared/ui/api build/eslint/jest + admin `tsc --noEmit` + `next lint` + web `tsc` + root `lint:css` + root `knip` all clean. (`next build` blocked in-sandbox by missing linux/arm64 SWC — environmental; `tsx` seed also blocked by an esbuild darwin/linux arch mismatch — migration validated via `prisma migrate deploy` + raw SQL instead.)
+- Gates (run per-workspace — `turbo` SIGILLs here): shared/ui/api build/eslint/jest + admin `tsc --noEmit` + `next lint` + web `tsc` + root `lint:css` + root `knip` all clean. (knip's repo-wide scan flags stale `apps/*/.next` build dirs as unused files — `rm -rf apps/admin/.next apps/web/.next` before running knip for a clean result.) (`next build` blocked in-sandbox by missing linux/arm64 SWC — environmental; `tsx` seed also blocked by an esbuild darwin/linux arch mismatch — migration validated via `prisma migrate deploy` + raw SQL instead.)
 
 - Next tasks (priority order):
   1. **M13.2 (i18n)** — Translate web app: extract `/chat`/`/history`/`/account` strings via `useT` (many live in `@expertos/ui` components → pass translated text as props).

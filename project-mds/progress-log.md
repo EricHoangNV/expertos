@@ -3947,3 +3947,32 @@ ui build, admin tsc + next lint, root lint:css (stylelint), root knip. (admin ha
 - `apps/web/app/layout.tsx` (LocaleProvider) + `apps/web/app/chat/page.tsx` (global locale + `useT`)
 
 **Gates:** shared/ui/api build+lint+jest (ui 226, api 680), web tsc + next lint, root lint:css + knip — all green. Total 1263 tests.
+
+---
+
+## M13.3 — Knowledge kanban: fix document-status lockstep + interactive step filter
+**Date:** 2026-06-02
+**Ref:** PRD M13.3.2/M13.3.3 (knowledge kanban) + a state-machine bug found while wiring the step indicator
+
+**What was done:**
+- Fixed a real bug in the publish state machine: `KnowledgeService.transition()` (used by `submit` draft→expert_review and `requestChanges` expert_review→draft) updated only `documentVersion.status`, never the parent `document.status`. The kanban board and the `/admin/analytics/knowledge-pipeline` rollup list/count by `document.status`, so a submitted draft's card never left the Draft column. `transition()` now updates `document.status` in lockstep, matching `approve`/`archive`.
+- Verified the fix is retrieval-safe: retrieval visibility keys off `chunk.status` + `document.publishedVersionId`, not `document.status` — so a re-submit of an already-published document does not hide its live chunks.
+- Added test assertions in `knowledge.service.test.ts` covering the new `document.update` on submit + requestChanges.
+- M13.3.2 enhancement: the numbered status-pipeline steps are now interactive filter toggles — click a step to show only that column, click again to show all. The active highlight tracks the selected filter, or the first non-empty stage when nothing is filtered (an all-Draft board lights Draft, not a hardcoded stage). `STEPS` lost its hardcoded `active` flag; the highlight/visible-columns are computed at render from live `pipeline.byStatus`.
+- ds.css: `.kanban-step` restyled as a real `<button>` (hover/focus-visible states, `cursor`, `font-family: inherit`).
+- Added `AGENTS.md` (mirrors the CLAUDE.md no-`Co-Authored-By` git rule) and `.gitignore` `tmp/`.
+
+**Key decisions:**
+- Highlight the first non-empty stage rather than a fixed "Expert Review" — the indicator now reflects where work actually is.
+- Kept `document.status` as a denormalized board/analytics pointer (distinct from per-version lifecycle) rather than recomputing column membership from versions, matching the existing `byStatus` rollup shape.
+
+**Files changed:**
+- `apps/api/src/knowledge/knowledge.service.ts` — `transition()` updates `document.status` in lockstep
+- `apps/api/src/knowledge/knowledge.service.test.ts` — assert document.update on submit/requestChanges
+- `apps/admin/app/knowledge/page.tsx` — interactive step filter (focused state, render-computed highlight/columns)
+- `packages/ui/src/ds.css` — `.kanban-step` button hover/focus styling
+- `.gitignore` — ignore `tmp/`; `AGENTS.md` — new (git-commit rule mirror)
+
+**Gates:** api test 680 + lint + build, ui test 226 + build, admin tsc + next lint, web tsc, root lint:css + knip — all green. Total 1263 tests (no new test count; assertions added to existing cases). LEARNINGS #16 added.
+
+**Notes for next iteration:** Knip's repo-wide unused-file scan picks up stale `apps/admin/.next` / `apps/web/.next` build dirs as "unused files" — `rm -rf` them before running `pnpm knip` for a clean result. Next priorities unchanged: M13.2/M13.3 i18n string extraction, then M13.7 admin polish.

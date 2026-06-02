@@ -186,3 +186,15 @@ Distilled insights from code reviews, security reviews, and product reviews.
 **Rule:** Never apply a Prisma-generated migration verbatim in this repo — review it and strip any `DROP INDEX *_embedding_idx` (and re-add RLS/grant for new tables), because the pgvector indexes and RLS live in raw SQL the schema doesn't model.
 
 **Rule:** After a large/multi-line `Edit` or `Write` on a long file in this repo, don't trust the success message alone — run `git diff <file>` and confirm the only changes are the ones you intended (no deletions far from your edit) and that `wc -l` ≈ expected. The lint/test gates are the safety net that catches a silent truncation; never skip them after a big edit.
+
+---
+
+## 16. The knowledge state machine tracks status on two rows (version + document); a transition that updates only the version leaves the board stuck
+
+**Context:** M13.3 (knowledge kanban) — submitting a draft for review left its card in the Draft column.
+
+- The publish state machine in `KnowledgeService` mutates `documentVersion.status` on every transition, but the kanban board (and the `/admin/analytics/knowledge-pipeline` rollup) list and **count** by `document.status`, the parent row. `approve` and `archive` already updated `document.status` in lockstep, but the shared `transition()` helper (used by `submit` draft→expert_review and `requestChanges` expert_review→draft) only touched the version — so a submitted draft's `document.status` stayed `draft` and the card never moved columns even though the version had advanced.
+- Fix: `transition()` now also `tx.document.update({ data: { status: spec.to } })`, matching `approve`/`archive`. Safe for retrieval because retrieval visibility is gated on `chunk.status` (the `chunk_status` enum) and `document.publishedVersionId`, **not** `document.status` — so moving an already-published document's `document.status` to `expert_review` on a re-submit does not hide its live chunks.
+- `document.status` is therefore a denormalized "where is the latest work" pointer for the board/analytics, distinct from the per-version lifecycle. Any new transition must keep it in sync.
+
+**Rule:** When a state machine denormalizes the same status onto a parent row that the UI/analytics read from, every transition path (not just the create/publish ones) must update both rows — and confirm which row the read paths (retrieval vs. board) actually key off before assuming a parent-status change is harmless.
