@@ -154,7 +154,7 @@
 
 ##### M12.8 — Login page (already built)
 - [x] M12.8.1 Two-panel login: left panel (logo + headline + Google sign-in + legal text), right panel (dark bg with "DRIVEN BY EXCELLENCE" eyebrow); responsive collapse
-- [ ] M12.8.2 Post-login redirect: after Google sign-in, redirect to `/chat` (existing); handle returning users (skip login if session active)
+- [x] M12.8.2 Post-login redirect: after Google sign-in, redirect to `/chat` (existing); handle returning users (skip login if session active) — **DONE** (`apps/web/app/page.tsx`: redirect moved from a render-time `window.location.href` side effect to a `useEffect` + Next `useRouter().replace("/chat")` client navigation; `loading || user` now shows the loading view so an already-signed-in returning user with a persisted Firebase session never flashes the login form before being routed to `/chat`)
 
 ##### M12.9 — Polish & responsive
 - [ ] M12.9.1 Mobile responsive: sidebar as slide-over overlay (< 900px), sources rail hidden, input bar full-width

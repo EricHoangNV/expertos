@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "../src/lib/auth-context";
 import "./login.css";
 
@@ -31,8 +33,21 @@ function GoogleIcon() {
 
 export default function LoginPage() {
   const { user, loading, signInWithGoogle } = useAuth();
+  const router = useRouter();
 
-  if (loading) {
+  // Returning users with an active Firebase session skip the login form: once
+  // auth resolves to a signed-in user, replace this route with /chat (a client
+  // navigation, so no full reload and no back-button trap on the login page).
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/chat");
+    }
+  }, [loading, user, router]);
+
+  // Cover both the initial auth resolution and the brief redirecting window
+  // (user present but navigation in flight) with the same loading view, so the
+  // login form never flashes for an already-signed-in returning user.
+  if (loading || user) {
     return (
       <div className="login">
         <div className="login-left" style={{ justifyContent: "center", alignItems: "center" }}>
@@ -40,13 +55,6 @@ export default function LoginPage() {
         </div>
       </div>
     );
-  }
-
-  if (user) {
-    if (typeof window !== "undefined") {
-      window.location.href = "/chat";
-    }
-    return null;
   }
 
   return (

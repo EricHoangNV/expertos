@@ -3396,3 +3396,29 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 **Notes for next iteration:**
 - M12.7 is done. Next M12 work: M12.8.2 (post-login redirect / skip login when session active) and M12.9 polish/responsive (mobile slide-over sidebar <900px, ds.css conformance sweep, dark-sidebar render check, loading/empty states).
 - Remember to rebuild `packages/ui` (`pnpm --filter @expertos/ui build`) after editing it — `apps/web` consumes `dist/`, so a new export won't typecheck in the app until the build runs.
+
+## M12.8.2 — Post-login redirect / skip login when session active
+**Date:** 2026-06-02
+**Ref:** PRD §"M12 — Frontend UI Overhaul" / M12.8.2 (Login page)
+
+**What was done:**
+- Reworked the login page redirect in `apps/web/app/page.tsx` so a returning user with an active (persisted) Firebase session is sent to `/chat` without ever seeing the login form, and so the redirect no longer mutates `window.location` during render.
+- Replaced the render-body `if (user) { window.location.href = "/chat" }` side effect with a `useEffect` that calls Next's `useRouter().replace("/chat")` once `!loading && user`. `replace` (not `push`) avoids leaving the login route in the back-stack.
+- Collapsed the loading view to cover `loading || user`, so the brief "auth resolved, navigation in flight" window shows the same "Loading..." panel instead of flashing the Google sign-in form.
+
+**Key decisions:**
+- Used Next's `useRouter().replace` (client navigation) over `window.location.href` (full reload): the rest of the app already routes client-side, a full reload re-boots the React tree + re-runs Firebase auth init unnecessarily, and replacing-not-pushing keeps the back button from trapping the user on the login page after sign-in.
+- Session persistence itself needs no new code: Firebase persists the session in browser storage by default and `AuthProvider`'s `onAuthStateChanged` already resolves it on mount, so "skip login if session active" is fully handled by gating the redirect on the resolved `user`.
+- Left the unauthenticated chat-page behavior ("Please sign in on the home page") untouched — the task scopes the chat redirect as "(existing)".
+
+**Files changed:**
+- `apps/web/app/page.tsx` — import `useEffect` + `useRouter`; effect-driven `router.replace("/chat")`; `loading || user` loading-view guard replacing the render-time `window.location` redirect.
+- `project-mds/PRD.md` — M12.8.2 marked `[x]` (M12.8 complete).
+- `project-mds/progress-state.md` — prepended M12.8.2; updated Next tasks to M12.9.
+
+**Gates:**
+- `pnpm -r typecheck` ✅, `pnpm -r test` ✅ (1204 pass / 0 fail), `pnpm -r lint` ✅, `pnpm deadcode` (knip) ✅.
+- `next build` for web is blocked only by the sandbox's inability to fetch the `@next/swc-linux-arm64` native binary (`ECONNREFUSED`) — an environment limit, not a code issue; typecheck + lint cover the change. `turbo`-aggregated gates still SIGILL on arm64 (per LEARNINGS #2/#13) — ran gates per-workspace via `pnpm -r`.
+
+**Notes for next iteration:**
+- M12.8 is complete. Remaining M12 work is the M12.9 polish/responsive group: M12.9.1 mobile slide-over sidebar (<900px) + hidden sources rail + full-width input bar; M12.9.2 ds.css conformance sweep; M12.9.3 dark-sidebar render check; M12.9.4 loading/empty states (skeleton conversation list, empty-chat state, streaming spinner). `useMediaQuery` (`apps/web/src/lib/use-media-query.ts`) already exists for the <900px breakpoint.
