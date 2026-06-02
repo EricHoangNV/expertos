@@ -3850,3 +3850,41 @@ ui build, admin tsc + next lint, root lint:css (stylelint), root knip. (admin ha
 **Notes for next iteration:**
 - M13.5 (Voice profile page, Expert Portal) is next — needs the new `.voice-bar` segmented dimension bar (M13.7.4); wire to existing `/voice-profiles`.
 - `.matrix-table` is now available as a reusable plan-grid primitive.
+
+---
+
+## M13.6 — Concierge review queue two-pane (Expert Portal)
+
+**What:** Rebuilt `apps/admin/app/concierge-reviews/page.tsx` from a single-column list of expandable cards into the approved two-pane review console (M13.6.1–M13.6.8), wired entirely to the existing `/concierge-reviews` API (M9.2/M9.4 — list/get/respond/escalate).
+
+**Layout (M13.6.1):** `.review-pane` CSS grid = `minmax(320px,380px)` `.queue-list` + flex `.review-detail`; stacks to one column under 980px. Lives inside the existing `AdminFrame` `.shell` content area.
+
+**Queue list (M13.6.2):** header "Queue · N open" + "SLA 24h" `.badge-amber`; triage `.seg` (Open / Mine / Done) bucketed client-side over the loaded page (Open = requested/in_review, Done = answered/escalated/dismissed). Each `.queue-item` = 2-line-clamped answer preview + mode badge (Auto·silent `.badge-ink` / User-prompted `.badge-amber`) + confidence `.badge-red` + latest-verdict badge + elapsed time; crimson `.is-active` highlight. Auto-selects the first item in the active tab so the detail pane is never empty. Load-more preserved.
+
+**Review detail (M13.6.3–8):** keyed by selected id so it remounts + refetches per selection.
+- Header: mode / confidence / SLA badges, all with a **leading status dot** — added an optional `dot` prop to the shared `Badge` primitive (reuses the existing `.badge .dot` style; +1 ui test, still 100%). SLA badge computes remaining/overdue from `slaDueAt`.
+- User question: `.dark-card` (M13.7.2) bubble + muted context line derived from confidence + visibility (silent shadow vs user-visible).
+- AI answer: `.panel` with "AI rendition" `.badge-ink` + "low confidence" `.badge-amber` + full answer.
+- Verdict: selectable `.verdict-card` grid (Bad/Good/Great) with tone-colored X / check / star SVG icons + the flag-source/deliver/voice-example notes; crimson `.is-active`.
+- Refined answer: pre-filled `Textarea` (the original answer) + optional notes + the reviewer-feedback-flywheel explainer.
+- Action bar: "Push refined update" (`.btn-primary`, label flips to "Record verdict" when unedited) → `respond` (verdict + edit); "Escalate to paid consultation" (`.btn-dark`) → `escalate`; "User notified by email on delivery" note.
+
+**New ds.css (M13.6 block):** `.review-pane`, `.queue-list`/`-head`/`-title`/`-body`, `.queue-item`(`.is-active`)/`-q`/`-meta`/`-time`, `.queue-empty`, `.review-detail`/`-head`, `.review-section`, `.review-q`/`-answer`/`-flywheel`, `.verdict-grid`, `.verdict-card`(`.is-active`)/`-name`/`-note`/`-icon`(`.is-bad`/`.is-good`/`.is-great`), `.review-actions`. Tokens only; range-notation breakpoint.
+
+**Honest deviations** (no fabricated data / no speculative endpoints — consistent with M13.2–M13.4):
+- "Claim" (M13.6.3) and "Dismiss" (M13.6.8) omitted — no claim/dismiss endpoints exist (only list/get/respond/escalate).
+- "Mine" tab surfaces `claimedAt`-set items — `ReviewQueueItemDto` carries no claimer identity.
+- User email + voice name (M13.6.4 label) omitted — `ReviewQueueDetailDto` carries neither.
+- "SLA 24h" header chip = the M9.1 default (no per-page config fetch), matching the M13.2.7 "target 24h" copy precedent.
+
+**M13.5 deferred (decision):** Started on M13.5 (Voice profile page) first but found the mockup's rich content (dimension bars, do/don't rules, terminology chips, rendition policy, per-example fidelity) has **zero** schema backing — `VoiceProfile` stores only `name`/`description`/free-text `guidelines`, and `VoiceExample` has no fidelity score or list endpoint (only vector retrieval). Unlike every prior M13 task (core data present, only minor chips omitted), M13.5 would require either a large speculative schema+authoring extension or a page that's mostly fabricated/omitted content — which violates the established anti-fabrication precedent. Pivoted to M13.6 (fully real-data-backed). M13.5 flagged for a PM/schema decision.
+
+**Bug found + fixed (LEARNINGS #14):** the multi-line `Edit` inserting the M13.6 ds.css block silently **truncated the tail of `ds.css`** (lost the last ~30 lines: M12.7.2–4 `.tweaks-*` + the `prefers-reduced-motion` block, leaving a dangling `.tweaks-section > .s`). The insert landed correctly; the loss was at the far end. Caught by `lint:css` (CssSyntaxError); restored from `git show HEAD:` and verified the final diff contained only the intended insert. Recorded as a filesystem-write hazard on this OWC-Express volume.
+
+**Tests:** ui 218 (+1, 100% coverage maintained). Full: 1230 pass / 0 fail / 0 skip (shared 179, ui 218, db 9, ai 161, api 663).
+
+**Gates:** ui build + ui jest (218) + ui eslint + admin `tsc --noEmit` + admin `next lint` + web `tsc` + root `lint:css` + root `knip` — all green. (api/shared/ai/db source untouched; `Badge` change is additive/backward-compatible — web tsc confirms.)
+
+**Notes for next iteration:**
+- M13.7 (admin polish / shared patterns) is largely an audit — `.dark-card`, `.kanban`, `.verdict-card`, role-aware sidebar already exist; `.voice-bar` (M13.7.4) is the one missing primitive, and it's gated on the M13.5 data decision.
+- knip flagged stale `.next` artifacts + a phantom "@expertos/shared unused" — both vanish after `rm -rf apps/*/.next`; not a real finding.

@@ -112,6 +112,16 @@ describe("Badge — status is always a tone-matched `.badge`", () => {
       expect(cls(Badge({ tone }) as ReactElement)).toBe(`badge badge-${tone}`);
     });
   });
+
+  it("renders a leading status dot only when `dot` is set (M13.6.3)", () => {
+    const withDot = kids(Badge({ tone: "amber", dot: true, children: "SLA" }) as ReactElement);
+    expect(Array.isArray(withDot)).toBe(true);
+    const dot = (withDot as ReactElement[])[0];
+    expect(cls(dot)).toBe("dot");
+    // Default: no dot element is emitted (only the children remain).
+    const plain = kids(Badge({ tone: "amber", children: "SLA" }) as ReactElement);
+    expect((plain as unknown[])[0]).toBe(false);
+  });
 });
 
 describe("Button — one crimson primary, ds.css `.btn` variants/sizes", () => {

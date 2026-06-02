@@ -161,3 +161,14 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Caveat: the `lint:css` glob is `apps/**/app/**/*.css`, so `apps/admin/src/components/admin-login.css` (under `src/`, not `app/`) escapes CSS linting entirely — a coverage gap to widen if admin CSS proliferates.
 
 **Rule:** New M12/M13 UI must pass the design-system guards: app CSS expresses size as ds.css spacing tokens or rem (never raw `px`; root is 15px so rem is pixel-faithful), and the only hardcoded hex permitted in JSX is a third-party brand asset behind a scoped, commented eslint-disable. When `pnpm lint` looks green, confirm `turbo run lint` actually ran (it SIGILLs here) — otherwise run each workspace's `next lint`/`eslint` directly.
+
+---
+
+## 14. A multi-line `Edit` on this OWC-Express volume can silently truncate the file tail — verify integrity with `git diff`, not just the edit's success message
+
+**Context:** M13.6 — inserting a ~40-line block into `packages/ui/src/ds.css` near line 447 (via the `Edit` tool) reported success, but the **end of the file** (the last ~30 lines: the M12.7.2–4 `.tweaks-*` styles + the `prefers-reduced-motion` block) was silently truncated, leaving a dangling half-line `.tweaks-section > .s`. The insert itself landed correctly; the loss was at the far end, far from the edited region. Caught only because `pnpm lint:css` then failed with a `CssSyntaxError` on the broken trailing line.
+
+- Root cause: an apparent write/flush glitch on the external `/Volumes/OWC-Express-1M2` filesystem — the edited content was written but the file was not fully reconstituted, dropping the tail. The `Edit` tool's "file updated successfully" message does **not** guarantee the untouched remainder survived.
+- Fix: diff against HEAD (`git diff <file>` showed an unexpected second hunk `@@ -1010,32 +1051,4 @@` deleting the tail) and restored the lost lines from `git show HEAD:<file>`. Confirmed the final diff contained **only** the intended insert (no spurious deletions) and the line count matched `HEAD + inserted`.
+
+**Rule:** After a large/multi-line `Edit` or `Write` on a long file in this repo, don't trust the success message alone — run `git diff <file>` and confirm the only changes are the ones you intended (no deletions far from your edit) and that `wc -l` ≈ expected. The lint/test gates are the safety net that catches a silent truncation; never skip them after a big edit.
