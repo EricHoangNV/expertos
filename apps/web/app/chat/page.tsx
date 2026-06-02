@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Button, Card, Field, Input, Select, Textarea } from "@expertos/ui";
+import { Badge, Button, Card, ChatLayout, Field, Input, Select, Textarea } from "@expertos/ui";
 import type {
   ChatCitationDto,
   ConsultationRecommendationDto,
@@ -479,95 +479,99 @@ export default function ChatPage() {
 
   if (!user) {
     return (
-      <main className="card card-pad">
-        <h1>Chat</h1>
-        <Badge tone="info">Please sign in on the home page to start chatting.</Badge>
-      </main>
+      <ChatLayout>
+        <main className="card card-pad">
+          <h1>Chat</h1>
+          <Badge tone="info">Please sign in on the home page to start chatting.</Badge>
+        </main>
+      </ChatLayout>
     );
   }
 
   return (
-    <main className="card card-pad">
-      <h1>Chat</h1>
+    <ChatLayout>
+      <main className="card card-pad chat-content">
+        <h1>Chat</h1>
 
-      <Field label="Expert voice" htmlFor="expert">
-        <Select
-          id="expert"
-          value={expertId}
-          onChange={(e) => setExpertId(e.target.value)}
-          disabled={busy}
-        >
-          <option value="">Neutral (no expert voice)</option>
-          {experts.map((e) => (
-            <option key={e.expertId} value={e.expertId}>
-              {e.displayName}
-            </option>
-          ))}
-        </Select>
-      </Field>
+        <Field label="Expert voice" htmlFor="expert">
+          <Select
+            id="expert"
+            value={expertId}
+            onChange={(e) => setExpertId(e.target.value)}
+            disabled={busy}
+          >
+            <option value="">Neutral (no expert voice)</option>
+            {experts.map((e) => (
+              <option key={e.expertId} value={e.expertId}>
+                {e.displayName}
+              </option>
+            ))}
+          </Select>
+        </Field>
 
-      <div>
-        {messages.map((m, i) => (
-          <Card key={i} className="card-pad">
-            <Badge tone={m.role === "user" ? "info" : "green"}>
-              {m.role === "user" ? "You" : "Assistant"}
-            </Badge>
-            {m.role === "assistant" && m.expertName && (
-              <Badge tone="amber">{renditionLabel(m.expertName)}</Badge>
-            )}
-            {m.role === "assistant" ? (
-              <AssistantAnswer message={m} />
-            ) : (
-              <p>{m.content}</p>
-            )}
-            {m.role === "assistant" && m.done && m.degraded && (
-              <Badge tone="info">
-                Fair-use mode — answered with a lighter model while you’re over this period’s soft
-                limit.
+        <div>
+          {messages.map((m, i) => (
+            <Card key={i} className="card-pad">
+              <Badge tone={m.role === "user" ? "info" : "green"}>
+                {m.role === "user" ? "You" : "Assistant"}
               </Badge>
-            )}
-            {m.role === "assistant" && m.done && m.insufficientKnowledge && (
-              <Card className="card-pad">
-                <Badge tone="amber">Limited knowledge</Badge>
-                <p>
-                  I couldn’t find enough in the expert’s knowledge base to answer this confidently.
-                  Try rephrasing your question, or book a consultation for a direct answer.
-                </p>
-              </Card>
-            )}
-            {m.role === "assistant" && m.done && m.highStakes && <HighStakesNotice />}
-            {m.role === "assistant" && m.done && m.recommendation && (
-              <ConsultationPrompt recommendation={m.recommendation} />
-            )}
-            {m.role === "assistant" && m.done && m.messageId && (
-              <>
-                <AnswerFeedback messageId={m.messageId} />
-                <div className="row gap2 wrap">
-                  <SaveAnswer messageId={m.messageId} />
-                </div>
-              </>
-            )}
-          </Card>
-        ))}
-      </div>
+              {m.role === "assistant" && m.expertName && (
+                <Badge tone="amber">{renditionLabel(m.expertName)}</Badge>
+              )}
+              {m.role === "assistant" ? (
+                <AssistantAnswer message={m} />
+              ) : (
+                <p>{m.content}</p>
+              )}
+              {m.role === "assistant" && m.done && m.degraded && (
+                <Badge tone="info">
+                  Fair-use mode — answered with a lighter model while you’re over this period’s soft
+                  limit.
+                </Badge>
+              )}
+              {m.role === "assistant" && m.done && m.insufficientKnowledge && (
+                <Card className="card-pad">
+                  <Badge tone="amber">Limited knowledge</Badge>
+                  <p>
+                    I couldn’t find enough in the expert’s knowledge base to answer this confidently.
+                    Try rephrasing your question, or book a consultation for a direct answer.
+                  </p>
+                </Card>
+              )}
+              {m.role === "assistant" && m.done && m.highStakes && <HighStakesNotice />}
+              {m.role === "assistant" && m.done && m.recommendation && (
+                <ConsultationPrompt recommendation={m.recommendation} />
+              )}
+              {m.role === "assistant" && m.done && m.messageId && (
+                <>
+                  <AnswerFeedback messageId={m.messageId} />
+                  <div className="row gap2 wrap">
+                    <SaveAnswer messageId={m.messageId} />
+                  </div>
+                </>
+              )}
+            </Card>
+          ))}
+        </div>
 
-      {error && <Badge tone="red">{error}</Badge>}
+        {error && <Badge tone="red">{error}</Badge>}
 
-      <UploadPanel conversationId={conversationId} />
+        <UploadPanel conversationId={conversationId} />
 
-      <Field label="Your question" htmlFor="draft">
-        <Textarea
-          id="draft"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          disabled={busy}
-          rows={3}
-          placeholder="Ask a question…"
-        />
-      </Field>
-      <Button variant="primary" onClick={() => void send()} disabled={busy || !draft.trim()}>
-        {busy ? "Answering…" : "Send"}
-      </Button>
-    </main>
+        <Field label="Your question" htmlFor="draft">
+          <Textarea
+            id="draft"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            disabled={busy}
+            rows={3}
+            placeholder="Ask a question…"
+          />
+        </Field>
+        <Button variant="primary" onClick={() => void send()} disabled={busy || !draft.trim()}>
+          {busy ? "Answering…" : "Send"}
+        </Button>
+      </main>
+    </ChatLayout>
   );
 }

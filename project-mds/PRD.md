@@ -112,7 +112,7 @@
 
 ##### M12.1 — Chat layout shell (three-pane grid)
 - [x] M12.1.1 Create `.chat-layout` CSS: three-pane grid (sidebar 248px + chat flex:1 + sources-rail 320px) using ds.css tokens; responsive breakpoints (collapse sources-rail < 1280px, collapse sidebar < 900px) — **DONE** (`packages/ui/src/ds.css` `.chat-layout` named-grid-areas container [`sidebar`/`main`/`rail`] dropping the rail < 1280px and the sidebar < 900px via range-notation breakpoints; child hooks `.chat-sidebar`/`.chat-main`/`.chat-rail`. Also fixed the pre-existing red lint gate from the M12.8 login commit — login.css raw-px → rem/tokens, Google-brand-hex SVGs behind scoped eslint-disables; see LEARNINGS #13.)
-- [ ] M12.1.2 Extract `ChatLayout` component wrapping sidebar + main + rail; integrate into `/chat` route replacing the current single-card layout
+- [x] M12.1.2 Extract `ChatLayout` component wrapping sidebar + main + rail; integrate into `/chat` route replacing the current single-card layout — **DONE** (`packages/ui/src/ChatLayout.tsx` over the M12.1.1 `.chat-layout` grid: optional `sidebar`/`rail` props → `.chat-sidebar`/`.chat-rail`, `children` → scrollable `.chat-main`; `Shell`-style render-region-only-when-given so M12.1.3 directions drop a pane via `undefined`; integrated into both renders of `apps/web/app/chat/page.tsx`; +3 ui tests, 100% coverage)
 - [ ] M12.1.3 Layout direction switcher state (classic / studio / focus) — studio = default three-pane; classic = two-pane + sources drawer overlay; focus = no sidebar + sources drawer
 
 ##### M12.2 — Sidebar (conversation list + navigation)

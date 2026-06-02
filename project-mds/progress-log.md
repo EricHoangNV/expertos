@@ -2612,3 +2612,30 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - `turbo` arm64 binary SIGILLs here — run gates per-workspace directly (`tsc --noEmit`, `next lint --max-warnings 0`, `jest`). Verified: web tsc ✅, admin tsc ✅, ui jest 29 ✅, css/web/admin lint ✅, knip ✅. web/admin have no unit tests (`--passWithNoTests`); shared/db/ai/api untouched.
 - `.chat-layout` is CSS only — no consumer yet. M12.1.2 extracts the `ChatLayout` React component and wires it into `/chat` (currently a single `.card`). The current chat page still uses the old single-card layout.
 - Coverage gap noted in LEARNINGS #13: `apps/admin/src/components/admin-login.css` is outside the `apps/**/app/**` lint:css glob, so it isn't stylelinted. Widen the glob if admin CSS grows.
+
+## M12.1.2 — Extract `ChatLayout` component + integrate into `/chat`
+**Date:** 2026-06-02
+**Ref:** PRD §"M12 — Frontend UI Overhaul" task M12.1.2; `requirements/ui-reference-spec.md` §"Layout: Three-Pane Studio"
+
+**What was done:**
+- New `packages/ui/src/ChatLayout.tsx` — a `ChatLayout` component that renders the M12.1.1 `.chat-layout` grid, mapping optional `sidebar`/`rail` props into `.chat-sidebar`/`.chat-rail` and `children` into `.chat-main`. Follows the existing `Shell` component pattern (omitted panes short-circuit to `false` so the classic/focus layout directions can drop a pane by passing `undefined`).
+- Exported `ChatLayout` + `ChatLayoutProps` from `packages/ui/src/index.ts`; rebuilt `packages/ui/dist` so the web app's `@expertos/ui` import resolves the new export.
+- Integrated into `apps/web/app/chat/page.tsx`: the signed-out and signed-in renders now wrap their `<main>` in `<ChatLayout>` instead of standing alone. Re-indented the signed-in JSX subtree to match the new nesting.
+- Added `.chat-main > .chat-content` to `ds.css` (`flex:1; min-height:0; overflow-y:auto`) so the chat column scrolls within the 100vh `.chat-main` flex column — sets up the future sticky input bar (M12.6).
+- Tests: 3 new `ChatLayout` cases in `packages/ui/src/primitives.test.ts` (bare main-only, full sidebar+rail, className merge); 100% coverage on `ChatLayout.tsx`.
+
+**Key decisions:**
+- Kept scope to the *shell only* — sidebar (M12.2), topbar (M12.3), messages (M12.4), sources rail (M12.5), input bar (M12.6) are their own tasks. The existing chat content moves verbatim into `.chat-main`; no sidebar/rail content yet (single-column ChatLayout is valid and shippable).
+- Mirrored `Shell`'s "render-region-only-when-given" idiom rather than always emitting empty `<aside>`s, so M12.1.3's layout directions get a clean knob (pass `undefined` to drop a pane).
+- Added `.chat-content` (not in the spec's class list) as legitimate scroll infrastructure for the 100vh column; uses only tokens/keywords (no hardcoded px/hex).
+
+**Files changed:**
+- `packages/ui/src/ChatLayout.tsx` — NEW component.
+- `packages/ui/src/index.ts` — export `ChatLayout` + `ChatLayoutProps`.
+- `packages/ui/src/primitives.test.ts` — +3 ChatLayout tests.
+- `packages/ui/src/ds.css` — `.chat-main > .chat-content` scroll region.
+- `apps/web/app/chat/page.tsx` — wrap both renders in `ChatLayout`; main column gets `.chat-content`.
+
+**Notes for next iteration:**
+- Gates run per-workspace (turbo SIGILLs here): ui tsc ✅, ui jest 32 ✅ (ChatLayout 100%), ui eslint+stylelint ✅, web tsc ✅, web next lint ✅, knip ✅. Had to rebuild `packages/ui/dist` for the web tsc to see the new export — remember this when adding ui exports consumed cross-workspace.
+- Next: M12.1.3 (layout-direction switcher: classic/studio/focus) — `ChatLayout` already supports dropping panes via `undefined` props; the switcher just chooses which props to pass + persists choice. Then M12.2 builds real sidebar content to pass as the `sidebar` prop.

@@ -6,6 +6,7 @@ import { Card } from "./Card";
 import { Chip } from "./Chip";
 import { Cite } from "./Cite";
 import { Content, Shell, Topbar } from "./Shell";
+import { ChatLayout } from "./ChatLayout";
 import { Field, Input, Select, Textarea } from "./Field";
 import { Stat } from "./Stat";
 import { Table } from "./Table";
@@ -230,5 +231,32 @@ describe("Shell / Topbar / Content — the shared app frame", () => {
     const inner = kids(narrow) as ReactElement;
     expect(cls(inner)).toBe("content-narrow");
     expect((inner.props as { children?: unknown }).children).toBe("x");
+  });
+});
+
+describe("ChatLayout — three-pane studio grid (M12.1)", () => {
+  it("renders only the `.chat-main` column when no sidebar or rail is given", () => {
+    const bare = ChatLayout({ children: "chat" }) as ReactElement;
+    expect(cls(bare)).toBe("chat-layout");
+    const [sidebar, main, rail] = kids(bare) as ReactElement[];
+    // Omitted panes short-circuit to `false` so focus/classic directions drop them.
+    expect(sidebar).toBe(false);
+    expect(cls(main)).toBe("chat-main");
+    expect((main.props as { children?: unknown }).children).toBe("chat");
+    expect(rail).toBe(false);
+  });
+
+  it("renders the sidebar and sources rail when supplied", () => {
+    const full = ChatLayout({ sidebar: "nav", rail: "sources", children: "chat" }) as ReactElement;
+    const [sidebar, , rail] = kids(full) as ReactElement[];
+    expect(cls(sidebar)).toBe("chat-sidebar");
+    expect((sidebar.props as { children?: unknown }).children).toBe("nav");
+    expect(cls(rail)).toBe("chat-rail");
+    expect((rail.props as { children?: unknown }).children).toBe("sources");
+  });
+
+  it("merges a caller className onto the grid container", () => {
+    const el = ChatLayout({ className: "focus", children: "chat" }) as ReactElement;
+    expect(cls(el)).toBe("chat-layout focus");
   });
 });

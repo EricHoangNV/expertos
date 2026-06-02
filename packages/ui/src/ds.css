@@ -353,3 +353,11 @@ kbd { font-family: var(--font-mono); font-size: 11px; background: var(--paper-2)
   .chat-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main"; }
   .chat-layout > .chat-sidebar { display: none; }
 }
+
+/* The chat column's scroll region: fills the `.chat-main` flex column and
+   scrolls on its own so the (future) sticky input bar (M12.6) stays put. */
+.chat-main > .chat-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}

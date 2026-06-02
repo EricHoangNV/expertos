@@ -22,3 +22,5 @@ export { UsageMeter } from "./UsageMeter";
 export type { UsageMeterProps } from "./UsageMeter";
 export { Shell, Topbar, Content } from "./Shell";
 export type { ShellProps, ContentProps } from "./Shell";
+export { ChatLayout } from "./ChatLayout";
+export type { ChatLayoutProps } from "./ChatLayout";
