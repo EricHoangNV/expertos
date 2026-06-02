@@ -52,7 +52,12 @@ export default defineConfig({
           url: `${env.apiBaseUrl}/health`,
           reuseExistingServer: true,
           timeout: 120_000,
-          env: { FIREBASE_AUTH_EMULATOR_HOST: env.authEmulatorHost },
+          // No service-account cert in emulator mode — the API initializes with just the
+          // project id (must match the project the web/admin clients mint tokens under).
+          env: {
+            FIREBASE_AUTH_EMULATOR_HOST: env.authEmulatorHost,
+            FIREBASE_PROJECT_ID: env.firebaseProjectId,
+          },
         },
         {
           name: "web",

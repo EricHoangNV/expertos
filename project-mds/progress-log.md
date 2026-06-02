@@ -2500,3 +2500,31 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - `project-mds/progress-state.md` — recorded the executed-green live-DB tier + refined the M11.1 next-task framing (DB tier now covered; only the browser/emulator stack remains blocked).
 
 **Tests:** default suite unchanged (1033 pass / 0 fail; FULL TURBO cached). Live-DB tier now executes: 15 (db) + 35 (api) = **50 live tests pass**. typecheck/lint/deadcode/build all green.
+
+## M11.1 enabler fix — API Firebase Admin init is emulator-aware (E2E stack can boot)
+**Date:** 2026-06-02
+**Ref:** PRD §"Testing Strategy" (M11.1); LEARNINGS #9
+
+**What was done:**
+- Found a boot-time bug that blocked the *entire* Playwright E2E stack from ever starting: the M11.1 enabler added env-guarded `connectAuthEmulator` wiring to the web + admin Firebase clients and the Playwright `webServer` passes `FIREBASE_AUTH_EMULATOR_HOST` to the API process — but the API's `createFirebaseApp` (Admin SDK) always required a full service-account cert (`projectId`+`clientEmail`+`privateKey`) and threw `Firebase credentials missing` otherwise. So `pnpm --filter @expertos/api start` under the emulator throws on boot, `/health` never comes up, and Playwright aborts before any spec runs.
+- Made `createFirebaseApp` emulator-aware: when `FIREBASE_AUTH_EMULATOR_HOST` is set it initializes with just a `projectId` (from `FIREBASE_PROJECT_ID`/`GCLOUD_PROJECT`, placeholder `demo-expertos` fallback) and no cert — the Admin SDK skips signature verification against the emulator. Mirrors the client env-guard; production no-op (prod never sets that var).
+- Passed `FIREBASE_PROJECT_ID: env.firebaseProjectId` to the Playwright `api` webServer so the Admin SDK validates emulator-minted tokens under the same project the clients use.
+- Added 4 unit tests for `createFirebaseApp` (reuse-existing-app, cert/prod path with `\n` unescape, emulator path, emulator placeholder-projectId fallback) using a `firebase-admin/app` module mock so init decisions are observable without touching the process-global app registry.
+- Fixed a stale `e2e/README.md` line (account-billing checkout was marked "no consumer CTA yet" — M6.2 since built the CTA; only the external Stripe-hosted page stays a fixme) and documented that the API needs no service-account cert in emulator mode.
+- Added LEARNINGS #9 (two-sided emulator enabler must be wired on every process; Admin SDK has a different init contract than the client SDK).
+
+**Key decisions:**
+- Mocked `firebase-admin/app` in the test rather than calling the real `initializeApp` so the test never mutates the global Firebase app registry (which would make the order-dependent throw-when-missing test flaky). Reset `getApps` per test.
+- Placeholder project id `demo-expertos` only when nothing is configured — keeps a bare `node load/smoke.mjs`-style emulator boot working, while real E2E always passes the explicit project.
+- Did not add a directive: this is environment/test-enablement specific, not an every-change rule.
+
+**Files changed:**
+- `apps/api/src/auth/firebase-admin.provider.ts` — emulator branch in `createFirebaseApp` (init with `projectId` only, no cert, when `FIREBASE_AUTH_EMULATOR_HOST` set).
+- `apps/api/src/auth/firebase-token-verifier.test.ts` — +4 `createFirebaseApp` tests via a `firebase-admin/app` mock.
+- `e2e/playwright.config.ts` — api webServer now also passes `FIREBASE_PROJECT_ID`.
+- `e2e/README.md` — corrected stale checkout-fixme line; documented cert-free emulator init.
+- `project-mds/LEARNINGS.MD` — added #9.
+
+**Notes for next iteration:**
+- The API will now boot under the Auth emulator, but full M11.1 execution is still blocked in-sandbox on chromium Linux system-deps + a `firebase-tools` emulator + the 3 running services. npm registry is reachable (verified), so a future run could attempt `playwright install chromium` + `firebase-tools` if system deps/network for the browser CDN + emulator jar are granted.
+- M11.3 `load/smoke.mjs` still awaits the running services; the API boot path is now one blocker lighter.

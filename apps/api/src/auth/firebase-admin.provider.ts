@@ -10,11 +10,22 @@ export const FIREBASE_AUTH = "FIREBASE_AUTH";
  * the environment. Credentials come from Secret Manager in production — never
  * committed. `FIREBASE_PRIVATE_KEY` is stored with escaped newlines (`\n`), which
  * we unescape here.
+ *
+ * Against the Firebase Auth **emulator** (local dev + the E2E stack) the Admin SDK
+ * reads `FIREBASE_AUTH_EMULATOR_HOST` and skips token-signature verification, so no
+ * service-account credentials are required — we initialize with just the project id.
+ * This mirrors the env-guarded `connectAuthEmulator` wiring on the web/admin clients
+ * and is a production no-op (production never sets `FIREBASE_AUTH_EMULATOR_HOST`).
  */
 export function createFirebaseApp(env: NodeJS.ProcessEnv = process.env): App {
   const existing = getApps();
   if (existing.length > 0) {
     return existing[0];
+  }
+
+  if (env.FIREBASE_AUTH_EMULATOR_HOST) {
+    const emulatorProjectId = env.FIREBASE_PROJECT_ID ?? env.GCLOUD_PROJECT ?? "demo-expertos";
+    return initializeApp({ projectId: emulatorProjectId });
   }
 
   const projectId = env.FIREBASE_PROJECT_ID;

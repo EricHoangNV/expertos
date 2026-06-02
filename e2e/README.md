@@ -16,7 +16,7 @@ Auth emulator for you.
 | `web-voice-and-consultation.spec.ts` | multi-expert voice selection (M2.2); consultation recommendation → booking (M7.2) |
 | `web-history.spec.ts` | conversation history + full-text search (M3.3); saved answers (M3.2); rename |
 | `web-upload.spec.ts` | spreadsheet upload → searchable chunks (M5.3); unsupported-type rejection |
-| `account-billing.spec.ts` | plan + transparent usage meter (M6.3); _checkout leg: fixme (no consumer CTA yet)_ |
+| `account-billing.spec.ts` | plan + transparent usage meter (M6.3); self-serve upgrade CTA (M6.2); _completing the Stripe-hosted checkout page: fixme (external surface)_ |
 | `admin-portal.spec.ts` | role-aware portal nav; knowledge review-gate queue (M8.1); _publish→retrieval round-trip: fixme_ |
 | `data-deletion.spec.ts` | admin records a deletion request (M8.4); _irreversible cascade: fixme_ |
 
@@ -36,8 +36,9 @@ matrix honest without producing flaky runs.
    ```
 3. **The three app processes**, all pointed at the emulator. Either start them yourself
    (then run with `E2E_NO_WEBSERVER=1`) or let Playwright start/attach to them via the
-   `webServer` config. The API reads `FIREBASE_AUTH_EMULATOR_HOST`; the web/admin clients
-   read `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` (see `.env.example`).
+   `webServer` config. The API reads `FIREBASE_AUTH_EMULATOR_HOST` (+ `FIREBASE_PROJECT_ID`)
+   and initializes the Admin SDK **without a service-account cert** in this mode; the
+   web/admin clients read `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` (see `.env.example`).
 
 ### Test identities & roles
 
