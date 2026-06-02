@@ -12,7 +12,7 @@
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint && pnpm lint:css",
-    "lint:css": "stylelint \"packages/**/src/**/*.css\" \"apps/**/app/**/*.css\"",
+    "lint:css": "stylelint \"packages/**/src/**/*.css\" \"apps/**/app/**/*.css\" \"apps/**/src/**/*.css\"",
     "deadcode": "knip",
     "test:integration": "bash infra/local-test-db.sh",
     "deploy:api": "bash infra/deploy.sh api",

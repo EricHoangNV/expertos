@@ -1,3 +1,8 @@
+/* Admin/Expert portal login — single centered card on the dark shell.
+   Dimensions use ds.css spacing tokens and rem (the root font-size is 15px,
+   so 1rem = 15px — pixel-faithful to the mockup while scaling with the user's
+   font-size preference). No hardcoded px (design-system guard, M13.7.5). */
+
 .admin-login {
   min-height: 100vh;
   display: flex;
@@ -10,7 +15,7 @@
 
 .admin-login-card {
   width: 100%;
-  max-width: 420px;
+  max-width: 28rem;
   background: var(--surface);
   border-radius: var(--r-xl);
   box-shadow: var(--sh-lg);
@@ -27,7 +32,7 @@
 }
 
 .admin-login-logo {
-  height: 32px;
+  height: 2.1333rem;
   width: auto;
   object-fit: contain;
 }
@@ -35,7 +40,7 @@
 .admin-login-title {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 22px;
+  font-size: 1.4667rem;
   color: var(--ink-900);
   margin: 0;
 }
@@ -51,7 +56,7 @@
   align-items: flex-start;
   gap: var(--s3);
   padding: var(--s4);
-  border: 1px solid var(--line);
+  border: 0.0667rem solid var(--line);
   border-radius: var(--r-md);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
@@ -67,12 +72,12 @@
 }
 
 .admin-login-role-radio {
-  width: 18px;
-  height: 18px;
+  width: 1.2rem;
+  height: 1.2rem;
   border-radius: 50%;
-  border: 2px solid var(--ink-300);
+  border: 0.1333rem solid var(--ink-300);
   flex: none;
-  margin-top: 2px;
+  margin-top: 0.1333rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -85,8 +90,8 @@
 
 .admin-login-role.selected .admin-login-role-radio::after {
   content: "";
-  width: 8px;
-  height: 8px;
+  width: 0.5333rem;
+  height: 0.5333rem;
   border-radius: 50%;
   background: var(--red-600);
 }
@@ -98,13 +103,20 @@
 
 .admin-login-role-name {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 1rem;
   color: var(--ink-900);
 }
 
 .admin-login-role-desc {
-  font-size: 13px;
+  font-size: 0.8667rem;
   color: var(--ink-500);
-  margin-top: 2px;
+  margin-top: 0.1333rem;
 }
 
+/* Google sign-in reuses .btn .btn-ghost; only the full-width layout + icon gap
+   are bespoke (mirrors the consumer web app's .btn-google). */
+.admin-login-google {
+  width: 100%;
+  justify-content: center;
+  gap: var(--s3);
+}

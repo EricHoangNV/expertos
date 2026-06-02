@@ -4089,3 +4089,29 @@ Wired the two call sites:
 **Gates:** admin `tsc --noEmit` + `next lint --max-warnings 0` clean (fixed one `react-hooks/exhaustive-deps` from a subagent's `roleLabel` → wrapped in `useCallback`); root `lint:css` + `knip` clean (`rm -rf apps/*/.next` first). EN/VI lockstep verified. No backend/shared/ui/web changes → their suites unaffected (test total stays 1274; admin + web have no jest suite). `next build` blocked in-sandbox (arch mismatch, environmental) — validated via `tsc` + `next lint` + `satisfies Messages`.
 
 **Honest deviations / left untranslated:** server-dynamic content (user names, emails, document/plan titles, dates, model names) is interpolated, not translated; the recommendation-rules keywords textarea placeholder (`legal/tax/contract`) left as illustrative sample data; existing `toLocaleString` date/number call sites left as-is (M13.5 formatters available for future tightening; not in M13.3 scope per the manifest's date/number note pointing to M13.5).
+
+---
+
+## 2026-06-02 — M13.7 Admin polish & shared patterns (.7.1 / .7.2 / .7.3 / .7.5)
+
+**Task:** M13.7 — admin "polish & shared patterns". On inspection, four of five subtasks were already satisfied by earlier milestones or are blocked; the substantive work was the conformance gap in .7.5.
+
+**.7.1 Role-aware sidebar — already satisfied.** `AdminFrame` `Sidebar` filters `NAV.filter((item) => item.role === "expert" || role === "admin")`: admins see every group, experts see only the `expert`-role items (OPERATE knowledge/drafts/answers + the EXPERT PORTAL group). UX gate over the real `@Roles` API boundary; mockup grouping was applied in M13.1.1. Marked done, no code change.
+
+**.7.2 `.dark-card` / .7.3 `.kanban` — already built.** `.dark-card` (M13.2.7 SLA card + M13.6.4 question bubble) and `.kanban`/`.kanban-col` (M13.3 board) already live in ds.css. Verified present + reused; marked done, no code change.
+
+**.7.4 `.voice-bar` — BLOCKED on M13.5** (voice profile page deferred pending PM/schema decision; the dimension bar lands with that page). Left open.
+
+**.7.5 ds.css conformance — DONE, two real px gaps found + fixed:**
+1. `apps/admin/src/components/admin-login.css` was full of raw `px` (`420px`/`32px`/`22px`/`18px`/borders…) **but sat outside the `lint:css` glob** (`packages/**/src/**/*.css` + `apps/**/app/**/*.css` only — `src/` component CSS was never linted), so it read green for two milestones. This was the open caveat already noted in LEARNINGS #13. Fixed by:
+   - Converting every px → rem at 1rem=15px (mirrors the web `login.css` M12.9.2 fix); borders `1px→0.0667rem`, `2px→0.1333rem`; `gap`/`padding` on the 4px grid use `var(--sN)` tokens.
+   - Broadening the root `lint:css` glob to also cover `apps/**/src/**/*.css` so the guard can't miss `src/` CSS again.
+2. The Google sign-in button in `AdminFrame.tsx` carried an inline `style={{ width:"100%", justifyContent:"center", gap:"12px" }}` — an off-scale `px` caught by **neither** stylelint (TSX, not CSS) **nor** eslint (only bans hex literals). Moved to a new `.admin-login-google` class (`gap: var(--s3)`).
+
+Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:ink / ai_processing:info / expert_review:amber / published:green — matches the Design System rule exactly. No hardcoded hex in admin code outside the scoped Google-brand SVG.
+
+**Files:** `apps/admin/src/components/admin-login.css` (px→rem + `.admin-login-google`), `apps/admin/src/components/AdminFrame.tsx` (inline style → class), `package.json` (`lint:css` glob), `project-mds/{PRD.md,LEARNINGS.md,progress-*.md}`.
+
+**Gates:** root `lint:css` (now linting admin-login.css — clean), admin `tsc --noEmit` clean, admin `next lint` clean, root `knip` clean (`rm -rf apps/*/.next` first). No backend/shared/ui/web changes → test total stays 1274; admin has no jest suite (changes are presentational + a lint-glob string).
+
+**Learning:** updated LEARNINGS #13's open caveat to CLOSED — a guard that exists but doesn't glob the file is worse than no guard (reads green); inline `px` in JSX `style={{}}` is the remaining blind spot (outside both stylelint and eslint), so prefer a CSS class over an inline style for any sized property.

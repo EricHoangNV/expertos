@@ -315,8 +315,7 @@ function AdminLogin({ onSignIn }: { onSignIn: () => Promise<void> }) {
 
         <button
           type="button"
-          className="btn btn-ghost"
-          style={{ width: "100%", justifyContent: "center", gap: "12px" }}
+          className="btn btn-ghost admin-login-google"
           onClick={() => void onSignIn()}
         >
           <GoogleIcon />
