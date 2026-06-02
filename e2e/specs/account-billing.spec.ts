@@ -36,8 +36,9 @@ test.describe("plan & usage", () => {
   });
 
   // The button click hands off to Stripe's hosted checkout page — an external surface this suite
-  // shouldn't drive. When a Stripe test harness lands: click Upgrade → complete test checkout →
-  // webhook syncs the subscription → reload /account → plan reflects the new entitlement.
+  // shouldn't drive, so this stays a documented fixme (M15.3.5): completing payment lives on
+  // Stripe's domain, not the app. When a Stripe test harness lands: click Upgrade → complete test
+  // checkout → webhook syncs the subscription → reload /account → plan reflects the new entitlement.
   test.fixme("completing checkout reflects the new entitlement", async () => {
     // 1. Click "Upgrade to …" → land on the Stripe-hosted checkout.
     // 2. Complete the Stripe test checkout (test card).

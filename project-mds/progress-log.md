@@ -4504,3 +4504,35 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 - **M15.3.3** (concierge) + **M15.3.4** (knowledge approve) need seed data in `global-setup.ts` — a `human_review_request` tied to the expert, and a `document`+`document_version` in `expert_review` with chunks. The stack is up; use the recipe in progress-state.
 - **M15.3.5** — Stripe checkout fixme is external (stays). The publish→retrieval + deletion-cascade fixmes need the same seed work as .3/.4 / a throwaway user.
 - Gates: e2e `tsc` + `eslint` clean.
+
+## M15.3.5 — Resolve test.fixme legs (deletion cascade unblocked; publish→retrieval + Stripe documented)
+**Date:** 2026-06-02
+**Ref:** PRD Task Manifest M15.3.5 (E2E suite expansion); DIRECTIVES §3.4.1 (sandbox E2E constraint)
+
+**What was done:**
+- **Unblocked the data-deletion irreversible-cascade leg** (was `test.fixme`):
+  - `e2e/global-setup.ts`: seeds a dedicated DB-only throwaway user `e2e-deletable@expertos.test` with a fixed `firebase_uid` (idempotent upsert on `tenantId_email`) and an owned conversation + message. Re-created every run (the prior run's spec deletes it), so the cascade round-trip is repeatable and never touches a shared test identity.
+  - `e2e/specs/data-deletion.spec.ts`: rewrote the fixme into a live test — admin signs in → `/users` → searches the throwaway email → opens Manage → asserts the Conversations stat is non-zero (proves owned data, so the delete isn't vacuous) → "Delete data…" → "Confirm delete" → asserts redirect to `/users` + the row gone ("No users match."). A successful delete is itself proof the cascade ran: an FK-blocking owned row would surface the "Failed to delete user." badge instead of the redirect.
+- **Documented why the other two legs stay fixme:**
+  - `admin-portal.spec.ts` publish→retrieval: needs the document to carry real chunks **and** embeddings (the parse→chunk→embed ingest pipeline, seeded out-of-band) — a hand-seeded row can't be retrieved deterministically by hybrid vector+keyword search. The approve→publish state-machine leg itself is already covered live by the M15.3.4 knowledge-approval spec. Sharpened the in-spec comment.
+  - `account-billing.spec.ts` Stripe checkout: completing payment lives on Stripe's hosted domain — an external surface the suite shouldn't drive. Added an M15.3.5 traceability note.
+- `e2e/README.md`: added the missing concierge-review + knowledge-approval rows, updated the data-deletion row (cascade now live), and clarified the matrix count (last host-validated 20/3; new specs drop fixme to 2 once host-run).
+
+**Key decisions:**
+- **DB-only throwaway user (no emulator identity).** The admin deletes by row, so the deletable user never needs to sign in — a pure DB seed is simplest and avoids minting/cleaning an emulator account. Dropped the original fixme's step 3 ("sign in again → fresh account") accordingly; the row-gone + redirect assertion is the honest E2E proof of the cascade.
+- **Search the roster rather than scroll.** The list is the newest 50; searching the unique email makes the row reachable regardless of how many users the stack holds.
+- **Per §3.4.1, sandbox writes specs + runs static gates only** (the 4GB VM OOMs under DB + emulator + 3 servers + Playwright + Claude). Did not stand up the live stack. The host runs Playwright.
+- **Left M15.3.3/.4 as `[ ]`.** Their specs were written + committed by the prior agent (195ca26) and statically gate clean, but I'm only flipping the task I did (M15.3.5). Noted in progress-state that .3/.4 are spec-complete awaiting a host run.
+
+**Files changed:**
+- `e2e/global-setup.ts` — seed throwaway deletable user + owned conversation/message (idempotent).
+- `e2e/specs/data-deletion.spec.ts` — fixme → live cascade test; hoisted `DELETABLE_EMAIL` const; updated docstring.
+- `e2e/specs/admin-portal.spec.ts` — sharpened the publish→retrieval fixme rationale.
+- `e2e/specs/account-billing.spec.ts` — added M15.3.5 note to the Stripe fixme.
+- `e2e/README.md` — matrix table + count clarification.
+- `project-mds/PRD.md` — M15.3.5 → `[x]` with detail.
+
+**Notes for next iteration:**
+- **Host-validate M15.3.3/.4/.5** with the live-stack recipe (progress-state). Expect the fixme count to drop 3 → 2 and ~3 new passing tests (concierge ×2, knowledge ×1, deletion-cascade ×1 minus the now-removed fixme). After a green host run, flip M15.3.3/.4 to `[x]` and bump the README count.
+- The deletion-cascade spec's pre-delete assertion depends on the seed creating the conversation — if the seed is changed, keep the owned conversation so the test doesn't pass vacuously.
+- Remaining open after M15.3: M13.5.3/.4/.5 + M13.7.4 (voice widgets, blocked on PM/schema), M11.4 / NT.3 / NT.4 (human sign-off gates).

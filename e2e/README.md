@@ -18,13 +18,20 @@ Auth emulator for you.
 | `web-upload.spec.ts` | spreadsheet upload → searchable chunks (M5.3); unsupported-type rejection |
 | `account-billing.spec.ts` | plan + transparent usage meter (M6.3); self-serve upgrade CTA (M6.2); _completing the Stripe-hosted checkout page: fixme (external surface)_ |
 | `admin-portal.spec.ts` | role-aware M13.1 nav (OPERATE / MONETIZE / EXPERT PORTAL + role badge); knowledge-approval kanban + step filter (M8.1/M13.3); _publish→retrieval round-trip: fixme_ |
-| `data-deletion.spec.ts` | admin records a deletion request (M8.4); _irreversible cascade: fixme_ |
+| `data-deletion.spec.ts` | admin records a deletion request (M8.4); irreversible cascade against a throwaway seeded user (M8.4/M15.3.5) |
+| `concierge-review.spec.ts` | expert review queue: open a case, record a verdict + refined edit, triage filter (M9.2/M13.6/M15.3.3) |
+| `knowledge-approval.spec.ts` | knowledge kanban: filter by status, approve a seeded Expert-Review doc → Published (M8.1/M13.3/M15.3.4) |
 | `admin-i18n.spec.ts` | admin portal EN→VI locale toggle: nav, role badge, page headers switch + persist (M13.3, M15.3.1) |
 | `access-control.spec.ts` | admin whitelist add / re-role / remove (M14); Access Denied for a non-whitelisted email (M15.3.2) |
 | `web-i18n.spec.ts` | consumer EN→VI language toggle: chat, account, history switch + persist (M13.1–.5, M15.3.6) |
 
 `fixme` tests document a flow whose UI/seed prerequisite is not yet present — they keep the
-matrix honest without producing flaky runs. The current matrix is **20 passed / 3 fixme-skipped**.
+matrix honest without producing flaky runs. The last host-validated matrix was **20 passed /
+3 fixme-skipped**; the M15.3.3/.4 specs (concierge-review, knowledge-approval) and the M15.3.5
+data-deletion cascade are written + statically gated and await a host run, which drops the fixme
+count to **2** — the only remaining documented skips are the Stripe-hosted checkout page
+(`account-billing`, external surface) and the publish→retrieval round-trip (`admin-portal`, needs
+the real parse→chunk→embed ingest pipeline, seeded out-of-band).
 
 > **Note on the stack env:** the admin portal is gated by the M14 access-control whitelist, so
 > `global-setup.ts` seeds `e2e-admin@`/`e2e-expert@` into `allowed_emails` (and resets every test

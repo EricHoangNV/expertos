@@ -61,8 +61,14 @@ test.describe("admin portal", () => {
     await expect(page.getByText(/^expert view$/i).first()).toBeVisible();
   });
 
-  // Full expert-review gate round-trip — requires a freshly-ingested Draft document to
-  // act on (seeded via `pnpm --filter @expertos/db db:seed` or the ingest CLI; see README).
+  // Full expert-review gate round-trip. Stays a documented fixme (M15.3.5): the "becomes
+  // retrievable" leg (steps 3 + 5) needs the document to carry real chunks *and* embeddings so
+  // hybrid retrieval (vector + keyword) can surface it and the answer pipeline can cite it — that
+  // is exactly the parse→chunk→embed ingest pipeline, which the live stack seeds out-of-band
+  // (`pnpm --filter @expertos/db db:seed` or the ingest CLI; see README). A hand-seeded row
+  // without genuine embeddings can't be retrieved deterministically, so the round-trip can't be
+  // honestly asserted from a static seed alone. (The approve→publish state-machine leg itself is
+  // already covered live by the M15.3.4 knowledge-approval spec.)
   test.fixme(
     "admin publishes a document and it becomes retrievable; unpublish removes it",
     async () => {

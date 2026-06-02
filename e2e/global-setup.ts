@@ -263,6 +263,51 @@ async function globalSetup(): Promise<void> {
           },
         });
       }
+
+      // Seed a dedicated throwaway user *with owned data* so the M8.4 irreversible deletion
+      // cascade (M15.3.5) has a real target the spec can permanently delete + verify gone —
+      // without ever touching a shared test identity. DB-only on purpose: the admin deletes it
+      // by row, so it needs no emulator identity and the spec never signs in as it. The prior
+      // run's spec deletes it, so re-create it every run for a repeatable round-trip; the fixed
+      // `firebase_uid` keeps the upsert stable. A conversation + message give the cascade owned
+      // data to remove (and the detail page a non-zero conversation stat the spec asserts
+      // pre-delete, so the test can't pass vacuously against a dataless user).
+      const DELETABLE_EMAIL = "e2e-deletable@expertos.test";
+      const deletable = await tx.user.upsert({
+        where: { tenantId_email: { tenantId: GLOBAL_TENANT_ID, email: DELETABLE_EMAIL } },
+        update: {},
+        create: {
+          tenantId: GLOBAL_TENANT_ID,
+          firebaseUid: "e2e-deletable-uid",
+          email: DELETABLE_EMAIL,
+          displayName: "E2E Deletable User",
+          role: "user",
+        },
+        select: { id: true },
+      });
+      const deletableConvo = await tx.conversation.findFirst({
+        where: { userId: deletable.id },
+        select: { id: true },
+      });
+      if (!deletableConvo) {
+        const convo = await tx.conversation.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            userId: deletable.id,
+            title: "E2E Deletable User Conversation",
+            language: "en",
+          },
+          select: { id: true },
+        });
+        await tx.message.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            conversationId: convo.id,
+            role: "user",
+            content: "A throwaway message the deletion cascade must remove.",
+          },
+        });
+      }
     });
   } finally {
     await prisma.$disconnect();
