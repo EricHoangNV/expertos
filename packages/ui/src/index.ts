@@ -54,6 +54,8 @@ export { SourcesRailHeader } from "./SourcesRailHeader";
 export type { SourcesRailHeaderProps } from "./SourcesRailHeader";
 export { SourceCard } from "./SourceCard";
 export type { SourceCardProps } from "./SourceCard";
+export { SourcesDrawer } from "./SourcesDrawer";
+export type { SourcesDrawerProps } from "./SourcesDrawer";
 export {
   ChatConversationList,
   AVATAR_TONES,

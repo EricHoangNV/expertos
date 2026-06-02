@@ -19,6 +19,7 @@ import { ChatStateNotice } from "./ChatStateNotice";
 import { SourcesRail } from "./SourcesRail";
 import { SourcesRailHeader } from "./SourcesRailHeader";
 import { SourceCard } from "./SourceCard";
+import { SourcesDrawer } from "./SourcesDrawer";
 import { AnswerProse } from "./AnswerProse";
 import { ChatTopbar } from "./ChatTopbar";
 import {
@@ -1556,5 +1557,88 @@ describe("SourceCard — numbered, colour-coded rail citation card (M12.5.3)", (
       onSelect: () => {},
     }) as ReactElement;
     expect(cls(el)).toBe("source-card upload active");
+  });
+});
+
+describe("SourcesDrawer — slide-over sources fallback (M12.5.4)", () => {
+  const noop = () => {};
+  /** The `<aside>` panel inside the backdrop. */
+  const panel = (el: ReactElement): ReactElement => kids(el) as ReactElement;
+  /** Panel children: [close button, SourcesRail]. */
+  const panelKids = (el: ReactElement): unknown[] => kids(panel(el)) as unknown[];
+
+  it("renders nothing while closed", () => {
+    expect(SourcesDrawer({ open: false, onClose: noop })).toBeNull();
+  });
+
+  it("renders a dimmed backdrop that dismisses on click", () => {
+    const onClose = jest.fn();
+    const el = SourcesDrawer({ open: true, onClose }) as ReactElement;
+    expect(cls(el)).toBe("sources-drawer-backdrop");
+    (el.props as { onClick: () => void }).onClick();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a labelled modal dialog panel that keeps inner clicks from dismissing", () => {
+    const onClose = jest.fn();
+    const p = panel(SourcesDrawer({ open: true, onClose }) as ReactElement);
+    expect(p.type).toBe("aside");
+    const props = p.props as {
+      className?: unknown;
+      role?: unknown;
+      "aria-modal"?: unknown;
+      "aria-label"?: unknown;
+      onClick: (e: { stopPropagation: () => void }) => void;
+    };
+    expect(props.className).toBe("sources-drawer");
+    expect(props.role).toBe("dialog");
+    expect(props["aria-modal"]).toBe("true");
+    expect(props["aria-label"]).toBe("Sources");
+    const stopPropagation = jest.fn();
+    props.onClick({ stopPropagation });
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("accepts a custom accessible title", () => {
+    const p = panel(SourcesDrawer({ open: true, onClose: noop, title: "Citations" }) as ReactElement);
+    expect((p.props as { "aria-label"?: unknown })["aria-label"]).toBe("Citations");
+  });
+
+  it("dismisses on Escape but ignores other keys", () => {
+    const onClose = jest.fn();
+    const p = panel(SourcesDrawer({ open: true, onClose }) as ReactElement);
+    const onKeyDown = (p.props as { onKeyDown: (e: { key: string }) => void }).onKeyDown;
+    onKeyDown({ key: "Enter" });
+    expect(onClose).not.toHaveBeenCalled();
+    onKeyDown({ key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a close button that dismisses", () => {
+    const onClose = jest.fn();
+    const close = panelKids(SourcesDrawer({ open: true, onClose }) as ReactElement)[0] as ReactElement;
+    expect(close.type).toBe("button");
+    const props = close.props as { className?: unknown; "aria-label"?: unknown; onClick: () => void };
+    expect(props.className).toBe("sources-drawer-close");
+    expect(props["aria-label"]).toBe("Close sources");
+    props.onClick();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("hosts the SourcesRail with the header + cards passed through", () => {
+    const el = SourcesDrawer({
+      open: true,
+      onClose: noop,
+      header: "SOURCES",
+      emptyLabel: "none",
+      children: "cards",
+    }) as ReactElement;
+    const rail = panelKids(el)[1] as ReactElement;
+    expect(rail.type).toBe(SourcesRail);
+    const props = rail.props as { header?: unknown; emptyLabel?: unknown; children?: unknown };
+    expect(props.header).toBe("SOURCES");
+    expect(props.emptyLabel).toBe("none");
+    expect(props.children).toBe("cards");
   });
 });

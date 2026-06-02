@@ -25,8 +25,10 @@ import {
   Field,
   Input,
   type LayoutDirection,
+  layoutPanes,
   Select,
   SourceCard,
+  SourcesDrawer,
   SourcesRail,
   SourcesRailHeader,
   Textarea,
@@ -58,6 +60,7 @@ import {
 } from "../../src/lib/history-client";
 import { fetchEntitlements } from "../../src/lib/account-client";
 import { uploadFile, UPLOAD_ACCEPT } from "../../src/lib/upload-client";
+import { useMediaQuery } from "../../src/lib/use-media-query";
 
 interface UiMessage {
   role: "user" | "assistant";
@@ -135,6 +138,25 @@ function sourceCardProvenance(citation: ChatCitationDto): string | undefined {
     return sep >= 0 ? label.slice(sep + 3) : undefined;
   }
   return citation.documentVersionId;
+}
+
+/**
+ * The numbered source cards (M12.5.3) for an answer's resolved citations — shared by the persistent
+ * sources rail (M12.5.1) and the slide-over drawer fallback (M12.5.4) so the two never drift. Returns
+ * `undefined` when there are no citations, so the host (`SourcesRail`) shows its empty state instead.
+ */
+function sourceCards(citations: ChatCitationDto[]) {
+  if (citations.length === 0) return undefined;
+  return citations.map((citation) => (
+    <SourceCard
+      key={citation.ordinal}
+      ordinal={citation.ordinal}
+      kind={citation.kind}
+      title={sourceCardTitle(citation)}
+      provenance={sourceCardProvenance(citation)}
+      excerpt={citation.quote}
+    />
+  ));
 }
 
 /** Replaces the last message in the list via `fn` (immutably). */
@@ -359,9 +381,23 @@ function AnswerActions({
  * header over the answer body — prose + citations, the degraded / insufficient / high-stakes /
  * recommendation state cards, and the {@link AnswerActions} bar once the answer is finished. Owns the
  * per-message `sourcesOpen` toggle state shared by the prose drawer (M12.4.3) and the bar (M12.4.4).
+ *
+ * When the persistent sources rail is not on screen (classic/focus direction or a narrow viewport),
+ * the page passes `onOpenSourcesDrawer` and "View sources" routes to the slide-over drawer (M12.5.4)
+ * instead of the inline list — keeping a single sources presentation per layout.
  */
-function AssistantTurn({ message }: { message: UiMessage }) {
+function AssistantTurn({
+  message,
+  onOpenSourcesDrawer,
+}: {
+  message: UiMessage;
+  onOpenSourcesDrawer?: (citations: ChatCitationDto[]) => void;
+}) {
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  // When the drawer is the sources surface, the inline list stays closed and the
+  // action-bar toggle opens the page-level drawer with this answer's citations.
+  const useDrawer = onOpenSourcesDrawer != null;
+  const inlineOpen = !useDrawer && sourcesOpen;
 
   return (
     <ChatAssistantMessage
@@ -370,7 +406,7 @@ function AssistantTurn({ message }: { message: UiMessage }) {
       sourceLabel={message.done ? answerSourceLabel(message.citations) : undefined}
       verified={message.done && message.citations.length > 0 && !message.insufficientKnowledge}
     >
-      <AssistantAnswer message={message} sourcesOpen={sourcesOpen} />
+      <AssistantAnswer message={message} sourcesOpen={inlineOpen} />
       {message.done && message.degraded && (
         <ChatStateNotice tone="info" label="Fair-use mode" variant="note">
           Answered with a lighter model while you’re over this period’s soft limit.
@@ -390,8 +426,12 @@ function AssistantTurn({ message }: { message: UiMessage }) {
         <AnswerActions
           messageId={message.messageId}
           sourceCount={message.citations.length}
-          sourcesOpen={sourcesOpen}
-          onToggleSources={() => setSourcesOpen((open) => !open)}
+          sourcesOpen={inlineOpen}
+          onToggleSources={() =>
+            useDrawer
+              ? onOpenSourcesDrawer(message.citations)
+              : setSourcesOpen((open) => !open)
+          }
         />
       )}
     </ChatAssistantMessage>
@@ -519,6 +559,19 @@ export default function ChatPage() {
   // panel (M12.7.2) will toggle it + persist to localStorage. Studio = default
   // three-pane; classic/focus drop panes (handled by ChatLayout + ds.css).
   const [direction] = useState<LayoutDirection>(DEFAULT_LAYOUT_DIRECTION);
+  // Sources surface (M12.5.4): the persistent rail is on screen only when the
+  // direction keeps it (studio) AND the viewport is wide enough (≥1280px — below
+  // that ds.css collapses it). Otherwise sources route to the slide-over drawer.
+  const wideViewport = useMediaQuery("(min-width: 1280px)");
+  const railVisible = layoutPanes(direction).rail && wideViewport;
+  // The answer whose sources the slide-over drawer is showing, or null when closed.
+  const [drawerCitations, setDrawerCitations] = useState<ChatCitationDto[] | null>(null);
+
+  // If the persistent rail comes back (widened viewport / switched to studio), close
+  // the drawer so sources aren't shown twice.
+  useEffect(() => {
+    if (railVisible) setDrawerCitations(null);
+  }, [railVisible]);
   // Conversation search (M12.2.2) — full-text search across the user's chats
   // (M3.3). The sidebar input is debounced into `searchQuery`; results render
   // under the field and selecting one loads that conversation into the chat.
@@ -862,18 +915,7 @@ export default function ChatPage() {
       direction={direction}
       rail={
         <SourcesRail header={<SourcesRailHeader count={railCitations.length} />}>
-          {railCitations.length > 0
-            ? railCitations.map((citation) => (
-                <SourceCard
-                  key={citation.ordinal}
-                  ordinal={citation.ordinal}
-                  kind={citation.kind}
-                  title={sourceCardTitle(citation)}
-                  provenance={sourceCardProvenance(citation)}
-                  excerpt={citation.quote}
-                />
-              ))
-            : undefined}
+          {sourceCards(railCitations)}
         </SourcesRail>
       }
       sidebar={
@@ -944,7 +986,10 @@ export default function ChatPage() {
               <ChatUserMessage key={i} content={m.content} />
             ) : (
               <Card key={i} className="card-pad">
-                <AssistantTurn message={m} />
+                <AssistantTurn
+                  message={m}
+                  onOpenSourcesDrawer={railVisible ? undefined : setDrawerCitations}
+                />
               </Card>
             ),
           )}
@@ -968,6 +1013,13 @@ export default function ChatPage() {
           {busy ? "Answering…" : "Send"}
         </Button>
       </main>
+      <SourcesDrawer
+        open={drawerCitations !== null}
+        onClose={() => setDrawerCitations(null)}
+        header={<SourcesRailHeader count={drawerCitations?.length ?? 0} />}
+      >
+        {drawerCitations ? sourceCards(drawerCitations) : undefined}
+      </SourcesDrawer>
     </ChatLayout>
   );
 }

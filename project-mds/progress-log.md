@@ -3127,3 +3127,35 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 - M12.5.4 (sources drawer fallback) is next: when the rail is dropped (classic/focus mode or < 1280px), the same `SourceCard`s should open as a slide-over drawer. The cards are now a reusable primitive — reuse them there. `AnswerView` already has an inline `sourcesOpen`-toggled drawer (M12.4.4) that could host them.
 - `SourceCard.onSelect` (click-to-passage) is unwired in the rail today — the rail isn't yet cross-linked to the inline `[n]` markers. When wiring, mirror `AnswerView.focusSource`/`onCite` to share the active-ordinal state between inline markers and rail cards.
 - Rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing — apps consume `dist/`. `turbo` SIGILLs in this sandbox — run gates per-workspace directly (`pnpm --filter <pkg> ...`).
+
+## M12.5.4 — Sources drawer fallback (slide-over)
+**Date:** 2026-06-02
+**Ref:** PRD §"M12.5 — Sources rail" / `requirements/ui-reference-spec.md` (§Responsive Behavior + §Layout directions)
+
+**What was done:**
+- New `packages/ui/src/SourcesDrawer.tsx` `SourcesDrawer` — the slide-over presentation of the sources rail for when the persistent `.sources-rail` is not in the grid (the `classic`/`focus` layout directions, M12.1.3, or any viewport < 1280px that collapses the rail, M12.1.1). A dimmed full-screen `.sources-drawer-backdrop` anchors a right-edge `.sources-drawer` panel; the panel **reuses `SourcesRail`** for its body so the header (M12.5.2), source cards (M12.5.3), and empty state never drift from the persistent rail. Dismissable three ways: backdrop click, a 44px close button, and Escape while focus is inside the panel — Escape is handled by an `onKeyDown` on the panel (not a `document` listener) so the component stays a pure function, matching the package's test pattern.
+- ds.css `.sources-drawer*` block: fixed backdrop (`color-mix` dim over `--ink-900`), `min(360px, 90vw)` panel with `--sh-lg`, a `.sources-rail` override (full height, no left border, top padding to clear the close button), a 44px close control, and `sources-drawer-fade` / `sources-drawer-in` slide-in keyframes.
+- New `apps/web/src/lib/use-media-query.ts` `useMediaQuery` — SSR-safe `matchMedia` subscription (starts `false`, updates after mount, tracks `change`).
+- Wired into `apps/web/app/chat/page.tsx`: `railVisible = layoutPanes(direction).rail && wideViewport` (`useMediaQuery("(min-width: 1280px)")`). When the rail is **not** on screen, `AssistantTurn` receives `onOpenSourcesDrawer` and the action-bar "View sources (N)" opens the slide-over with that answer's citations instead of the inline `AnswerView` list (a single sources surface per layout). A page-level `drawerCitations` state holds the open answer; an effect closes the drawer when the rail returns (resize / studio).
+- Extracted a shared `sourceCards(citations)` helper used by both the persistent rail's `rail={…}` prop and the drawer, so the card mapping isn't duplicated.
+- +7 ui tests (closed→null, backdrop dismiss, labelled modal dialog + inner-click `stopPropagation`, custom title, Escape-only dismiss, close button, SourcesRail pass-through). `SourcesDrawer.tsx` 100% all metrics; ui suite 143 pass.
+
+**Key decisions:**
+- **Reuse `SourcesRail` inside the drawer** rather than re-implementing the body — keeps header/cards/empty-state single-sourced; the drawer only adds chrome (backdrop, panel, close).
+- **Route per-answer, not just the latest answer** — "View sources" on any answer opens the drawer with *that* answer's citations (the action bar is per-message), so it stays correct for scrolled-back answers, unlike the latest-only persistent rail.
+- **Single sources surface per layout** — when the drawer is the surface, the inline `AnswerView` list is suppressed (`sourcesOpen={false}`) so sources never show in two places at once. Studio + ≥1280px keeps the existing inline+rail behavior untouched (so the M11.1 e2e at 1280px is unaffected).
+- **Escape via panel `onKeyDown`, no `document` listener** — preserves the pure-function component contract the package tests rely on (invoke the component, assert the returned tree).
+
+**Files changed:**
+- `packages/ui/src/SourcesDrawer.tsx` — new slide-over component.
+- `packages/ui/src/index.ts` — export `SourcesDrawer` + `SourcesDrawerProps`.
+- `packages/ui/src/ds.css` — `.sources-drawer*` block + keyframes.
+- `packages/ui/src/primitives.test.ts` — +7 SourcesDrawer tests.
+- `apps/web/src/lib/use-media-query.ts` — new SSR-safe `useMediaQuery` hook.
+- `apps/web/app/chat/page.tsx` — `railVisible` gate, `drawerCitations` state + close-on-rail-return effect, `sourceCards()` helper, `onOpenSourcesDrawer` threaded into `AssistantTurn`, `<SourcesDrawer>` rendered in main.
+
+**Notes for next iteration:**
+- M12.5 is complete. Next M12 work: M12.6 input bar (sticky bottom), M12.7 Tweaks panel (the `.seg` control should drive the chat page's currently-fixed `direction` state — once it does, the drawer fallback is exercised in classic/focus, not only narrow viewports), M12.8.2 redirect, M12.9 responsive polish.
+- `useMediaQuery` is reusable for M12.9.1 (sidebar slide-over < 900px).
+- `SourceCard.onSelect` (click-to-passage) is still unwired in both the rail and the drawer — when wiring, share active-ordinal state with `AnswerView.focusSource`.
+- Rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing — apps consume `dist/`; web typecheck fails against stale declarations otherwise. `turbo` SIGILLs in this sandbox — run gates per-workspace directly.

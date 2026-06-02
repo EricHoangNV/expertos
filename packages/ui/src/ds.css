@@ -450,6 +450,42 @@ button.source-card:focus-visible { outline: none; box-shadow: var(--sh-focus); }
 .source-card.upload .source-quote { border-left-color: var(--info-600); }
 
 /* ============================================================
+   Sources drawer (consumer web) — M12.5.4
+   The slide-over fallback for the sources rail when it is not in the grid:
+   the classic/focus layout directions (M12.1.3) or a viewport that collapses
+   the rail (< 1280px, M12.1.1). A dimmed full-screen backdrop anchors a
+   right-edge panel that slides in and hosts the same `.sources-rail` content.
+   ============================================================ */
+.sources-drawer-backdrop {
+  position: fixed; inset: 0; z-index: 40;
+  background: color-mix(in srgb, var(--ink-900) 45%, transparent);
+  display: flex; justify-content: flex-end;
+  animation: sources-drawer-fade .14s ease-out;
+}
+.sources-drawer {
+  position: relative;
+  width: min(360px, 90vw); height: 100vh;
+  background: var(--surface);
+  box-shadow: var(--sh-lg);
+  animation: sources-drawer-in .18s ease-out;
+}
+/* Reuse the rail body, minus the rail's own left border (the panel edge is the divider). */
+.sources-drawer .sources-rail { height: 100%; border-left: none; padding-top: var(--s8); }
+.sources-drawer .sources-drawer-close {
+  position: absolute; top: var(--s3); right: var(--s3); z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; flex: none;
+  border-radius: var(--r-sm); border: 1px solid transparent;
+  background: transparent; color: var(--ink-500); cursor: pointer;
+}
+.sources-drawer .sources-drawer-close:hover { background: var(--paper-2); color: var(--ink-900); }
+.sources-drawer .sources-drawer-close:focus-visible { outline: none; box-shadow: var(--sh-focus); }
+
+@keyframes sources-drawer-fade { from { opacity: 0; } to { opacity: 1; } }
+
+@keyframes sources-drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+/* ============================================================
    Chat sidebar (consumer web) — M12.2
    Reuses the dark `.side` rail + `.brand` header inside the `.chat-layout`
    grid; adds the collapse control, full-width "New conversation" action, and
