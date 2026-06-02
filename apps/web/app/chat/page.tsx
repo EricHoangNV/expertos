@@ -1,7 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Button, Card, ChatLayout, Field, Input, Select, Textarea } from "@expertos/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  ChatLayout,
+  DEFAULT_LAYOUT_DIRECTION,
+  Field,
+  Input,
+  type LayoutDirection,
+  Select,
+  Textarea,
+} from "@expertos/ui";
 import type {
   ChatCitationDto,
   ConsultationRecommendationDto,
@@ -395,6 +406,10 @@ export default function ChatPage() {
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Layout direction (M12.1.3) — the page owns the switcher state; the Tweaks
+  // panel (M12.7.2) will toggle it + persist to localStorage. Studio = default
+  // three-pane; classic/focus drop panes (handled by ChatLayout + ds.css).
+  const [direction] = useState<LayoutDirection>(DEFAULT_LAYOUT_DIRECTION);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -479,7 +494,7 @@ export default function ChatPage() {
 
   if (!user) {
     return (
-      <ChatLayout>
+      <ChatLayout direction={direction}>
         <main className="card card-pad">
           <h1>Chat</h1>
           <Badge tone="info">Please sign in on the home page to start chatting.</Badge>
@@ -489,7 +504,7 @@ export default function ChatPage() {
   }
 
   return (
-    <ChatLayout>
+    <ChatLayout direction={direction}>
       <main className="card card-pad chat-content">
         <h1>Chat</h1>
 

@@ -2639,3 +2639,31 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 **Notes for next iteration:**
 - Gates run per-workspace (turbo SIGILLs here): ui tsc ✅, ui jest 32 ✅ (ChatLayout 100%), ui eslint+stylelint ✅, web tsc ✅, web next lint ✅, knip ✅. Had to rebuild `packages/ui/dist` for the web tsc to see the new export — remember this when adding ui exports consumed cross-workspace.
 - Next: M12.1.3 (layout-direction switcher: classic/studio/focus) — `ChatLayout` already supports dropping panes via `undefined` props; the switcher just chooses which props to pass + persists choice. Then M12.2 builds real sidebar content to pass as the `sidebar` prop.
+
+## M12.1.3 — Layout direction switcher state (classic / studio / focus)
+**Date:** 2026-06-02
+**Ref:** PRD §M12 (Frontend UI Overhaul); `requirements/ui-reference-spec.md` ("Three layout directions")
+
+**What was done:**
+- New `packages/ui/src/layout.ts` — the presentational "switcher state" abstraction:
+  - `LayoutDirection` = `classic | studio | focus`; `LAYOUT_DIRECTIONS` (in `.seg` order), `DEFAULT_LAYOUT_DIRECTION` = studio.
+  - `LAYOUT_DIRECTION_INFO` — label + one-line description per direction (M12.7.2 `.seg` copy).
+  - `layoutPanes(direction)` — pure map to `{ sidebar, rail }` persistent-grid panes (studio = both, classic = sidebar only, focus = neither).
+  - `isLayoutDirection(value)` — type guard for restoring a persisted value (M12.7.2 localStorage).
+- `ChatLayout` gains an optional `direction` prop (default studio): consumes `layoutPanes` so a dropped pane is suppressed from the grid even when content is supplied, and emits a `chat-layout-{direction}` modifier class.
+- `packages/ui/src/ds.css` — `.chat-layout.chat-layout-classic` (drop rail → 2-col) and `.chat-layout.chat-layout-focus` (drop sidebar+rail → 1-col) grid reflow; doubled-class selector outranks the base breakpoint rules at full width, and a `<900px` block collapses classic's sidebar too. Studio keeps the existing base + breakpoints.
+- `apps/web/app/chat/page.tsx` — page now owns a `direction` state (default studio) passed to both `ChatLayout` renders; the toggling control + localStorage persistence is M12.7.2.
+- Tests: `primitives.test.ts` +6 (ChatLayout classic/focus pane-dropping, modifier class; layout helpers) — ui 32 → 38, layout.ts + ChatLayout.tsx 100% coverage. Rebuilt `packages/ui/dist` (web/admin resolve the package from `dist`).
+
+**Key decisions:**
+- Kept the state **pure and prop-driven** (presentational `ChatLayout` + `layoutPanes` helper; page owns the value) rather than a `useLayoutDirection` hook. The ui/web test envs are node-only with no jsdom/testing-library, so a hook using `localStorage`/React state isn't unit-testable in the existing pure-function style; a pure helper keeps the 90% coverage gate green. M12.7.2 layers the segmented control + localStorage on top.
+- Dropped panes' content is handed off (not destroyed): in classic/focus the rail/sidebar still reopen as drawers/overlays in M12.5.4 / M12.9.1. `ChatLayout` suppresses them from the *grid* only.
+- Used the doubled `.chat-layout.chat-layout-*` selector (specificity 0,2,0) so direction wins over the base breakpoint rules at desktop width while narrower widths still collapse further — predictable without fighting source order.
+
+**Files changed:**
+- `packages/ui/src/layout.ts` — new: direction type, constants, `layoutPanes`, `isLayoutDirection`, info map.
+- `packages/ui/src/ChatLayout.tsx` — `direction` prop + per-direction pane dropping + modifier class.
+- `packages/ui/src/ds.css` — classic/focus grid-reflow rules (+ <900px classic collapse).
+- `packages/ui/src/index.ts` — export the layout module.
+- `packages/ui/src/primitives.test.ts` — +6 tests (direction-aware ChatLayout + layout helpers).
+- `apps/web/app/chat/page.tsx` — page-owned `direction` state passed to `ChatLayout`.

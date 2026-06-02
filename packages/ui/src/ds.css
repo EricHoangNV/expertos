@@ -354,6 +354,29 @@ kbd { font-family: var(--font-mono); font-size: 11px; background: var(--paper-2)
   .chat-layout > .chat-sidebar { display: none; }
 }
 
+/* ============================================================
+   Layout direction (M12.1.3) — reflows the persistent grid.
+   `studio` is the base `.chat-layout` above (3-pane). `classic` drops the
+   sources rail (→ drawer, M12.5.4); `focus` drops the sidebar + rail (→
+   overlays). The doubled `.chat-layout.chat-layout-*` selector outranks the
+   base breakpoint rules at full width; narrower widths still collapse further.
+   ============================================================ */
+.chat-layout.chat-layout-classic {
+  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-areas: "sidebar main";
+}
+.chat-layout.chat-layout-focus {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "main";
+}
+/* < 900px — classic collapses its sidebar to an overlay too (M12.9.1). */
+@media (width < 900px) {
+  .chat-layout.chat-layout-classic {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "main";
+  }
+}
+
 /* The chat column's scroll region: fills the `.chat-main` flex column and
    scrolls on its own so the (future) sticky input bar (M12.6) stays put. */
 .chat-main > .chat-content {

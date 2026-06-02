@@ -7,6 +7,13 @@ import { Chip } from "./Chip";
 import { Cite } from "./Cite";
 import { Content, Shell, Topbar } from "./Shell";
 import { ChatLayout } from "./ChatLayout";
+import {
+  DEFAULT_LAYOUT_DIRECTION,
+  isLayoutDirection,
+  LAYOUT_DIRECTION_INFO,
+  LAYOUT_DIRECTIONS,
+  layoutPanes,
+} from "./layout";
 import { Field, Input, Select, Textarea } from "./Field";
 import { Stat } from "./Stat";
 import { Table } from "./Table";
@@ -237,7 +244,8 @@ describe("Shell / Topbar / Content — the shared app frame", () => {
 describe("ChatLayout — three-pane studio grid (M12.1)", () => {
   it("renders only the `.chat-main` column when no sidebar or rail is given", () => {
     const bare = ChatLayout({ children: "chat" }) as ReactElement;
-    expect(cls(bare)).toBe("chat-layout");
+    // Defaults to the studio direction's grid modifier.
+    expect(cls(bare)).toBe("chat-layout chat-layout-studio");
     const [sidebar, main, rail] = kids(bare) as ReactElement[];
     // Omitted panes short-circuit to `false` so focus/classic directions drop them.
     expect(sidebar).toBe(false);
@@ -246,7 +254,7 @@ describe("ChatLayout — three-pane studio grid (M12.1)", () => {
     expect(rail).toBe(false);
   });
 
-  it("renders the sidebar and sources rail when supplied", () => {
+  it("renders the sidebar and sources rail when supplied (studio default)", () => {
     const full = ChatLayout({ sidebar: "nav", rail: "sources", children: "chat" }) as ReactElement;
     const [sidebar, , rail] = kids(full) as ReactElement[];
     expect(cls(sidebar)).toBe("chat-sidebar");
@@ -255,8 +263,65 @@ describe("ChatLayout — three-pane studio grid (M12.1)", () => {
     expect((rail.props as { children?: unknown }).children).toBe("sources");
   });
 
+  it("drops the sources rail in the classic direction (sources → drawer)", () => {
+    const el = ChatLayout({
+      sidebar: "nav",
+      rail: "sources",
+      direction: "classic",
+      children: "chat",
+    }) as ReactElement;
+    expect(cls(el)).toBe("chat-layout chat-layout-classic");
+    const [sidebar, , rail] = kids(el) as ReactElement[];
+    expect(cls(sidebar)).toBe("chat-sidebar");
+    // Rail content is supplied but suppressed from the grid for this direction.
+    expect(rail).toBe(false);
+  });
+
+  it("drops both the sidebar and rail in the focus direction", () => {
+    const el = ChatLayout({
+      sidebar: "nav",
+      rail: "sources",
+      direction: "focus",
+      children: "chat",
+    }) as ReactElement;
+    expect(cls(el)).toBe("chat-layout chat-layout-focus");
+    const [sidebar, main, rail] = kids(el) as ReactElement[];
+    expect(sidebar).toBe(false);
+    expect(cls(main)).toBe("chat-main");
+    expect(rail).toBe(false);
+  });
+
   it("merges a caller className onto the grid container", () => {
-    const el = ChatLayout({ className: "focus", children: "chat" }) as ReactElement;
-    expect(cls(el)).toBe("chat-layout focus");
+    const el = ChatLayout({ className: "z", children: "chat" }) as ReactElement;
+    expect(cls(el)).toBe("chat-layout chat-layout-studio z");
+  });
+});
+
+describe("layout direction — switcher state (M12.1.3)", () => {
+  it("lists the three directions in `.seg` order with studio as the default", () => {
+    expect(LAYOUT_DIRECTIONS).toEqual(["classic", "studio", "focus"]);
+    expect(DEFAULT_LAYOUT_DIRECTION).toBe("studio");
+  });
+
+  it("maps each direction to its persistent-grid panes", () => {
+    expect(layoutPanes("studio")).toEqual({ sidebar: true, rail: true });
+    expect(layoutPanes("classic")).toEqual({ sidebar: true, rail: false });
+    expect(layoutPanes("focus")).toEqual({ sidebar: false, rail: false });
+  });
+
+  it("exposes a label + one-line description for every direction", () => {
+    for (const d of LAYOUT_DIRECTIONS) {
+      expect(LAYOUT_DIRECTION_INFO[d].label.length).toBeGreaterThan(0);
+      expect(LAYOUT_DIRECTION_INFO[d].description.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("guards persisted values (only the three directions are valid)", () => {
+    expect(isLayoutDirection("studio")).toBe(true);
+    expect(isLayoutDirection("classic")).toBe(true);
+    expect(isLayoutDirection("focus")).toBe(true);
+    expect(isLayoutDirection("wide")).toBe(false);
+    expect(isLayoutDirection(null)).toBe(false);
+    expect(isLayoutDirection(2)).toBe(false);
   });
 });

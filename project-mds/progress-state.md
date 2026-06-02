@@ -2,6 +2,7 @@
 
 ## Current State
 - Completed:
+  - M12.1.3: Layout-direction switcher state (`packages/ui/src/layout.ts` — `LayoutDirection` classic/studio/focus + `layoutPanes`/`isLayoutDirection`/`LAYOUT_DIRECTION_INFO`); `ChatLayout` `direction` prop drops panes per direction + ds.css `.chat-layout-{classic,focus}` grid reflow; chat page owns the state (Tweaks control + localStorage is M12.7.2)
   - M12.1.2: `ChatLayout` component (`packages/ui/src/ChatLayout.tsx`) wrapping sidebar/main/rail over the M12.1.1 grid; integrated into `/chat` replacing the single-card layout (scrollable `.chat-content` main column)
   - M12.1.1: `.chat-layout` three-pane grid in ds.css (named areas; rail<1280px, sidebar<900px) + fixed pre-existing red lint gate from M12.8 login commit (login.css raw-px→rem/tokens, brand-hex SVGs eslint-disabled) — LEARNINGS #13
   - M11.1: Playwright E2E green vs live in-sandbox stack (16 pass/3 fixme/0 fail) — global-setup seeds users+roles+expert-voice, programmatic emulator sign-in, emulator-aware API Firebase init; CORS/a11y/selector fixes (LEARNINGS #9/#10/#11/#12)
@@ -29,10 +30,10 @@
   - M2 (voice): LLM provider abstraction, answer-prompt assembly, voice-profile CRUD, fidelity eval
   - M1 (knowledge): ingestion pipeline, hybrid retrieval (RRF), VI quality + NFC normalization
   - P0 (foundation): monorepo, Postgres+pgvector+RLS, Firebase Auth+RBAC, build/deploy, observability, design system
-- Tests: 1040 pass / 0 fail / 0 skip (shared 179, ui 32, db 9, ai 161, api 659)
+- Tests: 1046 pass / 0 fail / 0 skip (shared 179, ui 38, db 9, ai 161, api 659)
 - Build: `pnpm build` builds all 7 workspaces (turbo-orchestrated — see SIGILL note below; build via turbo also affected in this sandbox). Admin standalone build flakily zeroes `.next/server/pages-manifest.json` — only matters for `next start`.
 - Gates: typecheck ✅, test ✅ (coverage gate ≥90% met), lint ✅ (incl. stylelint), deadcode (knip) ✅. NOTE: `turbo` arm64 binary SIGILLs in this sandbox — run gates per-workspace (`tsc --noEmit`, `next lint`, `jest`) directly; `pnpm`-level turbo aggregation fails. (LEARNINGS #2/#13)
 - Next tasks (priority order):
-  1. **M12 (Frontend UI Overhaul)** — `ChatLayout` shell landed + integrated into `/chat` (M12.1.1/M12.1.2). Next: M12.1.3 layout-direction switcher (classic/studio/focus), then M12.2 sidebar, M12.3 topbar, M12.4 messages, M12.5 sources rail, M12.6 input bar. Read `requirements/ui-reference-spec.md` first.
+  1. **M12 (Frontend UI Overhaul)** — M12.1 shell complete (grid + ChatLayout + direction state). Next: M12.2 sidebar (conversation list + nav), M12.3 topbar, M12.4 messages, M12.5 sources rail, M12.6 input bar, M12.7 Tweaks panel (wires the M12.1.3 direction state + localStorage). Read `requirements/ui-reference-spec.md` first.
   2. **M13 (Admin Portal UI Overhaul)** — sidebar/dashboard/kanban/matrix/voice/concierge rebuilds.
   3. **M11.1 fixme legs** / **NT human gates** — await external surfaces / PM sign-off.

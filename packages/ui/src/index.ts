@@ -24,3 +24,11 @@ export { Shell, Topbar, Content } from "./Shell";
 export type { ShellProps, ContentProps } from "./Shell";
 export { ChatLayout } from "./ChatLayout";
 export type { ChatLayoutProps } from "./ChatLayout";
+export {
+  LAYOUT_DIRECTIONS,
+  DEFAULT_LAYOUT_DIRECTION,
+  LAYOUT_DIRECTION_INFO,
+  layoutPanes,
+  isLayoutDirection,
+} from "./layout";
+export type { LayoutDirection, LayoutPanes } from "./layout";
