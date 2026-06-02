@@ -3,17 +3,8 @@
 ## Current State
 
 - Phase 0 + Phase 1 (M1–M11) backend/admin/expert work: COMPLETE (see PRD Task Manifest for the per-task detail; this file tracks the in-flight UI overhaul).
-- M12 (Frontend UI Overhaul) — consumer web `/chat` rebuild to the approved mockup:
-  - M12.1 chat layout shell (three-pane grid + `ChatLayout` + classic/studio/focus directions): DONE
-  - M12.2 sidebar (logo + "+ New conversation" + search + RECENT list + usage meter): DONE
-  - M12.3 topbar (editable title + voice picker + user identity + EN/VI): DONE
-  - M12.4 messages area (user bubble, assistant header, AnswerProse citations, action bar, consultation card, state notices): DONE
-  - M12.5 sources rail (container + header + source cards + drawer fallback): DONE
-  - M12.6 input bar (sticky composer + upload popover + helper text + keyboard/auto-resize): DONE
-  - M12.7 Tweaks panel (floating panel + layout-direction + density/toggles + topbar show/hide): DONE
-  - M12.8 login page + post-login redirect: DONE
-  - M12.9.1 mobile sidebar overlay (`ChatSidebarDrawer` + `ChatMenuButton` + topbar `leading` slot): DONE
-  - M12.9.4 loading/empty states (`Skeleton`/`ChatTypingIndicator`/`ChatEmptyState`): DONE
+- M12 (Frontend UI Overhaul) — consumer web `/chat` rebuild to the approved mockup: **COMPLETE** (M12.1–M12.9 all done).
+  - M12.9.2 ds.css conformance + M12.9.3 dark-sidebar render: DONE (audit, no code changes) — zero hardcoded hex/px in app code (Google-brand login SVG scoped-disabled), upload=info-blue vs knowledge=crimson never mixed, `.side`-based dark sidebar verified incl. mobile drawer; stylelint + ui/web eslint + ui jest + knip all green.
 - M13 (Admin & Expert Portal UI Overhaul) — admin portal rebuild to the approved mockups:
   - M13.1.1 sidebar nav restructure: DONE — `AdminFrame` `NAV` regrouped into OPERATE / MONETIZE / EXPERT PORTAL (+ ANALYTICS / SYSTEM); per-item `group`+`role`, role-filtered `GROUP_ORDER` render; Dashboard `/` exact-match active.
   - M13.1.2 count badges: DONE — `useNavCounts` fetches knowledge-review / open-concierge / flagged-query counts; `.navitem .tag` chip, capped 99→"99+".
@@ -22,8 +13,8 @@
 - Gates (run per-workspace — `turbo` SIGILLs in this sandbox): ui build/eslint/jest + root `lint:css` (stylelint) + admin `tsc --noEmit` + `next lint` + root `knip` all clean. (admin has no jest suite; `next build` blocked in-sandbox by the missing linux/arm64 SWC native binary — environmental, not code.)
 
 - Next tasks (priority order):
-  1. **M12.9.2 / M12.9.3** — ds.css conformance audit + dark-sidebar render check (quick wins).
-  2. **M13.2** — dashboard (admin home) KPI cards + funnel/pipeline/SLA cards.
+  1. **M13.2** — dashboard (admin home): page header + KPI stat cards + Questions/Funnel/Low-confidence/Pipeline/SLA cards (wire to existing analytics APIs).
+  2. **M13.3–M13.7** — knowledge kanban, plans matrix, voice profile, concierge review queue, shared patterns.
   3. **M11.1 fixme legs** / **NT human gates** — await external surfaces / PM sign-off.
 
 ### Reusable building blocks for remaining UI work

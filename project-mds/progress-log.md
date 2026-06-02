@@ -3552,3 +3552,26 @@ Wired into `apps/web/app/chat/page.tsx`: `AssistantAnswer` shows `<ChatTypingInd
 **Notes for next iteration:**
 - M13.1 (sidebar & nav overhaul) is now COMPLETE. Next: M12.9.2/M12.9.3 (conformance/dark-sidebar audit — quick), then M13.2 (dashboard).
 - If notifications ship later, wire the `BellIcon` button + add a `NavCounts`-style fetch.
+
+## M12.9.2 / M12.9.3 — ds.css conformance audit + dark-sidebar render check
+**Date:** 2026-06-02
+**Ref:** PRD §"UI Reference Spec" — M12.9 Polish & responsive (last two open M12 items)
+
+**What was done:**
+- Audit task (no code changes required — conformance was held throughout M12; this closes it with a verification pass).
+- **M12.9.2 (ds.css conformance):** swept all `packages/ui/src` + `apps/web` for hardcoded hex and off-scale px. Only hex outside the ds.css token definitions is the four Google-brand `fill` values in `apps/web/app/page.tsx`'s sign-in SVG (intentional, scoped eslint-disabled per M12.1.1). Only inline styles in app/component code are `Bar`'s dynamic `width:${pct}%` and one flex-alignment pair on the login left panel — neither a color/size token violation. Confirmed upload=info-blue vs knowledge=crimson never mixed across `SourceCard`/`Cite`/`AnswerProse`/`Badge` (`kind="upload"`→`.cite.upload`+`Badge tone="info"`, `knowledge`→`.cite`+`tone="red"`; `Number.isFinite` guard on `matchPercent` per DIRECTIVES #9).
+- **M12.9.3 (dark sidebar):** verified `ChatSidebar` applies `cx("side","chat-side",…)` so the `.side` base supplies `--ink-900` in every host; every sub-element has explicit dark-context treatment (logo, collapse, new-conversation button, search field/results, RECENT conversation list + avatars + active state, usage meter with lightened `.bar` track, `.side-foot` identity footer). Mobile overlay covered by `.chat-sidebar-drawer .side { position:static; height:100% }` neutralizing the grid rail's `sticky`/`100vh`.
+- Ran the mechanized conformance gates: root `lint:css` (stylelint), `@expertos/ui lint` + `web lint` (eslint no-hardcoded-color/px), `@expertos/ui test` (213 jest), root `knip` — all green.
+- Marked M12.9 and the M12 milestone heading COMPLETE in the PRD manifest.
+
+**Key decisions:**
+- Treated this as a verification/audit task and made zero code changes — the lint guards already mechanize the rules and pass, so manufacturing edits would only add churn/risk. Recorded the audit findings inline in the PRD task notes so the conclusion is durable.
+
+**Files changed:**
+- `project-mds/PRD.md` — M12.9.2/M12.9.3 [ ]→[x] with audit notes; M12.9 + M12 headings marked COMPLETE.
+- `project-mds/progress-state.md` — M12 COMPLETE; next tasks reordered to M13.2.
+- `project-mds/progress-log.md` — this entry.
+
+**Notes for next iteration:**
+- M12 (consumer web `/chat` overhaul) is fully COMPLETE. Next UI work is M13.2 (admin dashboard home): page header (greeting + validation-loop lede + 7d/30d/QTD `.seg`) and the KPI/Questions/Funnel/Low-confidence/Pipeline/SLA cards, all wired to existing analytics APIs (`/admin/analytics/{usage,funnel,validation,concierge}`, `/admin/revenue/report`, `/admin/failed-queries`, `/knowledge`). M13.2.7 needs a new `.dark-card` (also M13.7.2) and M13.2.3 a `.progress-bar-stacked`.
+- Test count unchanged: 1221 pass / 0 fail / 0 skip.
