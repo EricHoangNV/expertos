@@ -37,7 +37,17 @@ export class EntitlementMatrixService {
     return this.rls.run(user, async (tx) => {
       const plans = await tx.plan.findMany({
         orderBy: { sortOrder: "asc" },
-        select: { id: true, key: true, name: true, sortOrder: true, active: true },
+        select: {
+          id: true,
+          key: true,
+          name: true,
+          sortOrder: true,
+          active: true,
+          prices: {
+            select: { interval: true, amountCents: true, currency: true },
+            orderBy: { interval: "asc" },
+          },
+        },
       });
       const features = await tx.feature.findMany({
         orderBy: { key: "asc" },
@@ -55,7 +65,18 @@ export class EntitlementMatrixService {
       });
 
       return {
-        plans,
+        plans: plans.map((plan) => ({
+          id: plan.id,
+          key: plan.key,
+          name: plan.name,
+          sortOrder: plan.sortOrder,
+          active: plan.active,
+          prices: plan.prices.map((price) => ({
+            interval: price.interval,
+            amountCents: price.amountCents,
+            currency: price.currency,
+          })),
+        })),
         features,
         cells: rows.map((row) => ({
           planId: row.planId,

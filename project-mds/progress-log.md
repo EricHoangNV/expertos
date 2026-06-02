@@ -3811,3 +3811,42 @@ ui build, admin tsc + next lint, root lint:css (stylelint), root knip. (admin ha
 - M13.4 (Plans & Entitlements matrix) is next: `.matrix-table` editable grid over `/admin/entitlements` (`EntitlementMatrixService`, `GET/PATCH /admin/entitlements`).
 - `.kanban`/`.kanban-col` are reusable for any status-pipeline board (M13.7.3 can formalize as a React primitive).
 - Admin still has no jest suite — verification is admin `tsc --noEmit` + `next lint` + stylelint + knip. Run `pnpm --filter @expertos/ui build` after ds.css changes (apps consume `dist/`).
+
+---
+
+## M13.4 — Plans & Entitlements matrix (admin portal UI overhaul)
+
+**What:** Rebuilt `apps/admin/app/entitlements/page.tsx` from a per-cell-save table into the approved `.matrix-table` mockup with a staged-edit-then-publish flow, and surfaced real plan pricing through the matrix DTO.
+
+**Subtasks:**
+- **M13.4.1** Page header: `.eyebrow` "Configuration, not code" + `.h1` "Plan & entitlement matrix" + `.lede`, right-aligned "Discard changes" (`.btn-ghost`) + "Publish N changes" (`.btn-primary`). Staged-edit model: every plan×feature draft seeded from the server on load; editing a cell stages it locally; Publish validates all dirty cells up-front (client-side, abort-on-error) then PATCHes each via the existing per-cell `/admin/entitlements/:planId/features/:featureId` (effective immediately — no deploy), folding saved cells back into the matrix as the new server truth. Discard reverts drafts to last-loaded state.
+- **M13.4.2** Matrix table: plan columns show name + real pricing ("$4.99/mo", "$9.99/mo · $69.99/yr", "$0"). Top-tier (highest `sortOrder`) column emphasized via `.matrix-col-premium` (crimson-tinted bg + crimson bold header). Per-feature row type badge (metered=info / boolean=ink).
+- **M13.4.3** Cell rendering (`MatrixCell`): boolean = `.switch` toggle (crimson when on; em-dash when off); metered (when granted) = editable hard-limit `.input` + window `.select` ("/day"·"/week"·"/month" unit) + soft-limit input, "Unlimited" `.label` when both blank. Dirty cells show an "Unsaved" `.badge-amber`; per-cell publish/validation errors render inline (`.matrix-cell-err`).
+- **M13.4.4** Footer 2-up `.matrix-foot` grid: "Fair use" (`.badge-amber`) degrade-don't-block card + "Quota cells" (`.badge-info`) OD#4 card.
+
+**Backend (surface pricing):**
+- `packages/shared/src/entitlements.ts` — new `EntitlementPlanPriceDto` ({ interval, amountCents, currency }) + `prices: EntitlementPlanPriceDto[]` on `EntitlementMatrixPlanDto`; exported from index.
+- `apps/api/src/entitlements/entitlement-matrix.service.ts` — `getMatrix` now selects+maps `plan.prices` (the `PlanPrice` relation, ordered by interval).
+- `entitlement-matrix.service.test.ts` — updated the getMatrix fixture/assertion to carry prices (9 tests still pass).
+
+**ds.css:** new `.matrix-*` block in `packages/ui/src/ds.css` (`.matrix-table`, `.matrix-plan`/`-name`/`-price`, `.matrix-feature-name`, `.matrix-col-premium`, `.matrix-cell`, `.matrix-toggle`, `.matrix-quota`/`-unit`/`-soft`, `.matrix-unlimited`, `.matrix-disabled`, `.matrix-cell-err`, `.matrix-foot`/`-title`). All ds.css tokens — no hardcoded hex/px.
+
+**Key decisions:**
+- **Staged batch publish** over the existing immediate per-cell PATCH: matches the mockup's "edit a cell, hit publish" model and avoids N round-trips of accidental saves. The API stays per-cell (no new batch endpoint); the page just orchestrates dirty cells.
+- **Honest deviations** (documented, per the M13.2/M13.3 precedent):
+  - "Reset to seed" → **"Discard changes"** — there is no reset-to-seed endpoint; the ghost action reverts unsaved local edits to the last-loaded server state.
+  - The spec's **enum** row type doesn't exist — the `Feature.type` model is only `boolean`/`metered`; rows render per their real type.
+  - Booleans unified on the `.switch` toggle rather than a checkmark-vs-toggle split — the genuine editable control (the concierge row already specified `.switch`).
+- Surfaced real prices through the DTO rather than hardcoding "$4.99" copy, so the header tracks the seed/Stripe config.
+
+**Files changed:**
+- `apps/admin/app/entitlements/page.tsx` — full rewrite.
+- `packages/shared/src/entitlements.ts`, `packages/shared/src/index.ts` — `EntitlementPlanPriceDto` + `prices`.
+- `apps/api/src/entitlements/entitlement-matrix.service.ts` + `.test.ts` — price join.
+- `packages/ui/src/ds.css` — `.matrix-*` block.
+
+**Gates:** shared build + ui build + admin `tsc --noEmit` + admin `next lint` + web `tsc` + api build/lint/jest (663) + ui jest (217) + shared jest (179) + root `lint:css` + root `knip` — all green.
+
+**Notes for next iteration:**
+- M13.5 (Voice profile page, Expert Portal) is next — needs the new `.voice-bar` segmented dimension bar (M13.7.4); wire to existing `/voice-profiles`.
+- `.matrix-table` is now available as a reusable plan-grid primitive.

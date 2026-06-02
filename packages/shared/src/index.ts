@@ -81,6 +81,7 @@ export type {
   UsageWindowValue,
   EntitlementUpdateInput,
   EntitlementMatrixFeatureDto,
+  EntitlementPlanPriceDto,
   EntitlementMatrixPlanDto,
   EntitlementCellDto,
   EntitlementMatrixDto,

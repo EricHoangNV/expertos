@@ -125,6 +125,13 @@ export interface EntitlementMatrixFeatureDto {
   type: "boolean" | "metered";
 }
 
+/** One configured price for a plan (a billing-interval row); drives the column-header pricing. */
+export interface EntitlementPlanPriceDto {
+  interval: "month" | "year";
+  amountCents: number;
+  currency: string;
+}
+
 /** One plan in the editable matrix (a matrix column), lowest tier first. */
 export interface EntitlementMatrixPlanDto {
   id: string;
@@ -132,6 +139,8 @@ export interface EntitlementMatrixPlanDto {
   name: string;
   sortOrder: number;
   active: boolean;
+  /** Configured prices (a free plan has none); rendered under the column header. */
+  prices: EntitlementPlanPriceDto[];
 }
 
 /** One (plan, feature) entitlement cell. Metered fields are `null` for a boolean feature. */

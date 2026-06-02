@@ -419,6 +419,33 @@ button { font-family: inherit; cursor: pointer; }
 .convknow-pill { font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-500); }
 .convknow-pill-sep { color: var(--ink-300); font-size: 10px; }
 
+/* ============================================================
+   Plan & entitlement matrix (M13.4)
+   The free-vs-paid definition as an editable grid, built on the
+   base `.table`. The top tier (Premium) column is emphasized with a
+   tinted background + crimson bold header. Cells render per feature
+   type: boolean → `.switch` toggle, metered → editable quota input.
+   ============================================================ */
+.matrix-table th, .matrix-table td { vertical-align: top; }
+.matrix-plan { display: flex; flex-direction: column; gap: 2px; text-transform: none; letter-spacing: 0; }
+.matrix-plan-name { font-family: var(--font-display); font-size: 14px; font-weight: 700; color: var(--ink-900); }
+.matrix-plan-price { font-family: var(--font-mono); font-size: 11px; font-weight: 400; color: var(--ink-500); letter-spacing: .02em; }
+.matrix-feature-name { font-weight: 600; color: var(--ink-900); }
+.matrix-col-premium { background: var(--red-50); }
+th.matrix-col-premium .matrix-plan-name { color: var(--red-600); }
+.matrix-cell { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.matrix-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-600); cursor: pointer; }
+.matrix-quota { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.matrix-quota .input { width: 84px; }
+.matrix-quota-unit { font-family: var(--font-mono); font-size: 11px; color: var(--ink-500); }
+.matrix-quota-soft { font-size: 12px; color: var(--ink-500); display: flex; align-items: center; gap: 6px; }
+.matrix-quota-soft .input { width: 72px; }
+.matrix-unlimited { font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-500); }
+.matrix-disabled { color: var(--ink-300); font-size: 18px; line-height: 1; }
+.matrix-cell-err { color: var(--red-600); font-size: 12px; }
+.matrix-foot { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 24px; }
+.matrix-foot-title { margin: 12px 0 6px; }
+
 /* segmented control */
 .seg { display: inline-flex; background: var(--paper-2); border-radius: var(--r-sm); padding: 3px; gap: 2px; }
 .seg button { border: none; background: transparent; padding: 6px 14px; border-radius: 5px; font-size: 13px; font-weight: 600; color: var(--ink-500); }

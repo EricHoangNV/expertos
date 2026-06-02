@@ -197,11 +197,11 @@
 - [x] M13.3.4 Kanban cards per status: Draft (title + file-type badge + expert), AI Processing (title + file badge + progress description + crimson progress bar), Expert Review (title + version badge + change description + "Approve & publish" `.btn-primary` + "Diff" `.btn-ghost`, highlighted amber border on active card), Published (title + version "LIVE" `.badge-green` + approval info + citation count)
 - [x] M13.3.5 Conversation-to-Knowledge section below kanban: `.eyebrow` header, heading, pipeline breadcrumb pills, `.table` with columns (RECURRING QUESTION, FREQUENCY badge, BEST EXISTING ANSWER, EXPERT, "Draft" `.btn-primary`); wire to `/knowledge-drafts` + `/admin/failed-queries`
 
-##### M13.4 — Plans & Entitlements matrix
-- [ ] M13.4.1 Page header: eyebrow "CONFIGURATION, NOT CODE", heading, subtitle explaining the matrix, "Reset to seed" (`.btn-ghost`) + "Publish changes" (`.btn-primary`)
-- [ ] M13.4.2 Matrix table (`.matrix-table`): column headers (Free $0, Plus $4.99/mo, Premium $9.99/mo highlighted bold); row types: boolean (checkmark), metered (editable number input + unit label), enum (`.badge-ink` label), boolean toggle (`.switch`); Premium column visually emphasized
-- [ ] M13.4.3 Cell rendering: boolean = crimson checkmark or em-dash; metered = editable input with unit ("/day", "retained") or "UNLIMITED" label; enum = badge; toggle = `.switch` (crimson when on); special: "+1 credit" text next to checkmark
-- [ ] M13.4.4 Footer info cards: 2-up grid below matrix, "FAIR USE" (`.badge-amber`) card explaining degrade-not-block + "QUOTA CELLS" (`.badge-info`) card about OD#4; wire to existing `/admin/entitlements` API
+##### M13.4 — Plans & Entitlements matrix — COMPLETE
+- [x] M13.4.1 Page header: eyebrow "CONFIGURATION, NOT CODE", heading, subtitle explaining the matrix, "Reset to seed" (`.btn-ghost`) + "Publish changes" (`.btn-primary`) — **DONE** (`apps/admin/app/entitlements/page.tsx` rebuilt: `.eyebrow`/`.h1`/`.lede` header + a **staged-edit** model — edits stage locally, "Publish N changes" `.btn-primary` PATCHes every dirty cell via the existing per-cell `/admin/entitlements/:planId/features/:featureId` (effective immediately — no deploy), "Discard changes" `.btn-ghost` reverts to last-loaded server state. Honest deviation: no reset-to-seed endpoint exists, so the ghost action is **Discard changes** (revert unsaved edits), not a literal seed reset.)
+- [x] M13.4.2 Matrix table (`.matrix-table`): column headers with plan name + real pricing (Free $0, Plus $4.99/mo, Premium $9.99/mo · $69.99/yr — surfaced via new `EntitlementPlanPriceDto`/`prices[]` on the matrix DTO + `PlanPrice` join in `EntitlementMatrixService.getMatrix`); top-tier column visually emphasized (`.matrix-col-premium` crimson-tinted bg + crimson bold header); row type badge (boolean=ink / metered=info). Honest deviation: the data model has only `boolean`/`metered` feature types — no `enum` type exists — so the spec's enum row is rendered per its real type. — **DONE**
+- [x] M13.4.3 Cell rendering: boolean = `.switch` toggle (crimson when on; em-dash when off); metered = editable hard-limit `.input` + window `.select` (unit "/day"·"/week"·"/month") + soft-limit input, "UNLIMITED" `.label` when uncapped; dirty cells show an "Unsaved" `.badge-amber`, per-cell publish/validation errors inline. — **DONE** (new ds.css `.matrix-*` block; booleans unified on `.switch` rather than checkmark-vs-toggle split — the genuine editable control the concierge row already specified.)
+- [x] M13.4.4 Footer info cards: 2-up grid below matrix (`.matrix-foot`), "FAIR USE" (`.badge-amber`) degrade-don't-block card + "QUOTA CELLS" (`.badge-info`) OD#4 card; wired to existing `/admin/entitlements` API. — **DONE**
 
 ##### M13.5 — Voice profile page (Expert Portal)
 - [ ] M13.5.1 Page header: expert avatar (large, colored) + name (`.h1`) + meta (role, topics, profile version, example count `.muted`) + "AWAITING YOUR SIGN-OFF" `.badge-amber` + "Approve voice vN" `.btn-primary`
@@ -227,6 +227,28 @@
 - [ ] M13.7.3 Kanban component: reusable `.kanban` + `.kanban-col` for any status-pipeline view
 - [ ] M13.7.4 Voice dimension bar component (`.voice-bar`): segmented bar with N filled crimson segments on gray track
 - [ ] M13.7.5 ds.css conformance: no hardcoded colors/px; all badge tones match Design System rules (Draft=ink, Processing=info, Review=amber, Published=green)
+
+#### M14 — Access Control Whitelist (§PRD-access-control.md)
+
+> Invite-only admin portal gate. Only pre-authorized emails can sign in; role synced from whitelist on each login. Consumer app unaffected. Full spec: `requirements/PRD-access-control.md`.
+
+##### M14.1 — Schema + shared types
+- [ ] M14.1.1 Prisma `AllowedEmail` model (`@@unique([tenantId, email])`, `@@map("allowed_emails")`) + reverse relations on `Tenant`/`User`; run `prisma migrate dev`
+- [ ] M14.1.2 `packages/shared/src/access-control.ts`: Zod schemas (`allowedEmailRoleSchema`, `allowedEmailCreateSchema`, `allowedEmailUpdateSchema`) + DTO types (`AllowedEmailDto`, `AdminSessionDto`); export from index
+
+##### M14.2 — API: admin session + CRUD
+- [ ] M14.2.1 `AdminSessionService` + `POST /me/admin-session`: whitelist check → role sync → session DTO; 403 for non-whitelisted emails (no `@Roles` — any authenticated user can call)
+- [ ] M14.2.2 `AccessControlService` + `AccessControlController`: `GET/POST/PATCH/DELETE /admin/access-control` (`@Roles("admin")`); self-lockout protection (cannot remove/demote own email); audit logging (`access_control.email_added/role_changed/email_removed`); 409 on duplicate email
+- [ ] M14.2.3 Register `AdminSessionService` in `auth.module.ts`; register access-control controller + service in `admin.module.ts`
+
+##### M14.3 — Seed + frontend client
+- [ ] M14.3.1 Seed `eric.nguyen.vn@gmail.com` as `role: admin` in `packages/db/prisma/seed.ts` (upsert — bootstraps first admin)
+- [ ] M14.3.2 Admin client functions: `adminSession`, `listAllowedEmails`, `addAllowedEmail`, `updateAllowedEmail`, `removeAllowedEmail`
+
+##### M14.4 — Auth gate + UI
+- [ ] M14.4.1 Auth context: replace `getMe(token)` with `adminSession(token)`; add `denied: boolean` state (set on 403); expose on `AuthContextValue`
+- [ ] M14.4.2 `AdminFrame`: Access Denied screen when `denied === true` ("Your email is not authorized…" + Sign out button)
+- [ ] M14.4.3 Access Control page (`app/access-control/page.tsx`): add form (email + role select + Add), table (Email, Role badge, Added by, Added at, Actions), role toggle + Remove with confirmation; nav item under SYSTEM group (`role: "admin"`)
 
 ### Phase 2 — Retention & Engagement (§"Phase 2 — Retention & Engagement") — not started
 - [ ] Deferred: CI/CD pipeline, mobile (React Native), notifications, voice/TTS, folders/export, follow-up suggestions, confidence indicator, personalized memory, persistent user/customer knowledge, consultation depth, reconciliation dashboard

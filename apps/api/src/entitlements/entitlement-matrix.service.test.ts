@@ -40,7 +40,14 @@ describe("EntitlementMatrixService.getMatrix", () => {
   it("maps plans, features, and populated cells under the acting user's RLS context", async () => {
     const tx = makeTx();
     tx.plan.findMany.mockResolvedValue([
-      { id: PLAN_ID, key: "free", name: "Free", sortOrder: 0, active: true },
+      {
+        id: PLAN_ID,
+        key: "free",
+        name: "Free",
+        sortOrder: 0,
+        active: true,
+        prices: [{ interval: "month", amountCents: 499, currency: "usd" }],
+      },
     ]);
     tx.feature.findMany.mockResolvedValue([
       { id: FEATURE_ID, key: "ask_question", name: "Ask a question", type: "metered" },
@@ -61,7 +68,14 @@ describe("EntitlementMatrixService.getMatrix", () => {
 
     expect(run).toHaveBeenCalledWith(ADMIN, expect.any(Function));
     expect(result.plans).toEqual([
-      { id: PLAN_ID, key: "free", name: "Free", sortOrder: 0, active: true },
+      {
+        id: PLAN_ID,
+        key: "free",
+        name: "Free",
+        sortOrder: 0,
+        active: true,
+        prices: [{ interval: "month", amountCents: 499, currency: "usd" }],
+      },
     ]);
     expect(result.features).toEqual([
       { id: FEATURE_ID, key: "ask_question", name: "Ask a question", type: "metered" },
