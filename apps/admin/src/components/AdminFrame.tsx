@@ -3,7 +3,17 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Badge, Button, Content, cx, Shell, Topbar } from "@expertos/ui";
+import {
+  avatarInitials,
+  avatarTone,
+  Badge,
+  Button,
+  Content,
+  cx,
+  Shell,
+  Topbar,
+} from "@expertos/ui";
+import type { User } from "firebase/auth";
 import type { Role } from "@expertos/shared";
 import { useAuth } from "../lib/auth-context";
 import { CAP, useNavCounts, type NavCounts } from "../lib/use-nav-counts";
@@ -67,6 +77,24 @@ const NAV: NavItem[] = [
   { href: "/audit", label: "Audit log", group: "SYSTEM", role: "admin" },
 ];
 
+/** The current page's display name for the topbar breadcrumb (M13.1.4) — the active nav item's label. */
+function currentPageLabel(pathname: string): string {
+  if (pathname === "/") return "Dashboard";
+  const item = NAV.find(
+    (it) => it.href !== "/" && (pathname === it.href || pathname.startsWith(`${it.href}/`)),
+  );
+  return item?.label ?? "Console";
+}
+
+function BellIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  );
+}
+
 function NavLink({
   item,
   pathname,
@@ -92,14 +120,55 @@ function NavLink({
   );
 }
 
+/**
+ * Bottom-pinned identity (M13.1.3) — avatar (initials + deterministic tone) + display name +
+ * "Admin · ExpertOS" / "Expert · ExpertOS" role label, with the sign-out moved here off the topbar
+ * (ghost button restyled for the dark `.side` rail). Pushed to the foot of the sidebar by
+ * `.side-foot { margin-top: auto }`.
+ */
+function SidebarFooter({
+  user,
+  role,
+  onSignOut,
+}: {
+  user: User;
+  role: Role | null;
+  onSignOut: () => void;
+}) {
+  // Prefer the Google display name, fall back to the email local-part, then a neutral label.
+  const name = user.displayName?.trim() || user.email?.split("@")[0] || "You";
+  const seed = user.email ?? user.uid;
+  const roleLabel = `${role === "admin" ? "Admin" : "Expert"} · ExpertOS`;
+  return (
+    <div className="side-foot">
+      <div className="side-user">
+        <span className={cx("avatar", "side-user-avatar", `tone-${avatarTone(seed)}`)} aria-hidden>
+          {avatarInitials(name)}
+        </span>
+        <div className="side-user-body">
+          <div className="side-user-name">{name}</div>
+          <div className="side-user-role">{roleLabel}</div>
+        </div>
+      </div>
+      <Button variant="ghost" size="sm" onClick={onSignOut}>
+        Sign out
+      </Button>
+    </div>
+  );
+}
+
 function Sidebar({
   pathname,
   role,
   counts,
+  user,
+  onSignOut,
 }: {
   pathname: string;
   role: Role | null;
   counts: NavCounts;
+  user: User;
+  onSignOut: () => void;
 }) {
   // Admin items appear only for a resolved admin; everyone else sees the expert subset (the API
   // is the real gate, so this just keeps the nav honest about what the signed-in user can open).
@@ -124,6 +193,7 @@ function Sidebar({
           </div>
         );
       })}
+      <SidebarFooter user={user} role={role} onSignOut={onSignOut} />
     </>
   );
 }
@@ -203,8 +273,9 @@ function AdminLogin({ onSignIn }: { onSignIn: () => Promise<void> }) {
 }
 
 /**
- * The admin/expert portal frame (Design System `.shell`): an ink sidebar of review queues,
- * a top bar with the signed-in identity + sign-out, and the page body. Gates on Firebase auth —
+ * The admin/expert portal frame (Design System `.shell`): an ink sidebar of review queues with a
+ * bottom-pinned identity + sign-out (M13.1.3), a top bar carrying the role-aware breadcrumb + view
+ * badge (M13.1.4), and the page body. Gates on Firebase auth —
  * the API still enforces the `expert`/`admin` role + tenant RLS, so this is a UX gate, not the
  * security boundary. Pages render their content as `children`.
  */
@@ -226,12 +297,33 @@ export function AdminFrame({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Shell sidebar={<Sidebar pathname={pathname} role={role} counts={counts} />}>
+    <Shell
+      sidebar={
+        <Sidebar
+          pathname={pathname}
+          role={role}
+          counts={counts}
+          user={user}
+          onSignOut={() => void signOutUser()}
+        />
+      }
+    >
       <Topbar>
-        <span className="grow muted">{user.email ?? user.uid}</span>
-        <Button variant="ghost" size="sm" onClick={() => void signOutUser()}>
-          Sign out
-        </Button>
+        {/* Breadcrumb (M13.1.4): "ADMIN › Page" / "EXPERT PORTAL › Page", role-aware prefix. */}
+        <div className="crumb grow">
+          <span className="label">{role === "admin" ? "Admin" : "Expert Portal"}</span>
+          <span className="crumb-sep" aria-hidden>
+            ›
+          </span>
+          <span className="crumb-page">{currentPageLabel(pathname)}</span>
+        </div>
+        {/* Role badge: which view the signed-in user is in (the API enforces the real boundary). */}
+        <Badge tone={role === "admin" ? "red" : "amber"}>
+          {role === "admin" ? "Admin view" : "Expert view"}
+        </Badge>
+        <button type="button" className="btn btn-icon btn-subtle" aria-label="Notifications">
+          <BellIcon />
+        </button>
       </Topbar>
       <Content>{children}</Content>
     </Shell>

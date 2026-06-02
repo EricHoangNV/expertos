@@ -16,15 +16,15 @@
   - M12.9.4 loading/empty states (`Skeleton`/`ChatTypingIndicator`/`ChatEmptyState`): DONE
 - M13 (Admin & Expert Portal UI Overhaul) — admin portal rebuild to the approved mockups:
   - M13.1.1 sidebar nav restructure: DONE — `AdminFrame` `NAV` regrouped into OPERATE / MONETIZE / EXPERT PORTAL (+ ANALYTICS / SYSTEM); per-item `group`+`role`, role-filtered `GROUP_ORDER` render; Dashboard `/` exact-match active.
-  - **M13.1.2 count badges: DONE** — `use-nav-counts.ts` `useNavCounts` fetches knowledge-review / open-concierge / flagged-query counts once `/me` resolves; best-effort per badge, capped 99→"99+"; `NavItem.badge` → `.side .navitem .tag` chip on Knowledge / Low-confidence / Concierge queue.
+  - M13.1.2 count badges: DONE — `useNavCounts` fetches knowledge-review / open-concierge / flagged-query counts; `.navitem .tag` chip, capped 99→"99+".
+  - **M13.1.3 / M13.1.4: DONE** — `SidebarFooter` bottom-pins avatar+name+"Admin/Expert · ExpertOS" role label + ghost sign-out (moved off topbar, `.side-foot` dark-ghost restyle); topbar now carries the role-aware `.crumb` breadcrumb ("Admin/Expert Portal › PageName") + "Admin/Expert view" `.badge-red`/`.badge-amber` + a notification bell `.btn-icon`. ("All screens" link omitted — mockup-deck nav artifact, no screen-index page.)
 - Tests: 1221 pass / 0 fail / 0 skip (shared 179, ui 213, db 9, ai 161, api 659).
-- Gates (run per-workspace — `turbo` SIGILLs in this sandbox): admin `tsc --noEmit` clean, `next lint` clean, root `knip` clean. (admin has no jest suite; `next build` blocked in-sandbox by the missing linux/arm64 SWC native binary — environmental, not code.)
+- Gates (run per-workspace — `turbo` SIGILLs in this sandbox): ui build/eslint/jest + root `lint:css` (stylelint) + admin `tsc --noEmit` + `next lint` + root `knip` all clean. (admin has no jest suite; `next build` blocked in-sandbox by the missing linux/arm64 SWC native binary — environmental, not code.)
 
 - Next tasks (priority order):
-  1. **M13.1.3 / M13.1.4** — bottom-pinned user identity + topbar breadcrumb/role-badge.
-  2. **M12.9.2 / M12.9.3** — ds.css conformance audit + dark-sidebar render check (quick wins).
-  3. **M13.2** — dashboard (admin home) KPI cards + funnel/pipeline/SLA cards.
-  4. **M11.1 fixme legs** / **NT human gates** — await external surfaces / PM sign-off.
+  1. **M12.9.2 / M12.9.3** — ds.css conformance audit + dark-sidebar render check (quick wins).
+  2. **M13.2** — dashboard (admin home) KPI cards + funnel/pipeline/SLA cards.
+  3. **M11.1 fixme legs** / **NT human gates** — await external surfaces / PM sign-off.
 
 ### Reusable building blocks for remaining UI work
 - `useMediaQuery` (`apps/web/src/lib/use-media-query.ts`): ≥900px sidebar / ≥1280px rail breakpoints.

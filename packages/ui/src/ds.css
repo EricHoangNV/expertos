@@ -283,8 +283,23 @@ button { font-family: inherit; cursor: pointer; }
 .side .navitem .ic { width: 18px; height: 18px; flex: none; }
 .side .navitem .tag { margin-left: auto; font-family: var(--font-mono); font-size: 10px; background: rgba(255,255,255,.12); padding: 1px 6px; border-radius: var(--r-pill); }
 
+/* Bottom-pinned sidebar identity (M13.1.3) — avatar + name + role label over a
+   ghost sign-out, pushed to the foot of the ink `.side` rail via margin-top:auto. */
+.side-foot { margin-top: auto; padding-top: 16px; display: flex; flex-direction: column; gap: 12px; border-top: 1px solid rgba(255,255,255,.08); }
+.side-user { display: flex; align-items: center; gap: 11px; padding: 0 8px; min-width: 0; }
+.side-user .side-user-avatar { width: 32px; height: 32px; font-size: 12px; }
+.side-user-body { display: flex; flex-direction: column; min-width: 0; }
+.side-user-name { color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side-user-role { color: var(--ink-400); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side-foot .btn-ghost { background: transparent; border-color: rgba(255,255,255,.18); color: var(--ink-300); }
+.side-foot .btn-ghost:hover { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.32); color: #fff; }
+
 .main { display: flex; flex-direction: column; min-width: 0; }
 .topbar { height: 64px; background: var(--surface); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 16px; padding: 0 28px; position: sticky; top: 0; z-index: 20; }
+/* Topbar breadcrumb (M13.1.4) — `.label` section prefix + chevron + the current page name. */
+.crumb { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.crumb .crumb-sep { color: var(--ink-300); font-size: 14px; }
+.crumb .crumb-page { font-family: var(--font-display); font-size: 14px; font-weight: 600; color: var(--ink-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .content { padding: 28px; flex: 1; }
 .content-narrow { max-width: 1080px; margin: 0 auto; width: 100%; }
 

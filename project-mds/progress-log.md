@@ -3526,3 +3526,29 @@ Wired into `apps/web/app/chat/page.tsx`: `AssistantAnswer` shows `<ChatTypingInd
 **Notes for next iteration:**
 - M13.1.3 / M13.1.4: bottom-pinned user identity (avatar + name + role label + sign-out on dark) and topbar breadcrumb + role badge ("ADMIN VIEW" `.badge-red` / "EXPERT VIEW" `.badge-amber`).
 - Counts fetch once on mount; no live refresh. If a future task wants live counts (e.g. after acting in the queue), expose a re-fetch from the hook or lift to a context.
+
+---
+
+## M13.1.3 / M13.1.4 — Sidebar identity + topbar breadcrumb/role-badge (2026-06-02)
+
+**What:** Finished the M13.1 chrome rebuild. M13.1.3 bottom-pins the signed-in identity (avatar + name + role label) and moves Sign out off the topbar into the sidebar foot. M13.1.4 fills the freed topbar with a role-aware breadcrumb, an "Admin view / Expert view" badge, and a notification bell.
+
+**How:**
+- `packages/ui/src/ds.css` — two new blocks (no hardcoded colors / off-scale px; stylelint clean):
+  - `.side-foot` (margin-top:auto pin + top hairline) + `.side-user` / `.side-user-avatar` (32px) / `.side-user-name` (white, ellipsised) / `.side-user-role` (ink-400) + a dark-context `.side-foot .btn-ghost` restyle (transparent bg, translucent-white border/text — the stock light `.btn-ghost` is unreadable on the ink `.side`).
+  - `.crumb` / `.crumb-sep` / `.crumb-page` — topbar breadcrumb (mono `.label` prefix + chevron + display-font page name).
+- `apps/admin/src/components/AdminFrame.tsx`:
+  - `SidebarFooter({ user, role, onSignOut })` — `avatarTone(email||uid)` + `avatarInitials(name)` (name = displayName → email local-part → "You"); role label `"${Admin|Expert} · ExpertOS"`; ghost Sign out. Rendered last inside `Sidebar` (after the nav groups). `Sidebar` now takes `user` + `onSignOut`; `AdminFrame` passes `user` + `() => void signOutUser()`.
+  - Topbar: `currentPageLabel(pathname)` (active nav item's label; `/`→"Dashboard") feeds the `.crumb`; prefix is role-aware ("Admin" vs "Expert Portal"); `Badge tone={admin?"red":"amber"}` "Admin/Expert view"; `BellIcon` in a `.btn-icon .btn-subtle` (aria-label "Notifications"). Removed the old `email` span + topbar Sign out.
+  - Imported `avatarInitials`/`avatarTone` from `@expertos/ui` and `type { User }` from `firebase/auth`; refreshed the `AdminFrame` docstring.
+
+**Decisions:**
+- "All screens" link (spec/manifest) **intentionally omitted** — it is a mockup-deck navigation artifact ("navigation to screen index"); no screen-index page exists in the product. Documented rather than shipping a dead link.
+- Notification bell kept as visual chrome per the approved mockup (recognizable affordance, aria-labelled); no notifications backend yet, so it is presentational — a wiring point for a future feature.
+- Role null (still resolving / lookup failed) falls back to the safe Expert subset everywhere (breadcrumb prefix, role label, view badge), matching the existing nav role-gate.
+
+**Gates:** ui build clean; root `lint:css` (stylelint) clean; ui eslint + 213 jest tests pass; admin `tsc --noEmit` clean; `next lint` clean; root `knip` clean. (`next build` still blocked in-sandbox — linux/arm64 SWC binary, environmental.) No new tests (admin has no jest suite; ui change is CSS-only).
+
+**Notes for next iteration:**
+- M13.1 (sidebar & nav overhaul) is now COMPLETE. Next: M12.9.2/M12.9.3 (conformance/dark-sidebar audit — quick), then M13.2 (dashboard).
+- If notifications ship later, wire the `BellIcon` button + add a `NavCounts`-style fetch.
