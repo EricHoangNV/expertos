@@ -46,6 +46,8 @@ export { ChatAnswerActions } from "./ChatAnswerActions";
 export type { ChatAnswerActionsProps } from "./ChatAnswerActions";
 export { ChatConsultationCard } from "./ChatConsultationCard";
 export type { ChatConsultationCardProps } from "./ChatConsultationCard";
+export { ChatStateNotice } from "./ChatStateNotice";
+export type { ChatStateNoticeProps, ChatStateNoticeTone } from "./ChatStateNotice";
 export {
   ChatConversationList,
   AVATAR_TONES,

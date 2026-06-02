@@ -15,6 +15,7 @@ import { ChatUserMessage } from "./ChatUserMessage";
 import { ChatAssistantMessage } from "./ChatAssistantMessage";
 import { ChatAnswerActions } from "./ChatAnswerActions";
 import { ChatConsultationCard } from "./ChatConsultationCard";
+import { ChatStateNotice } from "./ChatStateNotice";
 import { AnswerProse } from "./AnswerProse";
 import { ChatTopbar } from "./ChatTopbar";
 import {
@@ -1296,5 +1297,70 @@ describe("ChatConsultationCard — consultation recommendation card (M12.4.5)", 
     for (const action of actionKids(el) as ReactElement[]) {
       expect((action.props as { disabled?: unknown }).disabled).toBe(true);
     }
+  });
+});
+
+describe("ChatStateNotice — answer-state cards/badge (M12.4.6)", () => {
+  /** [head, body] children of the `.msg-notice` card. */
+  const cardParts = (el: ReactElement): unknown[] => kids(el) as unknown[];
+  /** [badge, headingOrFalse] children of `.msg-notice-head`. */
+  const headParts = (el: ReactElement): unknown[] =>
+    kids(cardParts(el)[0] as ReactElement) as unknown[];
+
+  it("renders an amber card with a tone-matched badge label + body (insufficient knowledge)", () => {
+    const el = ChatStateNotice({
+      tone: "amber",
+      label: "Limited knowledge",
+      children: "Try rephrasing.",
+    }) as ReactElement;
+    expect(cls(el)).toBe("msg-notice tone-amber");
+    const [badge, heading] = headParts(el);
+    expect(cls(badge as ReactElement)).toBe("badge badge-amber");
+    expect(kids(badge as ReactElement)).toBe("Limited knowledge");
+    expect(heading).toBeFalsy();
+    const body = cardParts(el)[1] as ReactElement;
+    expect(cls(body)).toBe("msg-notice-body");
+    expect(kids(body)).toBe("Try rephrasing.");
+  });
+
+  it("renders an optional display heading in the card head", () => {
+    const el = ChatStateNotice({
+      tone: "amber",
+      label: "Important",
+      heading: "Read this first",
+      children: "Disclaimer.",
+    }) as ReactElement;
+    const heading = headParts(el)[1] as ReactElement;
+    expect(cls(heading)).toBe("msg-notice-title");
+    expect(kids(heading)).toBe("Read this first");
+  });
+
+  it("omits the body paragraph when no children are given", () => {
+    const el = ChatStateNotice({ tone: "amber", label: "Important" }) as ReactElement;
+    expect(cardParts(el)[1]).toBeFalsy();
+  });
+
+  it("renders the `note` variant as a compact badge + muted text (fair-use degrade)", () => {
+    const el = ChatStateNotice({
+      tone: "info",
+      label: "Fair-use mode",
+      variant: "note",
+      children: "Lighter model.",
+    }) as ReactElement;
+    expect(cls(el)).toBe("msg-note");
+    const [badge, text] = kids(el) as ReactElement[];
+    expect(cls(badge)).toBe("badge badge-info");
+    expect(kids(badge)).toBe("Fair-use mode");
+    expect(cls(text)).toBe("muted");
+    expect(kids(text)).toBe("Lighter model.");
+  });
+
+  it("omits the muted text in the `note` variant when no children are given", () => {
+    const el = ChatStateNotice({
+      tone: "info",
+      label: "Fair-use mode",
+      variant: "note",
+    }) as ReactElement;
+    expect((kids(el) as unknown[])[1]).toBeFalsy();
   });
 });

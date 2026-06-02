@@ -3018,3 +3018,33 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 
 **Notes for next iteration:**
 - M12.4.6: `HighStakesNotice` + the inline insufficient-knowledge `Card` + the degraded `Badge` still live in `apps/web/app/chat/page.tsx` (inside `AssistantTurn`) — restyle those to the design-system card/badge patterns next.
+
+## M12.4.6 — Insufficient-knowledge / high-stakes / degraded state cards
+**Date:** 2026-06-02
+**Ref:** PRD §"UI Reference Spec" (State Mapping) — M12.4.6
+
+**What was done:**
+- New `packages/ui/src/ChatStateNotice.tsx` — a presentational ds.css primitive for the three post-answer states the chat surfaces under an assistant turn:
+  - `card` variant → an amber `.msg-notice` card (tone-tinted bg + matching `.badge` label + optional display heading + body) for insufficient-knowledge (rephrase/book suggestion) and the high-stakes legal disclaimer (NT.4).
+  - `note` variant → a compact `.msg-note` row (badge + muted text inline), the "subtle info badge" the spec calls for the fair-use degrade (M6.3).
+  - The badge tone (`amber`/`info`) always matches the card accent so status reads consistently (Design System: amber = warning/disclaimer, info = degrade/processing).
+- ds.css: new `.msg-notice` (+ `.tone-amber`/`.tone-info`, `.msg-notice-head`/`-title`/`-body`) and `.msg-note` block, after the M12.4.5 `.consult-card` block. Reuses existing tokens + the badge border hexes (`#F0DDB8` amber, `#CFE0F1` info) already in ds.css.
+- Wired into `apps/web/app/chat/page.tsx`: `HighStakesNotice` now returns an amber `ChatStateNotice`; the inline insufficient-knowledge `Card`/`Badge` → amber `ChatStateNotice` card; the degraded `Badge tone="info"` → `ChatStateNotice` `note` variant.
+- +5 ui tests in `primitives.test.ts` (card tone/badge/body, optional heading, omitted body, note variant badge+muted, omitted note text); `ChatStateNotice.tsx` 100% coverage. ui suite 113 → 118.
+
+**Key decisions:**
+- One component with two variants instead of three bespoke cards: the two amber cards and the degrade note share the badge+tone logic, and the spec explicitly differentiates "amber card" (insufficient/high-stakes) from "subtle info badge" (degrade) — the `variant` prop captures exactly that split.
+- Kept it presentational (no hooks), matching every other M12 primitive — the page still decides which state fired from the `done` chat frame and passes copy as `children`. Tests invoke the function directly and assert on the element tree (no DOM renderer), per the file's convention.
+- Reused the consult-card visual language (amber-50 bg + border) rather than inventing new card chrome, keeping the warm-card family visually coherent.
+
+**Files changed:**
+- `packages/ui/src/ChatStateNotice.tsx` — new presentational primitive (card + note variants).
+- `packages/ui/src/index.ts` — export `ChatStateNotice` + `ChatStateNoticeProps`/`ChatStateNoticeTone`.
+- `packages/ui/src/ds.css` — `.msg-notice` / `.msg-note` block.
+- `packages/ui/src/primitives.test.ts` — +5 tests.
+- `apps/web/app/chat/page.tsx` — `HighStakesNotice` + the three inline state cards now use `ChatStateNotice`.
+
+**Notes for next iteration:**
+- M12.4 is complete (all six). Next M12 leg is M12.5 (sources rail) — the `AnswerView` sources drawer is already decoupled from `AnswerProse` and toggled by the M12.4.4 `sourcesOpen` prop, so lifting it into a persistent `.sources-rail` (studio mode) with a drawer fallback (classic/focus) is the move.
+- Rebuild `packages/ui` (`pnpm --filter @expertos/ui build`) after editing it — apps consume `dist/`, and the web typecheck fails on a stale dist (hit this: web couldn't see the new export until the ui build ran).
+- Gate runner reminder: `turbo` SIGILLs in this sandbox — run gates per-workspace (`tsc --noEmit`, `next lint`, `jest`, `knip`) directly.

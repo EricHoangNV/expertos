@@ -562,3 +562,26 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
 .consult-card .consult-card-actions {
   display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
 }
+
+/* Answer-state notices (M12.4.6) — the card/badge surface for the post-answer
+   states under an assistant turn (PRD §"State Mapping"): an amber card for
+   insufficient-knowledge (rephrase/book) and the high-stakes disclaimer (NT.4),
+   plus a compact info note for the fair-use degrade (lighter model, M6.3). The
+   badge tone matches the card accent so status reads consistently. */
+.msg-notice {
+  display: flex; flex-direction: column; gap: var(--s2);
+  border-radius: var(--r-lg);
+  padding: var(--s4) var(--s5);
+}
+.msg-notice.tone-amber { background: var(--amber-50); border: 1px solid #F0DDB8; }
+.msg-notice.tone-info  { background: var(--info-50);  border: 1px solid #CFE0F1; }
+.msg-notice .msg-notice-head {
+  display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+}
+.msg-notice .msg-notice-title {
+  margin: 0;
+  font-family: var(--font-display); font-weight: 700; color: var(--ink-900);
+}
+.msg-notice .msg-notice-body { margin: 0; color: var(--ink-700); }
+/* Compact inline note (fair-use degrade) — badge + muted text, no card chrome. */
+.msg-note { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }

@@ -14,6 +14,7 @@ import {
   ChatSearch,
   type ChatSearchResultItem,
   ChatSidebar,
+  ChatStateNotice,
   ChatTopbar,
   ChatUsageMeter,
   ChatUserIdentity,
@@ -84,10 +85,9 @@ interface UiMessage {
  */
 function HighStakesNotice() {
   return (
-    <Card className="card-pad">
-      <Badge tone="amber">Important</Badge>
-      <p className="muted">{HIGH_STAKES_DISCLAIMER}</p>
-    </Card>
+    <ChatStateNotice tone="amber" label="Important">
+      {HIGH_STAKES_DISCLAIMER}
+    </ChatStateNotice>
   );
 }
 
@@ -340,18 +340,15 @@ function AssistantTurn({ message }: { message: UiMessage }) {
     >
       <AssistantAnswer message={message} sourcesOpen={sourcesOpen} />
       {message.done && message.degraded && (
-        <Badge tone="info">
-          Fair-use mode — answered with a lighter model while you’re over this period’s soft limit.
-        </Badge>
+        <ChatStateNotice tone="info" label="Fair-use mode" variant="note">
+          Answered with a lighter model while you’re over this period’s soft limit.
+        </ChatStateNotice>
       )}
       {message.done && message.insufficientKnowledge && (
-        <Card className="card-pad">
-          <Badge tone="amber">Limited knowledge</Badge>
-          <p>
-            I couldn’t find enough in the expert’s knowledge base to answer this confidently. Try
-            rephrasing your question, or book a consultation for a direct answer.
-          </p>
-        </Card>
+        <ChatStateNotice tone="amber" label="Limited knowledge">
+          I couldn’t find enough in the expert’s knowledge base to answer this confidently. Try
+          rephrasing your question, or book a consultation for a direct answer.
+        </ChatStateNotice>
       )}
       {message.done && message.highStakes && <HighStakesNotice />}
       {message.done && message.recommendation && (
