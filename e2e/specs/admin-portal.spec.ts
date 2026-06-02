@@ -23,10 +23,14 @@ test.describe("admin portal", () => {
     await expect(page.getByText(/^expert portal$/i).first()).toBeVisible();
     await expect(page.getByText(/^monetize$/i).first()).toBeVisible();
     await expect(page.getByText(/^admin view$/i).first()).toBeVisible();
-    // Admin-only sidebar links. Match exact names so descriptive dashboard cards don't collide.
-    await expect(page.getByRole("link", { name: "Knowledge", exact: true })).toBeVisible();
+    // Admin-only sidebar links, scoped to the dark `.side` rail so descriptive dashboard cards
+    // don't collide. The Knowledge item carries an attention count badge (M13.1.2) whose number
+    // joins the link's accessible name (e.g. "Knowledge 1") when any document is in Expert Review,
+    // so match the label with an optional trailing count rather than exactly.
+    const side = page.locator(".side");
+    await expect(side.getByRole("link", { name: /^Knowledge( \d+)?$/ })).toBeVisible();
     await expect(
-      page.getByRole("link", { name: "Users & Subscriptions", exact: true }),
+      side.getByRole("link", { name: "Users & Subscriptions", exact: true }),
     ).toBeVisible();
   });
 

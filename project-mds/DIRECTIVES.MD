@@ -307,6 +307,18 @@ const selectedProduct = selectedPlan === 'monthly' ? monthlyProduct : yearlyProd
 
 E2E tests should create all their own data, not depend on existing state. Clean up everything they create. Use isolated test configs to ensure deterministic behavior.
 
+### 3.4.1 Sandbox E2E Constraint: Write Specs, Do NOT Run the Live Stack
+
+The Docker sandbox VM has only 4GB RAM. Running the full E2E stack (PostgreSQL + Firebase Auth emulator + NestJS API + two Next.js dev servers + Playwright/Chromium + Claude CLI) exceeds this limit and causes OOM kills (Claude exits with code 143 mid-iteration, losing uncommitted work).
+
+**Rule:** When working on E2E specs (`e2e/`) inside the sandbox:
+1. **Write** the spec files and seed data in `global-setup.ts`
+2. **Run static gates only** — `tsc` and `eslint` on the `e2e/` workspace to validate types and syntax
+3. **Do NOT** stand up the live stack (`infra/local-test-db.sh`, Firebase emulator, `next dev`, API server) or run `pnpm exec playwright test`
+4. **Commit and push** the specs — the host machine will run them with real resources
+
+Jest suites (`apps/web`, `apps/admin`, `packages/*`) are fine to run in-sandbox — they use jsdom, not real servers.
+
 ### 3.5 NaN and Infinity Guard in Numeric Calculations
 
 JS comparisons with `NaN` always return `false` (e.g., `NaN <= 0` is `false`), so `NaN` inputs bypass naive guards. Always use `Number.isFinite()` to guard against `NaN` and `Infinity` before arithmetic in scoring, pricing, or any numeric display logic.

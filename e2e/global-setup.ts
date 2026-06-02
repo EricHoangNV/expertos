@@ -154,6 +154,115 @@ async function globalSetup(): Promise<void> {
           },
         });
       }
+
+      // Seed one document parked in **Expert Review** so the M13.3 knowledge-approval kanban
+      // (M15.3.4) has a real card to approve → publish. The board lists/counts by `document.status`,
+      // so both the document and its latest version sit at `expert_review`. Reset to that state every
+      // run (a prior approve published it), so the approve round-trip is repeatable. Found by title
+      // within the tenant (documents carry no natural unique key); `version_number` is unique per doc.
+      const KNOWLEDGE_TITLE = "E2E Expert-Review Note";
+      const existingDoc = await tx.document.findFirst({
+        where: { tenantId: GLOBAL_TENANT_ID, title: KNOWLEDGE_TITLE },
+        select: { id: true },
+      });
+      const knowledgeDoc = existingDoc
+        ? await tx.document.update({
+            where: { id: existingDoc.id },
+            // Clear the published pointer before re-parking the version at expert_review.
+            data: { status: "expert_review", publishedVersionId: null, expertId: expert.id },
+            select: { id: true },
+          })
+        : await tx.document.create({
+            data: {
+              tenantId: GLOBAL_TENANT_ID,
+              title: KNOWLEDGE_TITLE,
+              scope: "global_expert",
+              language: "en",
+              status: "expert_review",
+              expertId: expert.id,
+            },
+            select: { id: true },
+          });
+      const existingVersion = await tx.documentVersion.findFirst({
+        where: { documentId: knowledgeDoc.id, versionNumber: 1 },
+        select: { id: true },
+      });
+      if (existingVersion) {
+        await tx.documentVersion.update({
+          where: { id: existingVersion.id },
+          data: { status: "expert_review", approvedBy: null, approvedAt: null },
+        });
+      } else {
+        await tx.documentVersion.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            documentId: knowledgeDoc.id,
+            versionNumber: 1,
+            status: "expert_review",
+            changeSummary: "Initial E2E draft for the approval round-trip.",
+          },
+        });
+      }
+
+      // Seed one concierge review case in the expert's voice so the M9.2 review queue (M15.3.3) has
+      // a real `requested` item to open + record a verdict on. The queue is voice-scoped via
+      // `message.conversation.expertId`, so the conversation is owned by the member but pinned to the
+      // seeded expert. Wipe + recreate the fixture conversation every run (cascade clears its
+      // messages → review request → responses, plus any refined message a prior `respond` appended),
+      // so the queue starts from a single open item. Found by the member + expert + marker title.
+      if (member) {
+        const CONCIERGE_TITLE = "E2E Concierge Review Case";
+        await tx.conversation.deleteMany({
+          where: { userId: member.id, expertId: expert.id, title: CONCIERGE_TITLE },
+        });
+        const convo = await tx.conversation.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            userId: member.id,
+            expertId: expert.id,
+            title: CONCIERGE_TITLE,
+            language: "en",
+          },
+          select: { id: true },
+        });
+        const now = Date.now();
+        // The detail pane resolves the question as the latest user message at/<= the answer's time,
+        // so the question must be stamped earlier than the answer.
+        await tx.message.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            conversationId: convo.id,
+            role: "user",
+            content: "How should I price a monthly retainer for a new consulting client?",
+            createdAt: new Date(now - 2000),
+          },
+        });
+        const answer = await tx.message.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            conversationId: convo.id,
+            role: "assistant",
+            content:
+              "A common approach is to estimate the monthly hours, apply your blended rate, then add " +
+              "a retainer premium for priority access. E2E concierge fixture answer.",
+            confidence: 0.4,
+            createdAt: new Date(now - 1000),
+          },
+          select: { id: true },
+        });
+        await tx.humanReviewRequest.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            userId: member.id,
+            messageId: answer.id,
+            triggerMode: "auto_silent",
+            visibility: "silent",
+            confidenceScore: 0.4,
+            status: "requested",
+            slaDueAt: new Date(now + 24 * 60 * 60 * 1000),
+          },
+        });
+      }
     });
   } finally {
     await prisma.$disconnect();
