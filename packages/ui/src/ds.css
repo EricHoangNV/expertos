@@ -307,6 +307,9 @@ button { font-family: inherit; cursor: pointer; }
 .pagehead { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
 
 /* stat card */
+/* Dashboard KPI grid (M13.2.2) — responsive N-up grid of `.stat` cards that
+   collapses to fewer columns as the content area narrows. */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
 .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 18px 20px; box-shadow: var(--sh-sm); }
 .stat .k { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-500); }
 .stat .v { font-family: var(--font-display); font-weight: 700; font-size: 30px; color: var(--ink-900); margin-top: 6px; letter-spacing: -.02em; }

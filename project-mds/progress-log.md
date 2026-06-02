@@ -3575,3 +3575,59 @@ Wired into `apps/web/app/chat/page.tsx`: `AssistantAnswer` shows `<ChatTypingInd
 **Notes for next iteration:**
 - M12 (consumer web `/chat` overhaul) is fully COMPLETE. Next UI work is M13.2 (admin dashboard home): page header (greeting + validation-loop lede + 7d/30d/QTD `.seg`) and the KPI/Questions/Funnel/Low-confidence/Pipeline/SLA cards, all wired to existing analytics APIs (`/admin/analytics/{usage,funnel,validation,concierge}`, `/admin/revenue/report`, `/admin/failed-queries`, `/knowledge`). M13.2.7 needs a new `.dark-card` (also M13.7.2) and M13.2.3 a `.progress-bar-stacked`.
 - Test count unchanged: 1221 pass / 0 fail / 0 skip.
+
+---
+
+## M13.2.1 / M13.2.2 — Admin dashboard home: page header + KPI stat cards (2026-06-02)
+
+Rebuilt the admin console landing page (`apps/admin/app/page.tsx`) from a bare grid of quick-link
+cards into the M13.2 dashboard top section, matching the approved mockup and wired to the existing
+analytics APIs.
+
+**M13.2.1 — page header:**
+- Hour-keyed greeting ("Good morning/afternoon/evening, [Name]") with the name from Firebase auth
+  (`displayName` → email local-part → "there").
+- `.eyebrow` ("Phase 1 · MVP · Last Nd") + `.lede` validation-loop subtitle
+  ("Validating the loop: Expert → Knowledge → Voice → AI → Consultation.").
+- `.seg` segmented time-range control: **7d / 30d / QTD** (30d default). QTD resolves to a
+  quarter-to-date whole-day count (clamped to [1, 365]); the chosen range drives the analytics
+  `days` query. `aria-pressed` reflects the active option; `role="group"` + `aria-label` on the seg.
+
+**M13.2.2 — KPI stat cards:**
+- New ds.css `.kpi-grid` — responsive N-up grid (`repeat(auto-fit, minmax(200px, 1fr))`) over the
+  existing `Stat` primitive (`.stat`/`.k`/`.v`/`.d`/`.up`/`.down`). Added to `packages/ui/src/ds.css`
+  (resolves to source — no ui rebuild needed for CSS).
+- `Promise.all` over `getRevenueReport(3 months)` + `getFunnelAnalytics(days)` +
+  `getValidationAnalytics(days)`:
+  - **MRR** — `mrrCents` + a month-over-month `.up`/`.down` delta computed from the revenue period
+    series (latest vs prior month net; suppressed when <2 months or a zero base).
+  - **Active subscribers** — `activeSubscriptions` + live-plan count.
+  - **Consult conversions** — funnel-attributed `consultations` + booked revenue (`.up`).
+  - **Activation rate** — `validation.activation.activationRate` + "N of M new users cited".
+- **Metric honesty note:** the mockup's "Citation resolve rate" KPI is *not* a measured platform
+  metric — citation resolvability is enforced by render-after-resolve (OD#7), never sampled, so
+  there is no such aggregate. The genuine make-or-break activation signal stands in its place
+  (documented in the page header comment + PRD).
+
+**Scope:** M13.2.3–.7 deferred. M13.2.3 (Questions Answered grounded/low-conf/insufficient split)
+has **no** platform-wide API aggregate — `UsageAnalyticsDto` carries events/tokens/cost only, not
+answer-quality — so it needs either a new backend rollup or an honest substitution before it can be
+built faithfully. M13.2.4/.5/.6/.7 are each fully backed by existing APIs.
+
+**Gates (per-workspace — turbo SIGILLs in sandbox):** admin `tsc --noEmit` clean, admin `next lint`
+clean, root `lint:css` (stylelint) clean, root `knip` clean, ui jest 213/213 (ds.css-only change,
+no component touched). admin has no jest suite; `next build` still blocked in-sandbox by the missing
+linux/arm64 SWC binary (environmental).
+
+**Files changed:**
+- `apps/admin/app/page.tsx` — landing page rewritten as the dashboard header + KPI grid.
+- `packages/ui/src/ds.css` — added `.kpi-grid`.
+- `project-mds/PRD.md` — M13.2.1 / M13.2.2 [ ]→[x] with implementation notes.
+- `project-mds/progress-state.md` — M13.2.1/.2 done; next tasks reordered to M13.2.3–.7.
+- `project-mds/progress-log.md` — this entry.
+
+**Notes for next iteration:**
+- Test count unchanged: 1221 pass / 0 fail / 0 skip.
+- M13.2.4 (funnel card → `.bar` rows), M13.2.5 (low-confidence list → `/admin/failed-queries`),
+  M13.2.6 (knowledge pipeline rows → `/knowledge` by status) and M13.2.7 (Concierge SLA dark card →
+  `/admin/analytics/concierge`, also exercises the M13.7.2 `.dark-card`) are the clean next picks.
