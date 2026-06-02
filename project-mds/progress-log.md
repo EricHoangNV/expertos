@@ -4296,3 +4296,28 @@ Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:
 
 **Notes for next iteration:**
 - M15.2 (admin jest suite) is next: admin has a jest config but zero tests + no harness. Mirror the web harness (`apps/admin/test/` render helper over the real admin `LocaleProvider` + a mock auth/`adminSession` context, admin-client fetch mock, `next/navigation` mock). Start with M15.2.1 (harness), then AdminFrame role-aware nav (M15.2.2), dashboard (M15.2.3), CRUD pages (M15.2.5), concierge queue (M15.2.6), i18n + `useStatusLabel` 43-token + 24-namespace lockstep (M15.2.7). Admin auth differs from web — it gates on `adminSession`/`denied`, not raw firebase user.
+
+---
+
+## M15.2.1 (test): admin/expert portal jest harness — 2026-06-02
+
+**Task:** M15.2.1 — test harness setup for `apps/admin` (mock auth context admin-vs-expert role, locale context, admin-client fetch mocks, shared render helpers). First task of M15.2 (admin jest suite); admin had a jest config but zero tests + no harness.
+
+**What was added** (admin 0 → 6 tests):
+- `jest.config.cjs` — replaced the bare `{ testEnvironment: "node", passWithNoTests: true }` placeholder with the web app's jsdom + ts-jest config (verbatim mirror): jsdom env, default `roots` (so `__mocks__/firebase/*` + `__mocks__/next/*` auto-apply), ts-jest transform with `jsx:react-jsx`/CommonJS override, CSS→`test/style-stub.cjs`, `collectCoverageFrom` over `app/**`+`src/**` (firebase.ts excluded).
+- `jest.setup.ts` — jest-dom matchers, the firebase env (`NEXT_PUBLIC_FIREBASE_*` so `isFirebaseConfigured`), matchMedia + scrollIntoView jsdom stubs, and per-test reset of the fetch/auth/router mocks. (Dropped web's TextEncoder/ReadableStream SSE polyfills — the admin portal has no streaming endpoint.)
+- `test/{auth-state,router-state,api-mock}.ts` + `__mocks__/firebase/{app,auth}.ts` + `__mocks__/next/navigation.ts` — copied verbatim from web (same `fetch`-keyed-by-`METHOD pathname` registry, same controllable firebase-auth + next/navigation mocks); only the header comments retargeted to M15.2.1/admin.
+- `test/render.tsx` — admin `renderWithProviders(ui, { user?, role?, denied?, locale? })`: wraps the unit in the REAL admin `AuthProvider` + `LocaleProvider`. Key delta from web — the admin AuthProvider resolves role through `POST /me/admin-session` (M14 whitelist gate), so the helper auto-mocks that endpoint (`{ok,role,user}` for a whitelisted email, or a 403 when `denied:true` to drive the Access-Denied path); `role` defaults `admin`. Locale seeds via `GET /me`; localStorage key is `expertos:admin-locale`.
+- `test/harness.test.tsx` (6) — proves the wiring: admin-session role resolution (admin + expert), the 403→`denied` flip, signed-out state, EN→VI locale switch with `PATCH /me/locale` write-through + localStorage, and the `GET /me` locale seed.
+- `package.json` — added the testing-library + ts-jest/jest-jsdom/@types/jest devDeps (mirror web); `test` script `jest --passWithNoTests` → `jest`.
+- `knip.json` — per-workspace `ignoreDependencies` for the three `@testing-library/*` deps under `apps/admin` (the harness lives in `test/**`, outside knip's `app/**`+`src/**` project scope, so their imports aren't yet seen). To be trimmed in M15.2.2 once page tests under `app/**`/`src/**` reference them directly — exactly how web evolved (M15.1.1 added the ignores, M15.1.6 trimmed them).
+
+**Key decisions / honest notes:**
+- ts-jest (not `next/jest`) — same reason as web: next-swc's native binary is arch-broken in-sandbox.
+- Used `fireEvent.click` (not raw DOM `.click()`) in the locale-switch test so the state update is `act()`-wrapped (raw click logged a React act warning while still passing).
+- The per-workspace knip ignore is a deliberate temporary mirror of web's M15.1.1 state, not a permanent suppression — flagged in progress-state for M15.2.2 to remove.
+
+**Gates:** admin `tsc` clean, `next lint` clean, `jest` 6/6 pass, root `knip` + `lint:css` clean. Test/harness-only + knip.json/package.json → other workspaces unaffected (1376 → 1382 total tests).
+
+**Notes for next iteration:**
+- M15.2.2 (AdminFrame tests) next: role-aware nav filtering (admin sees all groups, expert sees only EXPERT PORTAL — `NAV.filter`), breadcrumb, nav count badges (`useNavCounts` → mock `listDocuments`/`getConciergeReviews`/`getFailedQueries`), sidebar footer identity, and the access-denied gate (`renderWithProviders(<AdminFrame/>, { denied: true })`). Put these tests under `src/components/` (in knip project scope) so the `@testing-library/*` imports resolve as used → then remove the apps/admin knip `ignoreDependencies` block.

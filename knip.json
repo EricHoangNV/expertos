@@ -23,7 +23,12 @@
     },
     "apps/admin": {
       "entry": ["app/**/{page,layout,loading,error,not-found}.tsx", "next.config.mjs"],
-      "project": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"]
+      "project": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"],
+      "ignoreDependencies": [
+        "@testing-library/dom",
+        "@testing-library/react",
+        "@testing-library/user-event"
+      ]
     },
     "apps/api": {
       "entry": ["src/main.ts", "src/ingestion/ingest.cli.ts"],
