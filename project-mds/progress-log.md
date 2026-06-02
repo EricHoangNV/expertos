@@ -3159,3 +3159,34 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 - `useMediaQuery` is reusable for M12.9.1 (sidebar slide-over < 900px).
 - `SourceCard.onSelect` (click-to-passage) is still unwired in both the rail and the drawer — when wiring, share active-ordinal state with `AnswerView.focusSource`.
 - Rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing — apps consume `dist/`; web typecheck fails against stale declarations otherwise. `turbo` SIGILLs in this sandbox — run gates per-workspace directly.
+
+## M12.6.1 — Chat input bar (sticky bottom composer)
+**Date:** 2026-06-02
+**Ref:** PRD §M12.6.1 (Frontend UI Overhaul — Input bar); requirements/ui-reference-spec.md §"Input Bar"
+
+**What was done:**
+- New `packages/ui/src/ChatInputBar.tsx` `ChatInputBar` — presentational sticky `.input-bar` composer per the UI spec: an optional left `.btn-subtle .btn-icon` paperclip attach button, the question `Textarea` (`.input-bar-input`), and a crimson circular `.input-bar-send` button (up-arrow SVG) on the right. A `children` slot above the input row hosts the M12.6.2 upload popover + M12.6.3 helper text.
+- Behavior: send enabled only when the trimmed draft is non-empty AND not busy; the input + attach disable while a turn streams (`busy`); the attach button is rendered only when `onAttach` is supplied and reflects the popover open state via `aria-expanded`/`aria-pressed` (forward hook for M12.6.2).
+- ds.css `.input-bar*` block: sticky bottom container (border-top, surface bg), `.input-bar-row` flex (align-end), 44px-min textarea, 44px circular send button — all tokens, hit targets ≥44px.
+- Exported from `packages/ui/src/index.ts`.
+- Wired into `apps/web/app/chat/page.tsx`: removed the old `Field`+`Textarea`+`Button` block; the bar now lives as a sibling of `.chat-content` inside `.chat-main` so it stays pinned at the foot while the transcript scrolls. Added an `inputPlaceholder` memo → "Ask [Expert] anything about your business…" once a voice is selected, generic otherwise. Dropped the now-unused `Textarea` import.
+- +8 ui tests in `primitives.test.ts` (container/row/send class, value+placeholder forwarding, onChange, canSend gating, onSend click, busy-disables-input, attach render+aria+click, children slot). UI suite 151 pass, 100% coverage maintained.
+
+**Key decisions:**
+- Moved the input bar OUT of the scrollable `.chat-content` (was inside it) into `.chat-main` so the composer is naturally pinned at the bottom of the flex column rather than relying on sticky-inside-a-padded-card. `position: sticky; bottom: 0` is kept as a belt-and-braces guard but the flex placement does the real work.
+- Kept strictly to M12.6.1 shell: NO Enter-to-send and NO textarea auto-resize — those are explicitly M12.6.4. The send button click is the only send path for now. Attach button is a no-op stub until M12.6.2 wires the upload popover; UploadPanel still renders in-flow above the bar for this task.
+- `inputPlaceholder` derives the expert display name from the selected `expertId` against the loaded voices (same source the voice picker uses).
+
+**Files changed:**
+- `packages/ui/src/ChatInputBar.tsx` — new component
+- `packages/ui/src/ds.css` — `.input-bar*` block (after the M12.4 chat-messages section)
+- `packages/ui/src/index.ts` — export `ChatInputBar` + `ChatInputBarProps`
+- `packages/ui/src/primitives.test.ts` — `ChatInputBar` describe block (+8 tests) + import
+- `apps/web/app/chat/page.tsx` — replaced Field+Textarea+Send with `ChatInputBar`; `inputPlaceholder` memo; moved bar out of `.chat-content`; dropped `Textarea` import
+
+**Notes for next iteration:**
+- M12.6.2 (next): wire the attach button to open `UploadPanel` as a popover above the input bar — pass `onAttach`/`attachActive`, render the panel + file-type chips into the `children` slot, and remove the in-flow `UploadPanel`.
+- M12.6.3: helper text row ("Enter to send · Shift+Enter newline" left, "N questions left this month" right from entitlements) also goes in the `children` slot.
+- M12.6.4: add Enter-to-send (Shift+Enter newline) + textarea auto-resize on `.input-bar-input`.
+- Visual seam: `.chat-content` is a `.card` (rounded) and the input bar is a flat full-width strip below it — acceptable for the shell; M12.9 polish can reconcile the chrome.
+- Rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing — apps consume `dist/`. `turbo`/`pnpm typecheck` SIGILLs in this sandbox; run gates per-workspace directly.

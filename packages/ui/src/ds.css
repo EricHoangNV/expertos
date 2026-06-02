@@ -685,3 +685,28 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
 .msg-notice .msg-notice-body { margin: 0; color: var(--ink-700); }
 /* Compact inline note (fair-use degrade) — badge + muted text, no card chrome. */
 .msg-note { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+
+/* ============================================================
+   Input bar (consumer web) — M12.6
+   The sticky bottom composer pinned to the foot of the chat column: an
+   attach-document button (left, `.btn-subtle` icon), the question input, and the
+   crimson circular send button (right). The `children` slot above the row hosts
+   the upload popover (M12.6.2) + helper text (M12.6.3). The `.chat-content` scroll
+   region above scrolls under it so the bar stays put.
+   ============================================================ */
+.input-bar {
+  position: sticky; bottom: 0; z-index: 5;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding: var(--s4) var(--s5);
+  display: flex; flex-direction: column; gap: var(--s2);
+}
+.input-bar .input-bar-row { display: flex; align-items: flex-end; gap: var(--s2); }
+.input-bar .input-bar-attach { flex: none; }
+.input-bar .input-bar-input {
+  flex: 1; resize: none; min-height: 44px; max-height: 200px; line-height: 1.5;
+}
+.input-bar .input-bar-send {
+  flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%;
+}
+.input-bar .input-bar-send .ic { width: 18px; height: 18px; }

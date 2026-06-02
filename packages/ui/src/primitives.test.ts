@@ -16,6 +16,7 @@ import { ChatAssistantMessage } from "./ChatAssistantMessage";
 import { ChatAnswerActions } from "./ChatAnswerActions";
 import { ChatConsultationCard } from "./ChatConsultationCard";
 import { ChatStateNotice } from "./ChatStateNotice";
+import { ChatInputBar } from "./ChatInputBar";
 import { SourcesRail } from "./SourcesRail";
 import { SourcesRailHeader } from "./SourcesRailHeader";
 import { SourceCard } from "./SourceCard";
@@ -1366,6 +1367,105 @@ describe("ChatStateNotice — answer-state cards/badge (M12.4.6)", () => {
       variant: "note",
     }) as ReactElement;
     expect((kids(el) as unknown[])[1]).toBeFalsy();
+  });
+});
+
+describe("ChatInputBar — sticky bottom composer (M12.6.1)", () => {
+  const noop = () => {};
+  /** [childrenSlot, row] children of `.input-bar`. */
+  const barParts = (el: ReactElement): unknown[] => kids(el) as unknown[];
+  /** [attachOrFalse, input, send] children of `.input-bar-row`. */
+  const rowParts = (el: ReactElement): unknown[] =>
+    kids(barParts(el)[1] as ReactElement) as unknown[];
+
+  it("renders the `.input-bar` container with the input row + send button", () => {
+    const el = ChatInputBar({ value: "", onChange: noop, onSend: noop }) as ReactElement;
+    expect(cls(el)).toBe("input-bar");
+    const [, row] = barParts(el);
+    expect(cls(row as ReactElement)).toBe("input-bar-row");
+    const [attach, input, send] = rowParts(el);
+    expect(attach).toBeFalsy();
+    expect(cls(input as ReactElement)).toBe("input-bar-input");
+    expect(cls(send as ReactElement)).toBe("btn btn-primary input-bar-send");
+  });
+
+  it("forwards the controlled value + default/custom placeholder to the input", () => {
+    const input = rowParts(
+      ChatInputBar({ value: "hi", onChange: noop, onSend: noop }) as ReactElement,
+    )[1] as ReactElement;
+    const props = input.props as { value?: unknown; placeholder?: unknown };
+    expect(props.value).toBe("hi");
+    expect(props.placeholder).toBe("Ask anything about your business…");
+
+    const custom = rowParts(
+      ChatInputBar({ value: "", onChange: noop, onSend: noop, placeholder: "Ask John…" }) as ReactElement,
+    )[1] as ReactElement;
+    expect((custom.props as { placeholder?: unknown }).placeholder).toBe("Ask John…");
+  });
+
+  it("fires onChange from the input event", () => {
+    const onChange = jest.fn();
+    const input = rowParts(
+      ChatInputBar({ value: "", onChange, onSend: noop }) as ReactElement,
+    )[1] as ReactElement;
+    (input.props as { onChange: (e: { target: { value: string } }) => void }).onChange({
+      target: { value: "draft" },
+    });
+    expect(onChange).toHaveBeenCalledWith("draft");
+  });
+
+  it("enables Send only when the trimmed value is non-empty and not busy", () => {
+    const send = (el: ReactElement) => rowParts(el)[2] as ReactElement;
+    const disabled = (el: ReactElement) =>
+      (send(el).props as { disabled?: unknown }).disabled;
+    expect(disabled(ChatInputBar({ value: "  ", onChange: noop, onSend: noop }) as ReactElement)).toBe(true);
+    expect(disabled(ChatInputBar({ value: "ask", onChange: noop, onSend: noop }) as ReactElement)).toBe(false);
+    expect(
+      disabled(ChatInputBar({ value: "ask", onChange: noop, onSend: noop, busy: true }) as ReactElement),
+    ).toBe(true);
+  });
+
+  it("fires onSend from the send button click", () => {
+    const onSend = jest.fn();
+    const send = rowParts(
+      ChatInputBar({ value: "ask", onChange: noop, onSend }) as ReactElement,
+    )[2] as ReactElement;
+    (send.props as { onClick: () => void }).onClick();
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the input while a turn is streaming (busy)", () => {
+    const input = rowParts(
+      ChatInputBar({ value: "ask", onChange: noop, onSend: noop, busy: true }) as ReactElement,
+    )[1] as ReactElement;
+    expect((input.props as { disabled?: unknown }).disabled).toBe(true);
+  });
+
+  it("renders the attach button only when onAttach is supplied, reflecting popover state", () => {
+    const onAttach = jest.fn();
+    const attach = rowParts(
+      ChatInputBar({ value: "", onChange: noop, onSend: noop, onAttach, attachActive: true }) as ReactElement,
+    )[0] as ReactElement;
+    expect(cls(attach)).toBe("btn btn-subtle btn-icon input-bar-attach");
+    const props = attach.props as {
+      "aria-label"?: unknown;
+      "aria-expanded"?: unknown;
+      onClick: () => void;
+    };
+    expect(props["aria-label"]).toBe("Attach document");
+    expect(props["aria-expanded"]).toBe(true);
+    props.onClick();
+    expect(onAttach).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the children slot above the input row", () => {
+    const el = ChatInputBar({
+      value: "",
+      onChange: noop,
+      onSend: noop,
+      children: "popover",
+    }) as ReactElement;
+    expect(barParts(el)[0]).toBe("popover");
   });
 });
 

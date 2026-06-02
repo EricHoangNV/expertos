@@ -48,6 +48,8 @@ export { ChatConsultationCard } from "./ChatConsultationCard";
 export type { ChatConsultationCardProps } from "./ChatConsultationCard";
 export { ChatStateNotice } from "./ChatStateNotice";
 export type { ChatStateNoticeProps, ChatStateNoticeTone } from "./ChatStateNotice";
+export { ChatInputBar } from "./ChatInputBar";
+export type { ChatInputBarProps } from "./ChatInputBar";
 export { SourcesRail } from "./SourcesRail";
 export type { SourcesRailProps } from "./SourcesRail";
 export { SourcesRailHeader } from "./SourcesRailHeader";

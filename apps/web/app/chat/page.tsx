@@ -10,6 +10,7 @@ import {
   ChatConsultationCard,
   ChatConversationList,
   type ChatConversationItem,
+  ChatInputBar,
   ChatLayout,
   ChatSearch,
   type ChatSearchResultItem,
@@ -31,7 +32,6 @@ import {
   SourcesDrawer,
   SourcesRail,
   SourcesRailHeader,
-  Textarea,
 } from "@expertos/ui";
 import type {
   ChatCitationDto,
@@ -659,6 +659,15 @@ export default function ChatPage() {
     [entitlements],
   );
 
+  // The input-bar placeholder (M12.6.1): "Ask [Expert] anything about your
+  // business…" once a voice is selected, else a generic prompt.
+  const inputPlaceholder = useMemo(() => {
+    const expert = experts.find((e) => e.expertId === expertId);
+    return expert
+      ? `Ask ${expert.displayName} anything about your business…`
+      : "Ask anything about your business…";
+  }, [experts, expertId]);
+
   // Resolved citations for the latest assistant answer — feed both the sources-rail
   // header count (M12.5.2) and the source cards (M12.5.3). Render-after-resolve: only
   // the latest answer's citations show; the header/cards stay empty until they resolve.
@@ -998,21 +1007,14 @@ export default function ChatPage() {
         {error && <Badge tone="red">{error}</Badge>}
 
         <UploadPanel conversationId={conversationId} />
-
-        <Field label="Your question" htmlFor="draft">
-          <Textarea
-            id="draft"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            disabled={busy}
-            rows={3}
-            placeholder="Ask a question…"
-          />
-        </Field>
-        <Button variant="primary" onClick={() => void send()} disabled={busy || !draft.trim()}>
-          {busy ? "Answering…" : "Send"}
-        </Button>
       </main>
+      <ChatInputBar
+        value={draft}
+        onChange={setDraft}
+        onSend={() => void send()}
+        busy={busy}
+        placeholder={inputPlaceholder}
+      />
       <SourcesDrawer
         open={drawerCitations !== null}
         onClose={() => setDrawerCitations(null)}
