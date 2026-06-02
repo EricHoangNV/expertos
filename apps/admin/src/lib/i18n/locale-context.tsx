@@ -131,7 +131,10 @@ export function useStatusLabel(): (status: string) => string {
     (status: string) => {
       const key = `status.${status}`;
       const label = t(key);
-      return label === key ? status.replace(/_/g, " ") : label;
+      // The namespaced translator returns its FULL path ("common.<key>") on a miss — not the
+      // bare `key` — so detect that to fall back to the humanized (underscore→space) form. A new
+      // or unknown lifecycle status then surfaces as readable text, never a raw key token.
+      return label === `common.${key}` ? status.replace(/_/g, " ") : label;
     },
     [t],
   );

@@ -4450,3 +4450,32 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 
 **Notes for next iteration:**
 - M15.2.7 (admin i18n) next: `useStatusLabel` hook over all 43 status tokens + EN/VI dictionary lockstep across the 24 per-page namespaces (mirror the web M15.1.5 dictionary-lockstep approach). Then M15.3 (E2E expansion). Use `waitFor` (LEARNINGS #19); gate any staged-edit interactions on quiescence (LEARNINGS #20).
+
+---
+
+## M15.2.7 — Admin i18n jest suite (locale provider + useStatusLabel + dictionary lockstep)
+**Date:** 2026-06-02
+**Ref:** PRD §"M15 — Test Coverage" / M15.2.7
+
+**What was done:**
+- New `apps/admin/src/lib/i18n/i18n.test.tsx` (+13 → admin jest 83→96, total 1459→1472). Three concerns, mirroring the web M15.1.5 suite adapted to the admin per-page-namespace dictionaries + the `useStatusLabel` hook:
+  1. **Admin LocaleProvider:** default EN + `{greeting}/{name}` interpolation via the real `dashboard.greetingLine` key; missing-key→dotted-token fallback; EN→VI switch persisting to localStorage (`expertos:admin-locale`) + `PATCH /me/locale`; localStorage-pref-over-profile resolution order; profile-seed-from-`GET /me`.
+  2. **`useStatusLabel`:** a probe renders every one of the 43 `common.status.*` lifecycle tokens (token list derived from the dictionary, so the "43" assertion self-verifies) in EN and (localStorage-seeded) VI, asserting each maps to its localized label; plus an unknown token → humanized (underscore→space) fallback.
+  3. **Dictionary lockstep:** identical top-level namespace set EN vs VI (23 namespaces, >20 sanity floor), identical leaf-key set, every leaf a non-empty string in both locales, and `{placeholder}` interpolation-token parity per key (walks the full tree → covers every namespace).
+- **Bug found + fixed** via the unknown-token test (LEARNINGS #21): `useStatusLabel` in `apps/admin/src/lib/i18n/locale-context.tsx` compared the namespaced translator's miss-return against the un-prefixed sub-key (`status.<token>`), but `createTranslator(msgs, "common")` returns the FULL path (`common.status.<token>`) on a miss — so the equality never matched and the humanize branch was dead code. An unknown/new lifecycle status therefore leaked the raw `common.status.<token>` token to the admin UI. Fixed to compare against `` `common.${key}` `` (the prefixed path the translator actually returns). Known tokens unchanged.
+
+**Key decisions:**
+- Derived the status-token list and expected labels from `MESSAGES` itself (not a hardcoded list) so the test stays in sync with the dictionary and the "43 tokens" count is a real assertion, not a magic number.
+- PRD said "24 namespaces" but the assembled `MESSAGES` has 23 (23 dictionary files); asserted EN/VI namespace-set *equality* + a `>20` floor rather than hardcoding a brittle exact count.
+- Fixed the `useStatusLabel` bug rather than just documenting it — it's a small, correct, user-facing fix; the new test pins the intended behavior.
+
+**Files changed:**
+- `apps/admin/src/lib/i18n/i18n.test.tsx` — new (the +13 suite).
+- `apps/admin/src/lib/i18n/locale-context.tsx` — fixed `useStatusLabel` miss-fallback comparison (compare against `common.`-prefixed path).
+- `project-mds/LEARNINGS.MD` — added #21 (namespaced translator returns full path on a miss).
+- `project-mds/PRD.md` — M15.2.7 `[ ]`→`[x]`.
+- `project-mds/progress-state.md` — M15.2 marked COMPLETE; tests 1472; next = M15.3.
+
+**Notes for next iteration:**
+- **M15.2 (admin jest suite) is now COMPLETE.** Next is **M15.3 (E2E expansion)** — admin i18n, access control, concierge, knowledge kanban, web i18n, and resolving the 3 `test.fixme` legs. The `e2e/` workspace is opt-in and needs a live stack (DB + Firebase Auth emulator + the 3 built services per M11.1); it is excluded from the default `pnpm test` and is not runnable in the sandbox without standing that up.
+- Gates run green: admin `tsc` + `next lint` + jest (96) + root `knip` + `lint:css`.

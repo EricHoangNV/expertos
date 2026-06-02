@@ -246,3 +246,15 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Fixes that did **not** work: counting loads (`calls >= 2`) — fragile magic number, and v3 can still land later; re-querying the element in `waitFor` right before the click — the wipe happens *after* the click. The robust fix is to gate interactions on **quiescence**: `waitFor` until the page's load count has been *stable across two consecutive polls* (≈100ms with no new load) while the anchor content is present. After quiescence no further re-seed fires, so a staged edit survives and a synchronous element query + `fireEvent` is safe.
 
 **Rule:** When a jest test stages local edits on an admin/web data page and then acts on them, don't interact until the page has gone *quiet*. Poll the relevant fetch count and require it unchanged for ≥2 consecutive `waitFor` ticks (plus the anchor row rendered) before the first `fireEvent` — a fixed load-count gate is unreliable because the mock-`currentUser`-before-render fan-out issues one extra mount-time load and the role-resolution load can arrive late.
+
+---
+
+## 21. A namespaced translator returns its FULL dotted path on a miss — a fallback that compares against the un-prefixed sub-key never fires
+
+**Context:** M15.2.7 (admin i18n tests) — writing the `useStatusLabel` "unknown token → humanized form" test failed, revealing the shipped hook never actually humanized; an unknown lifecycle status rendered the raw `common.status.<token>` token in the admin UI.
+
+- `createTranslator(messages, "common")` (in `@expertos/ui`) prepends the namespace before looking up, and on a miss `translate` returns the *whole* key it looked up — i.e. `"common.status.foo"`, not the `"status.foo"` the caller passed.
+- `useStatusLabel` built `const key = ` status.${status} ``, called `t(key)`, then did `label === key ? humanize : label`. Because the miss-return carries the `common.` prefix, `label` (`"common.status.foo"`) never equaled `key` (`"status.foo"`), so the humanize branch was dead code and the raw namespaced token leaked to the UI for any status outside the 43-token catalog.
+- Fix: compare against the prefixed form the translator actually returns — `label === ` common.${key} `` → then `status.replace(/_/g, " ")`. Known tokens (real labels) still take the `: label` branch unchanged.
+
+**Rule:** When detecting a translation miss to drive a fallback, compare the translator's return against the **fully-namespaced** key it resolves internally (`namespace.sub.key`), not the bare sub-key you passed to a namespaced `t()` — otherwise the equality check never matches and the fallback silently never runs.
