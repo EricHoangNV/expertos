@@ -157,6 +157,7 @@ export type {
   QuestionsBreakdownDto,
   QuestionsPeriodDto,
   QuestionsAnalyticsDto,
+  KnowledgePipelineDto,
   CacheLayerStatsDto,
   CacheAnalyticsDto,
 } from "./analytics";

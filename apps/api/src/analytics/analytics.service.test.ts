@@ -32,6 +32,7 @@ function makeTx() {
       aggregate: jest.fn().mockResolvedValue({ _sum: { flagCount: null } }),
       findMany: jest.fn().mockResolvedValue([]),
     },
+    document: { groupBy: jest.fn().mockResolvedValue([]) },
     // dailySeries reads first, then activeUsers — sequence with mockResolvedValueOnce in tests.
     $queryRawUnsafe: jest.fn().mockResolvedValue([]),
   };
@@ -638,5 +639,50 @@ describe("AnalyticsService.questions", () => {
     expect(report.total).toBe(0);
     expect(report.breakdown).toEqual({ grounded: 0, lowConfidence: 0, insufficient: 0 });
     expect(report.periods).toEqual([]);
+  });
+});
+
+describe("AnalyticsService.knowledgePipeline", () => {
+  it("folds the document status groupBy into a zero-filled record + total", async () => {
+    const tx = makeTx();
+    tx.document.groupBy.mockResolvedValue([
+      { status: "draft", _count: { _all: 4 } },
+      { status: "expert_review", _count: { _all: 3 } },
+      { status: "published", _count: { _all: 148 } },
+    ]);
+    const { service, run } = makeService(tx);
+
+    const report = await service.knowledgePipeline(ADMIN);
+
+    expect(run).toHaveBeenCalledWith(ADMIN, expect.any(Function));
+    expect(tx.document.groupBy).toHaveBeenCalledWith({
+      by: ["status"],
+      _count: { _all: true },
+    });
+    // Every lifecycle stage present (stages with no documents zero-filled).
+    expect(report.byStatus).toEqual({
+      draft: 4,
+      ai_processing: 0,
+      expert_review: 3,
+      published: 148,
+      archived: 0,
+    });
+    expect(report.total).toBe(155); // 4 + 3 + 148
+  });
+
+  it("returns all-zero counts for an empty platform", async () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+
+    const report = await service.knowledgePipeline(ADMIN);
+
+    expect(report.total).toBe(0);
+    expect(report.byStatus).toEqual({
+      draft: 0,
+      ai_processing: 0,
+      expert_review: 0,
+      published: 0,
+      archived: 0,
+    });
   });
 });

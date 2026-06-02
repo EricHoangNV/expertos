@@ -7,6 +7,7 @@ import type {
   ReviewVerdictValue,
   ReviewVisibilityValue,
 } from "./concierge";
+import type { PublishStatusValue } from "./publish";
 
 /**
  * Usage & cost analytics wire types (M10.1, PRD §"Phase 1 — MVP" → M10 "usage & cost"). The admin
@@ -399,6 +400,21 @@ export interface QuestionsAnalyticsDto {
   breakdown: QuestionsBreakdownDto;
   /** Trailing daily series (only days with activity), oldest first. */
   periods: QuestionsPeriodDto[];
+}
+
+/**
+ * The admin knowledge-pipeline snapshot (`GET /admin/analytics/knowledge-pipeline`, M13.2.6). The
+ * dashboard's pipeline card shows how many knowledge documents currently sit in each stage of the
+ * M8.1 publish lifecycle (`draft → ai_processing → expert_review → published`, with `archived`
+ * retired). Counts are a **live snapshot of document status**, not windowed — there is no signal more
+ * useful than "how many are waiting where right now". Same admin cross-tenant read pattern as the
+ * other analytics reports ({@link UsageAnalyticsDto}).
+ */
+export interface KnowledgePipelineDto {
+  /** Documents grouped by current publish status, every status key present (zero-filled). */
+  byStatus: Record<PublishStatusValue, number>;
+  /** Total documents across all statuses (sum of `byStatus`). */
+  total: number;
 }
 
 // Cache effectiveness (M11.3) ────────────────────────────────────────────────

@@ -6,6 +6,8 @@ import { Badge, Bar, Card, Stat, StackedBar, cx, relativeTime } from "@expertos/
 import type {
   FailedQueryDto,
   FunnelAnalyticsDto,
+  KnowledgePipelineDto,
+  PublishStatusValue,
   QuestionsAnalyticsDto,
   RevenueReportDto,
   ValidationAnalyticsDto,
@@ -15,6 +17,7 @@ import { useAuth } from "../src/lib/auth-context";
 import {
   getFailedQueries,
   getFunnelAnalytics,
+  getKnowledgePipeline,
   getQuestionsAnalytics,
   getRevenueReport,
   getValidationAnalytics,
@@ -113,6 +116,7 @@ interface DashboardData {
   funnel: FunnelAnalyticsDto;
   validation: ValidationAnalyticsDto;
   questions: QuestionsAnalyticsDto;
+  pipeline: KnowledgePipelineDto;
   failedQueries: FailedQueryDto[];
 }
 
@@ -220,6 +224,41 @@ function FunnelCard({ data }: { data: FunnelAnalyticsDto }) {
   );
 }
 
+/**
+ * Knowledge Pipeline card (M13.2.6): how many knowledge documents currently sit in each stage of the
+ * M8.1 publish lifecycle, as a status row (badge tone + count) per stage — DRAFT (ink) → AI PROCESSING
+ * (info) → EXPERT REVIEW (amber) → PUBLISHED (green) — plus a "Review queue →" link to the full
+ * approval view. `archived` is omitted (retired docs aren't part of the active pipeline). Wired to
+ * {@link getKnowledgePipeline} (`/admin/analytics/knowledge-pipeline`).
+ */
+function KnowledgePipelineCard({ data }: { data: KnowledgePipelineDto }) {
+  const stages: { status: PublishStatusValue; label: string; tone: "ink" | "info" | "amber" | "green" }[] = [
+    { status: "draft", label: "Draft", tone: "ink" },
+    { status: "ai_processing", label: "AI Processing", tone: "info" },
+    { status: "expert_review", label: "Expert Review", tone: "amber" },
+    { status: "published", label: "Published", tone: "green" },
+  ];
+
+  return (
+    <Card pad className="pipeline-card">
+      <div className="pipeline-head">
+        <div className="label">Knowledge pipeline</div>
+        <Link href="/knowledge" className="btn btn-ghost btn-sm">
+          Review queue →
+        </Link>
+      </div>
+      <div className="pipeline-rows">
+        {stages.map((s) => (
+          <div className="pipeline-row" key={s.status}>
+            <Badge tone={s.tone}>{s.label}</Badge>
+            <span className="pipeline-count mono">{count(data.byStatus[s.status])}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 /** Confidence-circle tone on a red→amber scale (lower confidence reads redder). */
 function confTone(confidence: number): "conf-low" | "conf-mid" {
   return confidence < 0.6 ? "conf-low" : "conf-mid";
@@ -306,14 +345,15 @@ export default function AdminHomePage() {
         setError("Please sign in to continue.");
         return;
       }
-      const [revenue, funnel, validation, questions, failedQueries] = await Promise.all([
+      const [revenue, funnel, validation, questions, pipeline, failedQueries] = await Promise.all([
         getRevenueReport(token, 3),
         getFunnelAnalytics(token, days),
         getValidationAnalytics(token, days),
         getQuestionsAnalytics(token, days),
+        getKnowledgePipeline(token),
         getFailedQueries(token, { limit: LOWCONF_PREVIEW }),
       ]);
-      setData({ revenue, funnel, validation, questions, failedQueries });
+      setData({ revenue, funnel, validation, questions, pipeline, failedQueries });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard.");
     }
@@ -387,6 +427,8 @@ export default function AdminHomePage() {
       {data != null && <QuestionsCard data={data.questions} />}
 
       {data != null && <FunnelCard data={data.funnel} />}
+
+      {data != null && <KnowledgePipelineCard data={data.pipeline} />}
 
       {data != null && <LowConfidenceCard rows={data.failedQueries} />}
     </AdminFrame>

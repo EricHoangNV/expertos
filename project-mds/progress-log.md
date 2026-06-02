@@ -3731,3 +3731,30 @@ ui build, admin tsc + next lint, root lint:css (stylelint), root knip. (admin ha
 
 **Notes for next iteration:**
 - M13.2.6 (Knowledge Pipeline card, `/knowledge` by status) + M13.2.7 (Concierge SLA dark card, `/admin/analytics/concierge`) remain to finish the dashboard. M13.2.7 should introduce the reusable `.dark-card` (M13.7.2).
+
+---
+
+## M13.2.6 — Dashboard Knowledge Pipeline card (2026-06-02)
+
+**What:** Added the dashboard's Knowledge Pipeline card — how many knowledge documents currently sit in each stage of the M8.1 publish lifecycle.
+
+**Why a dedicated endpoint (not `/knowledge`):** The spec said "wire to `/knowledge` API", but the `/knowledge/documents` list is `take:50`-bounded (`knowledgeListQuerySchema.limit` default 50, max 100), so counting client-side can't produce accurate stage counts (the mockup shows PUBLISHED 148). Followed the M13.2.3 precedent (where `usage_logs` lacked a grounding signal) and added a purpose-built rollup instead.
+
+**Backend:**
+- `AnalyticsService.knowledgePipeline(user)` → `GET /admin/analytics/knowledge-pipeline` (`@Roles("admin")`, cross-tenant admin-RLS like every other dashboard read). One Prisma `document.groupBy({ by:["status"], _count:{_all:true} })`, folded into a zero-filled `Record<PublishStatusValue, number>` (every lifecycle stage present even with no docs) + a `total`. Not windowed — a live count of "how many are waiting where now" is the only useful signal.
+- `KnowledgePipelineDto` in `packages/shared/src/analytics.ts` (+ index export). Imported `PUBLISH_STATUSES` (value) + `PublishStatusValue` (type) into the service for the zero-fill.
+
+**Frontend:**
+- `KnowledgePipelineCard` in `apps/admin/app/page.tsx`: a `.label` "Knowledge pipeline" header + "Review queue →" ghost link (→ `/knowledge`), over four badge-toned status rows — DRAFT `.badge-ink` → AI PROCESSING `.badge-info` → EXPERT REVIEW `.badge-amber` → PUBLISHED `.badge-green` — each with a right-aligned mono count. `archived` omitted (retired docs aren't part of the active pipeline). Wired via new `getKnowledgePipeline` admin-client fn + `DashboardData.pipeline` + `Promise.all` load.
+- New ds.css `.pipeline-*` block (card / head / rows / count) — tokens only.
+
+**Files changed:**
+- `packages/shared/src/analytics.ts` (+ `KnowledgePipelineDto`, `PublishStatusValue` import), `packages/shared/src/index.ts` (export).
+- `apps/api/src/analytics/analytics.service.ts` (`knowledgePipeline` + imports), `apps/api/src/analytics/analytics.controller.ts` (route), `apps/api/src/analytics/analytics.service.test.ts` (+2 tests, `document.groupBy` mock).
+- `apps/admin/src/lib/admin-client.ts` (`getKnowledgePipeline` + import), `apps/admin/app/page.tsx` (card + wiring).
+- `packages/ui/src/ds.css` (`.pipeline-*` block).
+
+**Tests:** 1229 pass / 0 fail / 0 skip (shared 179, ui 217, db 9, ai 161, api 663 — +2). `analytics.service.ts` 100% lines. Gates green: shared build/test, api build/lint/jest, ui build/jest, admin tsc + next lint, web tsc, root lint:css (stylelint), root knip.
+
+**Notes for next iteration:**
+- M13.2.7 (Concierge SLA dark card) is the last dashboard card. Wire to `getConciergeAnalytics` — `sla.avgResponseMinutes` → "Nh Nm" large display, open-queue badge = `byStatus.requested + byStatus.in_review`. Build the reusable `.dark-card` (`--ink-900` bg / white text, M13.7.2) here since this is its first use.

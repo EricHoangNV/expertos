@@ -357,6 +357,16 @@ button { font-family: inherit; cursor: pointer; }
 .lowconf-meta { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .lowconf-action { flex: none; }
 
+/* Knowledge pipeline card (M13.2.6) — documents grouped by publish-lifecycle stage:
+   a badge-toned status row per stage (DRAFT ink → AI PROCESSING info → EXPERT REVIEW
+   amber → PUBLISHED green) with a right-aligned mono count, + a "Review queue →" link. */
+.pipeline-card { margin-bottom: 24px; }
+.pipeline-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.pipeline-rows { display: flex; flex-direction: column; margin-top: 14px; }
+.pipeline-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); }
+.pipeline-row:first-child { border-top: none; padding-top: 4px; }
+.pipeline-count { font-size: 18px; font-weight: 700; color: var(--ink-900); }
+
 /* segmented control */
 .seg { display: inline-flex; background: var(--paper-2); border-radius: var(--r-sm); padding: 3px; gap: 2px; }
 .seg button { border: none; background: transparent; padding: 6px 14px; border-radius: 5px; font-size: 13px; font-weight: 600; color: var(--ink-500); }

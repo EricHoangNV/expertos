@@ -10,6 +10,7 @@ import {
   type ConciergeAnalyticsQueryInput,
   type FunnelAnalyticsDto,
   type FunnelAnalyticsQueryInput,
+  type KnowledgePipelineDto,
   type QuestionsAnalyticsDto,
   type QuestionsAnalyticsQueryInput,
   type UsageAnalyticsDto,
@@ -86,6 +87,12 @@ export class AnalyticsController {
     query: QuestionsAnalyticsQueryInput,
   ): Promise<QuestionsAnalyticsDto> {
     return this.service.questions(user, query);
+  }
+
+  /** Knowledge documents grouped by publish-lifecycle stage — a live pipeline snapshot (M13.2.6). */
+  @Get("knowledge-pipeline")
+  knowledgePipeline(@CurrentUser() user: AuthUser): Promise<KnowledgePipelineDto> {
+    return this.service.knowledgePipeline(user);
   }
 
   /**

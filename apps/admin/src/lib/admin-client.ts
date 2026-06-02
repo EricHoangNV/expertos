@@ -21,6 +21,7 @@ import type {
   ConciergeAnalyticsDto,
   ValidationAnalyticsDto,
   QuestionsAnalyticsDto,
+  KnowledgePipelineDto,
   FailedQueryDto,
   AdminAuditLogDto,
   AdminFairUseFlagDto,
@@ -234,6 +235,13 @@ export function getQuestionsAnalytics(
 ): Promise<QuestionsAnalyticsDto> {
   const query = days != null ? `?days=${days}` : "";
   return request<QuestionsAnalyticsDto>(`/admin/analytics/questions${query}`, token);
+}
+
+// M13.2.6 — Admin knowledge-pipeline snapshot
+
+/** Knowledge documents grouped by publish-lifecycle stage (a live snapshot, not windowed). */
+export function getKnowledgePipeline(token: string): Promise<KnowledgePipelineDto> {
+  return request<KnowledgePipelineDto>("/admin/analytics/knowledge-pipeline", token);
 }
 
 // M8.3 — Admin plan-entitlement matrix editor

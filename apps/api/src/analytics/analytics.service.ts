@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { PUBLISH_STATUSES } from "@expertos/shared";
 import type {
   ConciergeAnalyticsDto,
   ConciergeAnalyticsQueryInput,
@@ -6,6 +7,8 @@ import type {
   ConsultationStatusValue,
   FunnelAnalyticsDto,
   FunnelAnalyticsQueryInput,
+  KnowledgePipelineDto,
+  PublishStatusValue,
   QuestionsAnalyticsDto,
   QuestionsAnalyticsQueryInput,
   QuestionsPeriodDto,
@@ -304,6 +307,37 @@ export class AnalyticsService {
         breakdown,
         periods,
       };
+    });
+  }
+
+  /**
+   * Build the knowledge-pipeline snapshot (M13.2.6, PRD §M13 Dashboard "Knowledge Pipeline Card") — how
+   * many knowledge documents currently sit in each stage of the M8.1 publish lifecycle. Not windowed:
+   * a live count of `document.status` is the only useful signal ("how many are waiting where now").
+   * Same admin cross-tenant read pattern as {@link usage} (the `is_admin` GUC inside {@link
+   * RlsService.run} grants the platform-wide read, so no `tenant_id` predicate appears).
+   *
+   * One Prisma `groupBy` over `document.status`; the result is folded into a zero-filled record so
+   * every lifecycle stage is present even with no documents in it (mirrors the funnel's stable keys).
+   */
+  async knowledgePipeline(user: AuthUser): Promise<KnowledgePipelineDto> {
+    return this.rls.run(user, async (tx) => {
+      const rows = await tx.document.groupBy({
+        by: ["status"],
+        _count: { _all: true },
+      });
+
+      const byStatus = Object.fromEntries(
+        PUBLISH_STATUSES.map((s) => [s, 0]),
+      ) as Record<PublishStatusValue, number>;
+      let total = 0;
+      for (const row of rows) {
+        const n = row._count._all;
+        byStatus[row.status as PublishStatusValue] = n;
+        total += n;
+      }
+
+      return { byStatus, total };
     });
   }
 
