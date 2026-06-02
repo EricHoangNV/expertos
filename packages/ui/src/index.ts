@@ -52,6 +52,8 @@ export { ChatInputBar } from "./ChatInputBar";
 export type { ChatInputBarProps } from "./ChatInputBar";
 export { ChatUploadPopover, UPLOAD_FILE_TYPES } from "./ChatUploadPopover";
 export type { ChatUploadPopoverProps } from "./ChatUploadPopover";
+export { ChatInputHelper } from "./ChatInputHelper";
+export type { ChatInputHelperProps } from "./ChatInputHelper";
 export { SourcesRail } from "./SourcesRail";
 export type { SourcesRailProps } from "./SourcesRail";
 export { SourcesRailHeader } from "./SourcesRailHeader";

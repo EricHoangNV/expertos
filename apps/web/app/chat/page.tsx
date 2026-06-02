@@ -11,6 +11,7 @@ import {
   ChatConversationList,
   type ChatConversationItem,
   ChatInputBar,
+  ChatInputHelper,
   ChatLayout,
   ChatSearch,
   type ChatSearchResultItem,
@@ -678,6 +679,17 @@ export default function ChatPage() {
     [entitlements],
   );
 
+  // The input-bar helper quota (M12.6.3): "N questions left this month" from the
+  // same metered `ask_question` entitlement that feeds the sidebar meter. Remaining
+  // measures against the hard `limit` else the fair-use `softLimit`; with neither
+  // the plan is unlimited. Null until the quota resolves (no flashed placeholder).
+  const inputQuota = useMemo<{ questionsLeft: number | null; unlimited: boolean }>(() => {
+    if (!questionUsage?.enabled) return { questionsLeft: null, unlimited: false };
+    const threshold = questionUsage.limit ?? questionUsage.softLimit ?? null;
+    if (threshold == null) return { questionsLeft: null, unlimited: true };
+    return { questionsLeft: threshold - (questionUsage.used ?? 0), unlimited: false };
+  }, [questionUsage]);
+
   // The input-bar placeholder (M12.6.1): "Ask [Expert] anything about your
   // business…" once a voice is selected, else a generic prompt.
   const inputPlaceholder = useMemo(() => {
@@ -1037,6 +1049,10 @@ export default function ChatPage() {
         {attachOpen && (
           <UploadPanel conversationId={conversationId} onClose={() => setAttachOpen(false)} />
         )}
+        <ChatInputHelper
+          questionsLeft={inputQuota.questionsLeft}
+          unlimited={inputQuota.unlimited}
+        />
       </ChatInputBar>
       <SourcesDrawer
         open={drawerCitations !== null}

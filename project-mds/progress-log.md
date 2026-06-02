@@ -3218,3 +3218,31 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 **Notes for next iteration:**
 - M12.6.3 (helper text: Enter/Shift+Enter hints left + "N questions left this month" right) and M12.6.4 (Enter-to-send unless Shift; textarea auto-resize) are the remaining input-bar legs — both land in `ChatInputBar` (the `children` slot already hosts a helper row; `questionUsage` from `/me/entitlements` is already loaded in the page for the right-side count).
 - Remember to rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing it — `apps/web` consumes `dist/`, so typecheck fails against new exports until the build runs (hit this again here).
+
+## M12.6.3 — Input-bar helper text (keyboard hint + remaining quota)
+**Date:** 2026-06-02
+**Ref:** PRD §"UI Reference Spec" §5 (Input Bar) — M12.6.3
+
+**What was done:**
+- New `packages/ui/src/ChatInputHelper.tsx` `ChatInputHelper` — a small, muted two-column `.input-bar-help` row: a static keyboard hint on the left ("Enter to send · Shift + Enter for newline", describing the M12.6.4 behavior) and the remaining monthly quota on the right (mono `.input-bar-quota` "N questions left this month").
+- Quota text rules: singular/plural agreement ("1 question" vs "N questions"); clamped at 0 and floored via `Math.max(0, Math.floor(n))`; NaN/Infinity-guarded with `Number.isFinite` (directive #9) → counter hidden; `unlimited` flag renders "Unlimited questions this month" and takes precedence over a count. Render-after-resolve: the right counter is omitted (no flashed placeholder) until the quota resolves.
+- ds.css: `.input-bar .input-bar-help` (flex space-between, baseline-aligned, wraps on narrow widths, 12px) + `.input-bar-quota` (mono, nowrap).
+- Exported from `packages/ui/src/index.ts`; rebuilt `packages/ui` dist.
+- Wired into `apps/web/app/chat/page.tsx`: a new `inputQuota` memo over the same metered `ask_question` entitlement that feeds the sidebar meter (remaining = `limit ?? softLimit` − `used`; null threshold = unlimited; hidden until `questionUsage.enabled`), rendered in the `ChatInputBar` `children` slot beneath the upload popover.
+- Tests: +6 in `packages/ui/src/primitives.test.ts` (muted row + static hint, hidden-until-resolved, singular/plural, clamp+floor, NaN/Infinity guard, unlimited precedence). ui suite 158 → 164, 100% coverage on the new file.
+
+**Key decisions:**
+- Kept the component fully presentational (page owns the entitlement math), matching every other M12 primitive. Chose a single `questionsLeft` number + `unlimited` flag rather than re-deriving from `used`/`limit`/`softLimit` inside the component, so the helper stays tiny and the page centralizes the threshold logic (mirrors how `ChatUsageMeter` is fed).
+- Baseline-aligned the two columns (`align-items: baseline`) per directive #2.1 since the mono quota and text hint differ in metrics.
+
+**Files changed:**
+- `packages/ui/src/ChatInputHelper.tsx` — new presentational component.
+- `packages/ui/src/index.ts` — export `ChatInputHelper` + props type.
+- `packages/ui/src/ds.css` — `.input-bar-help` / `.input-bar-quota` rules.
+- `packages/ui/src/primitives.test.ts` — +6 tests + import.
+- `apps/web/app/chat/page.tsx` — `inputQuota` memo + `ChatInputHelper` import/render.
+- `project-mds/PRD.md`, `project-mds/progress-state.md` — manifest + state.
+
+**Notes for next iteration:**
+- M12.6.4 (Enter-to-send unless Shift held; textarea auto-resize) is the last input-bar leg. It lands on the `ChatInputBar` `Textarea` (`onKeyDown` → `onSend` unless `shiftKey`; auto-resize by syncing `scrollHeight` to a height within the existing `min-height:44px`/`max-height:200px` ds.css bounds). The helper row already advertises this keyboard contract.
+- Reminder (hit again): rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing it — `apps/web` typechecks against `dist/`, so new exports are invisible until the build runs. Turbo is currently SIGILL-crashing in this sandbox; run per-package `tsc`/`eslint`/`knip`/`stylelint` directly.

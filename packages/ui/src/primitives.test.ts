@@ -17,6 +17,7 @@ import { ChatAnswerActions } from "./ChatAnswerActions";
 import { ChatConsultationCard } from "./ChatConsultationCard";
 import { ChatStateNotice } from "./ChatStateNotice";
 import { ChatInputBar } from "./ChatInputBar";
+import { ChatInputHelper } from "./ChatInputHelper";
 import { ChatUploadPopover, UPLOAD_FILE_TYPES } from "./ChatUploadPopover";
 import { SourcesRail } from "./SourcesRail";
 import { SourcesRailHeader } from "./SourcesRailHeader";
@@ -1467,6 +1468,62 @@ describe("ChatInputBar — sticky bottom composer (M12.6.1)", () => {
       children: "popover",
     }) as ReactElement;
     expect(barParts(el)[0]).toBe("popover");
+  });
+});
+
+describe("ChatInputHelper — keyboard hint + remaining-quota row (M12.6.3)", () => {
+  /** [hint, quotaOrFalse] children of `.input-bar-help`. */
+  const helpParts = (el: ReactElement): unknown[] => kids(el) as unknown[];
+  const quotaText = (el: ReactElement): unknown =>
+    ((helpParts(el)[1] as ReactElement)?.props as { children?: unknown })?.children;
+
+  it("renders the muted helper row with the static keyboard hint", () => {
+    const el = ChatInputHelper({}) as ReactElement;
+    expect(cls(el)).toBe("input-bar-help muted");
+    const [hint] = helpParts(el);
+    expect(cls(hint as ReactElement)).toBe("input-bar-hint");
+    expect(((hint as ReactElement).props as { children?: unknown }).children).toBe(
+      "Enter to send · Shift + Enter for newline",
+    );
+  });
+
+  it("hides the quota counter until it resolves (no null/undefined flash)", () => {
+    expect(helpParts(ChatInputHelper({}) as ReactElement)[1]).toBeFalsy();
+    expect(helpParts(ChatInputHelper({ questionsLeft: null }) as ReactElement)[1]).toBeFalsy();
+  });
+
+  it("renders the remaining count with singular/plural agreement", () => {
+    expect(quotaText(ChatInputHelper({ questionsLeft: 8 }) as ReactElement)).toBe(
+      "8 questions left this month",
+    );
+    expect(quotaText(ChatInputHelper({ questionsLeft: 1 }) as ReactElement)).toBe(
+      "1 question left this month",
+    );
+  });
+
+  it("clamps the remaining count at zero and floors fractional input", () => {
+    expect(quotaText(ChatInputHelper({ questionsLeft: -3 }) as ReactElement)).toBe(
+      "0 questions left this month",
+    );
+    expect(quotaText(ChatInputHelper({ questionsLeft: 2.9 }) as ReactElement)).toBe(
+      "2 questions left this month",
+    );
+  });
+
+  it("guards against NaN/Infinity by hiding the counter", () => {
+    expect(helpParts(ChatInputHelper({ questionsLeft: NaN }) as ReactElement)[1]).toBeFalsy();
+    expect(
+      helpParts(ChatInputHelper({ questionsLeft: Infinity }) as ReactElement)[1],
+    ).toBeFalsy();
+  });
+
+  it("shows an unlimited label that takes precedence over a count", () => {
+    expect(quotaText(ChatInputHelper({ unlimited: true }) as ReactElement)).toBe(
+      "Unlimited questions this month",
+    );
+    expect(
+      quotaText(ChatInputHelper({ unlimited: true, questionsLeft: 5 }) as ReactElement),
+    ).toBe("Unlimited questions this month");
   });
 });
 

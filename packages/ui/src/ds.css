@@ -710,6 +710,13 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
   flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%;
 }
 .input-bar .input-bar-send .ic { width: 18px; height: 18px; }
+/* Helper-text row under the input (M12.6.3) — keyboard hint left, remaining
+   monthly quota right; small + muted, wraps gracefully on narrow widths. */
+.input-bar .input-bar-help {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s3); flex-wrap: wrap; font-size: 12px;
+}
+.input-bar .input-bar-quota { font-family: var(--font-mono); white-space: nowrap; }
 
 /* Upload-attachment popover (M12.6.2) — the dropdown that opens above the input
    row from the attach button: a header (title + close), a row of accepted
