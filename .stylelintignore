@@ -1,0 +1,11 @@
+# Build output & dependencies — never lint generated CSS.
+# The lint:css globs (e.g. apps/**/app/**/*.css) otherwise collide with Next.js
+# build output paths like apps/<app>/.next/static/css/app/page.css (or a tmp/
+# symlink target), producing hundreds of false failures for anyone who has run
+# the app locally — which the live E2E-stack recipe requires.
+**/node_modules/**
+**/.next/**
+**/tmp/**
+**/dist/**
+**/.turbo/**
+**/coverage/**

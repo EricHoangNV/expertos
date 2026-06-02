@@ -754,6 +754,29 @@ button.source-card:focus-visible { outline: none; box-shadow: var(--sh-focus); }
 
 @keyframes sources-drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
 
+/* Push, don't cover (M12.5.4 refinement). On a roomy viewport (>= 900px) an open sources drawer
+   reserves a right-edge gutter the width of the panel, so the chat column shrinks *beside* the
+   panel instead of being overlaid — and the backdrop neither dims nor intercepts clicks, so the
+   chat stays readable and interactive. The gutter matches the panel's `min(360px, 90vw)` exactly,
+   so text never slips under the panel. Below 900px there is no room to split, so the modal
+   slide-over above is kept. Toggled by `.chat-sources-open` on `.chat-layout` (set by the page when
+   the drawer opens). */
+@media (width >= 900px) {
+  .chat-layout.chat-sources-open > .chat-main {
+    padding-right: min(360px, 90vw);
+    transition: padding-right .18s ease-out;
+  }
+  .chat-layout.chat-sources-open .sources-drawer-backdrop {
+    background: transparent;
+    pointer-events: none;
+  }
+  .chat-layout.chat-sources-open .sources-drawer {
+    pointer-events: auto;
+    box-shadow: none;
+    border-left: 1px solid var(--line);
+  }
+}
+
 /* ============================================================
    Sidebar drawer (consumer web) — M12.9.1
    The left-anchored slide-over presentation of the conversation sidebar for when the

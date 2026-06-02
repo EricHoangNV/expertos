@@ -1087,6 +1087,9 @@ export default function ChatPage() {
     <ChatLayout
       direction={direction}
       density={density}
+      // On a roomy viewport the open sources drawer pushes the chat column narrower instead of
+      // overlaying it (see `.chat-layout.chat-sources-open` in ds.css).
+      className={drawerCitations !== null ? "chat-sources-open" : undefined}
       rail={
         <SourcesRail header={<SourcesRailHeader count={railCitations.length} />}>
           {sourceCards(railCitations, tChat)}
