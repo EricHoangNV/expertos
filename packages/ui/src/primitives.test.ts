@@ -13,6 +13,7 @@ import { ChatVoicePicker, type ChatVoiceOption } from "./ChatVoicePicker";
 import { ChatUserIdentity } from "./ChatUserIdentity";
 import { ChatUserMessage } from "./ChatUserMessage";
 import { ChatAssistantMessage } from "./ChatAssistantMessage";
+import { AnswerProse } from "./AnswerProse";
 import { ChatTopbar } from "./ChatTopbar";
 import {
   AVATAR_TONES,
@@ -742,6 +743,110 @@ describe("ChatAssistantMessage — assistant header + body (M12.4.2)", () => {
     expect(cls(avatar)).toBe("avatar msg-assistant-avatar");
     expect(kids(avatar)).toBe("A");
     expect(kids(name)).toBe("Assistant");
+  });
+});
+
+describe("AnswerProse — answer prose + inline citations, render-after-resolve (M12.4.3)", () => {
+  /** The `<p>` children as a flat array (a single child arrives un-wrapped). */
+  const childArray = (el: ReactElement): unknown[] => {
+    const c = kids(el);
+    return Array.isArray(c) ? c : [c];
+  };
+  /** The first React-element child (a `.cite` chip); undefined when none resolved. */
+  const firstCite = (el: ReactElement): ReactElement | undefined =>
+    childArray(el).find((p): p is ReactElement => typeof p === "object" && p !== null);
+  /** The text content, concatenating the plain-string runs. */
+  const text = (el: ReactElement): string =>
+    childArray(el)
+      .filter((p): p is string => typeof p === "string")
+      .join("");
+
+  it("renders verbatim text (no chips) until interactive — render-after-resolve", () => {
+    const el = AnswerProse({
+      content: "Aim for a 12-month payback window [1].",
+      citations: [{ ordinal: 1, variant: "knowledge" }],
+      interactive: false,
+    }) as ReactElement;
+    expect(kids(el)).toBe("Aim for a 12-month payback window [1].");
+    expect(firstCite(el)).toBeUndefined();
+  });
+
+  it("renders verbatim text when interactive but nothing has resolved yet", () => {
+    const el = AnswerProse({
+      content: "No grounded sources here [1].",
+      citations: [],
+      interactive: true,
+    }) as ReactElement;
+    expect(kids(el)).toBe("No grounded sources here [1].");
+  });
+
+  it("turns a resolved `[n]` marker into a crimson knowledge `.cite` chip, text preserved", () => {
+    const el = AnswerProse({
+      content: "Aim for 12 months [1].",
+      citations: [{ ordinal: 1, variant: "knowledge" }],
+      interactive: true,
+    }) as ReactElement;
+    const cite = firstCite(el) as ReactElement;
+    expect(cite.props).toMatchObject({ label: 1, resolved: true, variant: "knowledge", role: "button" });
+    expect(text(el)).toBe("Aim for 12 months .");
+  });
+
+  it("renders an uploaded source marker as the info-blue `.cite.upload` variant", () => {
+    // Leading marker (no preceding text) also exercises the no-prefix branch.
+    const el = AnswerProse({
+      content: "[2] per your sheet.",
+      citations: [{ ordinal: 2, variant: "upload" }],
+      interactive: true,
+    }) as ReactElement;
+    expect((firstCite(el) as ReactElement).props).toMatchObject({ variant: "upload" });
+    expect(text(el)).toBe(" per your sheet.");
+  });
+
+  it("leaves an unresolvable bracketed number as plain text (never a fake chip)", () => {
+    const el = AnswerProse({
+      content: "Hallucinated [9] but grounded [1].",
+      citations: [{ ordinal: 1, variant: "knowledge" }],
+      interactive: true,
+    }) as ReactElement;
+    const cites = childArray(el).filter((p) => typeof p === "object" && p !== null);
+    expect(cites).toHaveLength(1);
+    expect(text(el)).toContain("[9]");
+  });
+
+  it("invokes onCite on click and on Enter/Space keydown, ignoring other keys", () => {
+    const seen: number[] = [];
+    const el = AnswerProse({
+      content: "x [1] y",
+      citations: [{ ordinal: 1, variant: "knowledge" }],
+      interactive: true,
+      onCite: (o) => seen.push(o),
+    }) as ReactElement;
+    const props = (firstCite(el) as ReactElement).props as {
+      onClick: () => void;
+      onKeyDown: (e: { key: string; preventDefault: () => void }) => void;
+    };
+    const ev = (key: string) => ({ key, preventDefault: () => {} });
+    props.onClick();
+    props.onKeyDown(ev("Enter"));
+    props.onKeyDown(ev(" "));
+    props.onKeyDown(ev("a"));
+    expect(seen).toEqual([1, 1, 1]);
+  });
+
+  it("is a no-op (no throw) when activated without an onCite handler", () => {
+    const el = AnswerProse({
+      content: "x [1]",
+      citations: [{ ordinal: 1, variant: "knowledge" }],
+      interactive: true,
+    }) as ReactElement;
+    const props = (firstCite(el) as ReactElement).props as {
+      onClick: () => void;
+      onKeyDown: (e: { key: string; preventDefault: () => void }) => void;
+    };
+    expect(() => {
+      props.onClick();
+      props.onKeyDown({ key: "Enter", preventDefault: () => {} });
+    }).not.toThrow();
   });
 });
 

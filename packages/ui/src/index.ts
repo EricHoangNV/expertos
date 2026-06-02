@@ -10,6 +10,8 @@ export { Chip } from "./Chip";
 export type { ChipProps } from "./Chip";
 export { Cite } from "./Cite";
 export type { CiteProps, CiteVariant } from "./Cite";
+export { AnswerProse } from "./AnswerProse";
+export type { AnswerProseProps, AnswerProseCitation } from "./AnswerProse";
 export { Field, Input, Select, Textarea } from "./Field";
 export type { FieldProps } from "./Field";
 export { Table } from "./Table";

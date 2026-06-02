@@ -1,60 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Cite } from "@expertos/ui";
+import { useCallback, useRef, useState } from "react";
+import { AnswerProse, Cite } from "@expertos/ui";
 import type { ChatCitationDto } from "@expertos/shared";
-
-/** Single `[n]` citation marker in answer prose. */
-const MARKER = /\[(\d+)\]/g;
-
-/**
- * Renders an assistant answer with its `[n]` markers turned into clickable `.cite` chips — but
- * only when the marker resolves to a real citation (M4.2 render-after-resolve: a marker is never a
- * live `.cite` when it points nowhere). Clicking a marker invokes `onCite` for click-to-passage. An
- * unresolvable bracketed number is left as plain text so a hallucinated `[9]` can never masquerade
- * as a verified source.
- */
-function renderAnswer(
-  content: string,
-  byOrdinal: Map<number, ChatCitationDto>,
-  onCite: (ordinal: number) => void,
-): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-  let key = 0;
-  for (const match of content.matchAll(MARKER)) {
-    const start = match.index ?? 0;
-    const ordinal = Number(match[1]);
-    const citation = byOrdinal.get(ordinal);
-    if (start > cursor) nodes.push(content.slice(cursor, start));
-    if (citation) {
-      nodes.push(
-        <Cite
-          key={`cite-${key++}`}
-          label={ordinal}
-          resolved
-          variant={citation.kind}
-          role="button"
-          tabIndex={0}
-          aria-label={`Source ${ordinal}`}
-          onClick={() => onCite(ordinal)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onCite(ordinal);
-            }
-          }}
-        />,
-      );
-    } else {
-      nodes.push(match[0]);
-    }
-    cursor = start + match[0].length;
-  }
-  if (cursor < content.length) nodes.push(content.slice(cursor));
-  return nodes;
-}
 
 interface AnswerViewProps {
   content: string;
@@ -78,12 +26,6 @@ export function AnswerView({ content, citations, interactive }: AnswerViewProps)
   const [activeOrdinal, setActiveOrdinal] = useState<number | null>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
 
-  const byOrdinal = useMemo(() => {
-    const map = new Map<number, ChatCitationDto>();
-    for (const citation of citations) map.set(citation.ordinal, citation);
-    return map;
-  }, [citations]);
-
   const focusSource = useCallback((ordinal: number) => {
     setActiveOrdinal(ordinal);
     rowRefs.current.get(ordinal)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -93,7 +35,12 @@ export function AnswerView({ content, citations, interactive }: AnswerViewProps)
 
   return (
     <>
-      <p>{resolved ? renderAnswer(content, byOrdinal, focusSource) : content}</p>
+      <AnswerProse
+        content={content}
+        citations={citations.map((c) => ({ ordinal: c.ordinal, variant: c.kind }))}
+        interactive={interactive}
+        onCite={focusSource}
+      />
       {resolved && (
         <div className="sources">
           <span className="label">Sources</span>

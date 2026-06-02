@@ -2936,3 +2936,31 @@ Built the dark-rail conversation search input and wired it to the existing M3.3 
 **Notes for next iteration:**
 - M12.4.3 (answer prose + inline citations) is largely already satisfied — `AnswerView` (M4.2) renders inside the `ChatAssistantMessage` body. M12.4.4 should refactor `AnswerFeedback` + `SaveAnswer` + a "View sources (N)" toggle into a horizontal `.btn-ghost` action bar.
 - The sources drawer currently renders inside `AnswerView`; M12.5 (sources rail) will likely move it to the right pane — coordinate the `verified`/source-label signals then.
+
+## M12.4.3 — Answer prose with inline citations (AnswerProse primitive)
+**Date:** 2026-06-02
+**Ref:** PRD §"M12 — Frontend UI Overhaul" M12.4.3 / requirements/ui-reference-spec.md §3 (Chat Messages Area)
+
+**What was done:**
+- Created `packages/ui/src/AnswerProse.tsx` — a pure, presentational ds.css primitive that renders an assistant answer's prose with inline `[n]` citation markers turned into `.cite` chips: crimson for `knowledge`, info-blue `.cite.upload` for `upload`. Render-after-resolve is preserved exactly: until `interactive` is true AND ≥1 citation has resolved, the text renders verbatim (no chips); once resolved, only markers backed by a real citation become chips, and an unresolvable bracketed number (e.g. a hallucinated `[9]`) stays plain text. Click-to-passage via `onCite` (+ Enter/Space keydown), all optional-chained so a handler-less render is a safe no-op.
+- Exported `AnswerProse` + `AnswerProseProps`/`AnswerProseCitation` from `packages/ui/src/index.ts`; rebuilt `dist/` (apps consume the built package, not `src`).
+- Refactored `apps/web/src/components/answer-view.tsx` `AnswerView` to compose `<AnswerProse>` (mapping `ChatCitationDto.kind` → `CiteVariant`) above its existing `.sources` drawer, deleting the now-duplicated `MARKER`/`renderAnswer`/`byOrdinal` logic. This decouples the prose (M12.4.3) from the sources list (M12.5) while keeping `AnswerView`'s public API unchanged — both `/chat` (via `AssistantAnswer` → `ChatAssistantMessage` body) and `/history` reuse it untouched.
+- Added 7 conformance tests to `packages/ui/src/primitives.test.ts` (render-after-resolve both ways, crimson knowledge chip + text preservation, info-blue upload + leading-marker branch, unresolvable-marker stays text, onCite click/Enter/Space, handler-less no-op).
+
+**Key decisions:**
+- Extracted into the **UI package** rather than leaving the logic inline in `apps/web`: matches the M12 pattern (every task ships a tested ds.css primitive with ~100% coverage), and gives M12.5's sources rail a clean seam — the prose and the sources list are now independently placeable.
+- `AnswerProse` takes a minimal `{ ordinal, variant }[]` citation shape (not `@expertos/shared`'s `ChatCitationDto`) to keep the UI package dependency-free (peer = react only); the web `AnswerView` does the `.kind`→`variant` mapping.
+- Kept `AnswerProse` hook-free so the existing node-environment primitives test can invoke it directly and assert on the returned element tree (no DOM renderer).
+- Left the defensive `match.index ?? 0` fallback (the one uncovered branch, 91.66% on this file) — it mirrors the original `renderAnswer` and is unreachable for `matchAll` results; overall branch coverage is 98.91%, well above the 90% gate.
+
+**Files changed:**
+- `packages/ui/src/AnswerProse.tsx` — new prose + inline-citation primitive (render-after-resolve, click-to-passage).
+- `packages/ui/src/index.ts` — export `AnswerProse` + its types.
+- `packages/ui/dist/*` — rebuilt so `apps/web` sees the new export.
+- `apps/web/src/components/answer-view.tsx` — compose `AnswerProse`; remove duplicated marker-parsing logic.
+- `packages/ui/src/primitives.test.ts` — +7 `AnswerProse` tests.
+
+**Notes for next iteration:**
+- M12.4.4 (action bar): refactor `AnswerFeedback` + `SaveAnswer` + a new "View sources (N)" toggle into a horizontal `.btn-ghost` row beneath the answer.
+- M12.5 (sources rail): the `.sources` drawer still lives inside `AnswerView` — lift it into the `.sources-rail` right pane; the prose is now cleanly separable (`AnswerProse`). Coordinate the `verified`/source-label signals (already derived in `apps/web/app/chat/page.tsx` `answerSourceLabel`).
+- Reminder: rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing it — apps import from `dist/`, so typecheck fails against stale build output otherwise.
