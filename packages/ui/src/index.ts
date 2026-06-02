@@ -20,6 +20,8 @@ export { Bar } from "./Bar";
 export type { BarProps } from "./Bar";
 export { UsageMeter } from "./UsageMeter";
 export type { UsageMeterProps } from "./UsageMeter";
+export { ChatUsageMeter } from "./ChatUsageMeter";
+export type { ChatUsageMeterProps } from "./ChatUsageMeter";
 export { Shell, Topbar, Content } from "./Shell";
 export type { ShellProps, ContentProps } from "./Shell";
 export { ChatLayout } from "./ChatLayout";

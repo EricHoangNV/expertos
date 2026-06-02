@@ -28,6 +28,7 @@ import { Field, Input, Select, Textarea } from "./Field";
 import { Stat } from "./Stat";
 import { Table } from "./Table";
 import { UsageMeter } from "./UsageMeter";
+import { ChatUsageMeter } from "./ChatUsageMeter";
 
 /**
  * Design-system conformance tests (M11.5). These mechanize the non-negotiable
@@ -219,6 +220,68 @@ describe("UsageMeter — transparent usage indicator (M6.3)", () => {
     expect(countText(nan)).toBe("0 / 100");
     const custom = UsageMeter({ label: "Q", used: 50, limit: 100, warnRatio: 0.4 }) as ReactElement;
     expect(cls(custom)).toBe("meter is-warn");
+  });
+});
+
+describe("ChatUsageMeter — sidebar-bottom questions-this-month meter (M12.2.4)", () => {
+  const countText = (el: ReactElement): unknown => {
+    const head = (kids(el) as ReactElement[])[0];
+    const spans = kids(head) as ReactElement[];
+    return (spans[1].props as { children?: unknown }).children;
+  };
+  const bar = (el: ReactElement): ReactElement => (kids(el) as ReactElement[])[1];
+  const foot = (el: ReactElement): ReactElement => (kids(el) as ReactElement[])[2];
+  const planBadge = (el: ReactElement): ReactElement => (kids(foot(el)) as ReactElement[])[0];
+  const upgrade = (el: ReactElement): unknown => (kids(foot(el)) as unknown[])[1];
+
+  it("renders the count, plan badge, and a crimson upgrade link against a hard limit", () => {
+    const el = ChatUsageMeter({
+      used: 42,
+      limit: 50,
+      planName: "Plus",
+      upgradeHref: "/account",
+    }) as ReactElement;
+    // 84% ≥ 0.8 warn ratio → amber.
+    expect(cls(el)).toBe("sidebar-usage is-warn");
+    expect(countText(el)).toBe("42 / 50");
+    expect((bar(el).props as { value?: number; warn?: boolean }).value).toBe(84);
+    expect((bar(el).props as { warn?: boolean }).warn).toBe(true);
+    expect(cls(planBadge(el))).toBe("label");
+    expect(kids(planBadge(el))).toBe("Plus");
+    const link = upgrade(el) as ReactElement;
+    expect(cls(link)).toBe("sidebar-usage-upgrade");
+    expect((link.props as { href?: unknown }).href).toBe("/account");
+  });
+
+  it("stays un-warned well under the cap", () => {
+    const el = ChatUsageMeter({ used: 10, limit: 200, planName: "Plus" }) as ReactElement;
+    expect(cls(el)).toBe("sidebar-usage");
+    expect(countText(el)).toBe("10 / 200");
+    expect((bar(el).props as { warn?: boolean }).warn).toBe(false);
+  });
+
+  it("measures against a fair-use soft threshold and warns past it (degrade, don't block)", () => {
+    const over = ChatUsageMeter({
+      used: 600,
+      limit: null,
+      softLimit: 500,
+      planName: "Premium",
+    }) as ReactElement;
+    expect(cls(over)).toBe("sidebar-usage is-warn");
+    expect(countText(over)).toBe("600 / 500");
+    expect((bar(over).props as { value?: number }).value).toBe(100); // clamped
+  });
+
+  it("reads Unlimited with no fill when there is no threshold", () => {
+    const el = ChatUsageMeter({ used: 7, planName: "Premium" }) as ReactElement;
+    expect(countText(el)).toBe("7 · Unlimited");
+    expect((bar(el).props as { value?: number }).value).toBe(0);
+  });
+
+  it("guards a non-finite count and omits the upgrade link when no href is given", () => {
+    const el = ChatUsageMeter({ used: Number.NaN, limit: 50, planName: "Free" }) as ReactElement;
+    expect(countText(el)).toBe("0 / 50");
+    expect(upgrade(el)).toBeFalsy();
   });
 });
 

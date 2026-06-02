@@ -2,6 +2,7 @@
 
 ## Current State
 - Completed:
+  - M12.2.4: `ChatUsageMeter` (`packages/ui/src/ChatUsageMeter.tsx`) — sidebar-bottom "questions this month" + "N / M" count over a crimson `.bar` (amber when warned), plan `.label` badge + crimson "Upgrade →" link; ds.css `.sidebar-usage` dark-rail block; wired into `/chat` `ChatSidebar` footer slot from `/me/entitlements` (M6.1 `ask_question` quota), refreshed after each turn
   - M12.2.3: `ChatConversationList` (`packages/ui/src/ChatConversationList.tsx`) — dark-rail "RECENT" `.navgroup` + `.navitem` rows: expert-colored `.avatar` (initials), truncated title, relative time, optional unread dot, `.navitem.active`; exported `avatarInitials`/`avatarTone`/`relativeTime` helpers + ds.css `.avatar.tone-*`; wired into `/chat` (history API M3.2, expert-name resolution, most-recent-first, hidden while searching, refreshed after each turn)
   - M12.2.2: `ChatSearch` (`packages/ui/src/ChatSearch.tsx`) — dark-rail conversation search input (`.input` + magnifier, "Search all messages…") wired to M3.3 full-text search; debounced (≥2 chars) in `/chat`, results render under the field, selecting one loads that conversation's transcript
   - M12.2.1: `ChatSidebar` shell (`packages/ui/src/ChatSidebar.tsx`) — dark `.side` rail in the chat grid: ExpertOS wordmark + optional collapse + full-width "+ New conversation"; body/footer slots for M12.2.2–4; wired into `/chat` (clears active chat)
@@ -33,10 +34,10 @@
   - M2 (voice): LLM provider abstraction, answer-prompt assembly, voice-profile CRUD, fidelity eval
   - M1 (knowledge): ingestion pipeline, hybrid retrieval (RRF), VI quality + NFC normalization
   - P0 (foundation): monorepo, Postgres+pgvector+RLS, Firebase Auth+RBAC, build/deploy, observability, design system
-- Tests: 1064 pass / 0 fail / 0 skip (shared 179, ui 56, db 9, ai 161, api 659)
+- Tests: 1069 pass / 0 fail / 0 skip (shared 179, ui 61, db 9, ai 161, api 659)
 - Build: `pnpm build` builds all 7 workspaces (turbo-orchestrated — see SIGILL note below; build via turbo also affected in this sandbox). Admin standalone build flakily zeroes `.next/server/pages-manifest.json` — only matters for `next start`.
 - Gates: typecheck ✅, test ✅ (coverage gate ≥90% met), lint ✅ (incl. stylelint), deadcode (knip) ✅. NOTE: `turbo` arm64 binary SIGILLs in this sandbox — run gates per-workspace (`tsc --noEmit`, `next lint`, `jest`) directly; `pnpm`-level turbo aggregation fails. (LEARNINGS #2/#13)
 - Next tasks (priority order):
-  1. **M12 (Frontend UI Overhaul)** — M12.1 shell + M12.2.1–3 sidebar/search/list done. Next: M12.2.4 usage meter footer (`/me/entitlements` M6.1 — `.bar` crimson fill + plan badge + Upgrade link, mounts in `ChatSidebar` `footer` slot; reuse `UsageMeter`). Then M12.3 topbar, M12.4 messages, M12.5 sources rail, M12.6 input bar, M12.7 Tweaks panel. Read `requirements/ui-reference-spec.md` first. Avatar helpers (`avatarInitials`/`avatarTone` + `.avatar.tone-*`) are now reusable for M12.3/M12.4.
+  1. **M12 (Frontend UI Overhaul)** — M12.1 shell + M12.2 sidebar (search/list/usage-meter) done. Next: M12.3 topbar (title-edit, voice `.chip` picker, user identity), M12.4 messages (`.msg-user`/`.msg-assistant`, AnswerView + action bar + cards), M12.5 sources rail, M12.6 input bar, M12.7 Tweaks panel. Read `requirements/ui-reference-spec.md` first. Avatar helpers (`avatarInitials`/`avatarTone` + `.avatar.tone-*`) are reusable for M12.3/M12.4.
   2. **M13 (Admin Portal UI Overhaul)** — sidebar/dashboard/kanban/matrix/voice/concierge rebuilds.
   3. **M11.1 fixme legs** / **NT human gates** — await external surfaces / PM sign-off.

@@ -2769,3 +2769,30 @@ Built the dark-rail conversation search input and wired it to the existing M3.3 
 - M12.2.4 (usage meter footer) is next: mount into the `ChatSidebar` `footer` slot, wire `/me/entitlements` (M6.1), reuse the `UsageMeter` primitive; crimson `.bar` fill + plan `.label` badge + crimson "Upgrade" link.
 - Reuse `avatarInitials`/`avatarTone` + `.avatar.tone-*` for the M12.3 user/expert identity and M12.4 assistant message avatars.
 - ui rebuilt to `dist/` (the web app consumes the built package); remember `pnpm --filter @expertos/ui build` before the web typecheck sees new exports.
+
+## M12.2.4 — Sidebar usage meter
+**Date:** 2026-06-02
+**Ref:** PRD §"M12.2 — Sidebar" item M12.2.4 + `requirements/ui-reference-spec.md` §6 "Usage & Subscription Bar"
+
+**What was done:**
+- New `ChatUsageMeter` presentational component (`packages/ui/src/ChatUsageMeter.tsx`): a dark-rail counterpart to `UsageMeter` — "questions this month" `.muted` label + "N / M" mono count over a crimson `.bar` (amber `.bar.warn` near the cap), then a plan `.label` badge and a crimson "Upgrade →" link. Measures `used` against the hard `limit`, else the fair-use `softLimit` (degrade-don't-block), else reads "N · Unlimited" with no fill; NaN-guarded count; the upgrade link is omitted when no `upgradeHref` is supplied (no dead end on the top plan).
+- ds.css `.chat-side .sidebar-usage` block: head/foot flex rows, lightened `.bar` track (`rgba(255,255,255,.1)`) for the dark surface, crimson `.sidebar-usage-upgrade` link (→ white on hover), amber count when `.is-warn`.
+- Exported `ChatUsageMeter`/`ChatUsageMeterProps` from `packages/ui/src/index.ts`.
+- Wired into `/chat` (`apps/web/app/chat/page.tsx`): `fetchEntitlements` (M6.1) on mount + after each completed turn; resolves the metered `ask_question` feature for the live quota; mounts the meter in the `ChatSidebar` `footer` slot (only when entitlements loaded and the feature is enabled), `upgradeHref="/account"`.
+- +5 ui tests (56→61), 100% coverage on the new component.
+
+**Key decisions:**
+- Built a dedicated `ChatUsageMeter` rather than reusing the light-themed `UsageMeter`: the spec's layout differs (plan badge + upgrade link in a foot row, "questions this month" copy, dark-rail track) and `UsageMeter`'s `.meter`/`--paper-2` styling is light-surface. Shared the same threshold/warn logic so the two read consistently.
+- Refresh entitlements after each turn (not just on mount) so the count moves as questions are spent — the whole point of a "transparent usage indicator". Best-effort: a failed fetch just hides the meter.
+- Upgrade link points to `/account` (where the M6.2 self-serve checkout lives) rather than a no-op.
+
+**Files changed:**
+- `packages/ui/src/ChatUsageMeter.tsx` — new component.
+- `packages/ui/src/index.ts` — export the component + props type.
+- `packages/ui/src/ds.css` — `.sidebar-usage` dark-rail block.
+- `packages/ui/src/primitives.test.ts` — +5 tests (count/warn/fair-use/unlimited/NaN+no-link).
+- `apps/web/app/chat/page.tsx` — entitlements fetch + state, `ask_question` resolution, meter in the sidebar footer, refresh after each turn.
+
+**Notes for next iteration:**
+- M12.2 sidebar is complete (shell + search + list + usage meter). Next is M12.3 topbar (editable title, voice `.chip` picker, user identity + language badge).
+- ui rebuilt to `dist/` (`npx tsc -p tsconfig.build.json`) so the web typecheck sees the new export — do this before web typecheck whenever you add a ui export.

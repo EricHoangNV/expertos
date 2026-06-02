@@ -11,6 +11,7 @@ import {
   ChatSearch,
   type ChatSearchResultItem,
   ChatSidebar,
+  ChatUsageMeter,
   DEFAULT_LAYOUT_DIRECTION,
   Field,
   Input,
@@ -22,6 +23,7 @@ import type {
   ChatCitationDto,
   ConsultationRecommendationDto,
   ConversationSummaryDto,
+  EntitlementsDto,
   UploadedFileDto,
   UploadMode,
 } from "@expertos/shared";
@@ -42,6 +44,7 @@ import {
   listConversations,
   searchConversations,
 } from "../../src/lib/history-client";
+import { fetchEntitlements } from "../../src/lib/account-client";
 import { uploadFile, UPLOAD_ACCEPT } from "../../src/lib/upload-client";
 
 interface UiMessage {
@@ -432,6 +435,10 @@ export default function ChatPage() {
   // the most-recent-first reordering) appears without a manual reload.
   const [conversations, setConversations] = useState<ConversationSummaryDto[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
+  // Plan + usage for the sidebar meter (M12.2.4 → M6.1). Loaded on mount and
+  // refreshed after each completed turn so the "questions this month" count moves
+  // as the user asks. Best-effort: a failure just hides the meter.
+  const [entitlements, setEntitlements] = useState<EntitlementsDto | null>(null);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -470,6 +477,30 @@ export default function ChatPage() {
     if (!user) return;
     void loadConversations();
   }, [user, loadConversations]);
+
+  // Load the plan + usage entitlements for the sidebar meter (M12.2.4 → M6.1).
+  // Best-effort: a failure just leaves the meter hidden (the sidebar still works).
+  const loadEntitlements = useCallback(async () => {
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      setEntitlements(await fetchEntitlements(token));
+    } catch {
+      // The usage meter is non-critical — swallow and keep whatever we had.
+    }
+  }, [getIdToken]);
+
+  useEffect(() => {
+    if (!user) return;
+    void loadEntitlements();
+  }, [user, loadEntitlements]);
+
+  // The questions-this-month meter (M12.2.4): the metered `ask_question` feature
+  // carries the live `used`/`limit`/`softLimit` quota for the current window.
+  const questionUsage = useMemo(
+    () => entitlements?.features.find((f) => f.key === "ask_question" && f.type === "metered"),
+    [entitlements],
+  );
 
   // The RECENT rows (M12.2.3): map summaries to list items, resolving the expert
   // display name from the loaded voices for the avatar, and sorting most-recent
@@ -631,15 +662,26 @@ export default function ChatPage() {
         },
       );
       // Refresh the RECENT list (M12.2.3) so a brand-new conversation appears and
-      // the ordering reflects this turn's activity.
+      // the ordering reflects this turn's activity, and the usage meter (M12.2.4)
+      // so the questions-this-month count moves with the turn just spent.
       void loadConversations();
+      void loadEntitlements();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Chat failed.");
       setMessages((prev) => updateLast(prev, (m) => ({ ...m, done: true })));
     } finally {
       setBusy(false);
     }
-  }, [draft, busy, getIdToken, experts, expertId, conversationId, loadConversations]);
+  }, [
+    draft,
+    busy,
+    getIdToken,
+    experts,
+    expertId,
+    conversationId,
+    loadConversations,
+    loadEntitlements,
+  ]);
 
   if (!user) {
     return (
@@ -656,7 +698,20 @@ export default function ChatPage() {
     <ChatLayout
       direction={direction}
       sidebar={
-        <ChatSidebar onNewConversation={startNewConversation}>
+        <ChatSidebar
+          onNewConversation={startNewConversation}
+          footer={
+            entitlements && questionUsage?.enabled ? (
+              <ChatUsageMeter
+                used={questionUsage.used ?? 0}
+                limit={questionUsage.limit ?? null}
+                softLimit={questionUsage.softLimit ?? null}
+                planName={entitlements.plan.name}
+                upgradeHref="/account"
+              />
+            ) : undefined
+          }
+        >
           <ChatSearch
             query={searchQuery}
             onQueryChange={setSearchQuery}
