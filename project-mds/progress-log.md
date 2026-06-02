@@ -4377,3 +4377,26 @@ Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:
 
 **Notes for next iteration:**
 - M15.2.4 (Knowledge kanban tests) next: `apps/admin/app/knowledge/` — column rendering per status, card actions (approve/request-changes via `versionAction`), conversation-to-knowledge table (`listDrafts`/`getFailedQueries`). Same double-load applies → `waitFor` (LEARNINGS #19).
+
+---
+
+## M15.2.4 — Admin knowledge-approval kanban jest suite (12 tests)
+
+**What:** Added `apps/admin/app/knowledge/page.test.tsx` (+12 → admin 45, total 1421) covering the M13.3 knowledge-approval board through the real Auth + Locale providers (M15.2.1 harness).
+
+**Coverage:**
+- **Kanban board:** 4 column heads with localized labels (Draft/AI Processing/Expert Review/Published) + count badges sourced from `/admin/analytics/knowledge-pipeline` (not the take:50 doc lists).
+- **Per-status card bodies:** Draft summary text; AI-Processing `parse → chunk → embed` + 66%-fill progress bar when `chunkCount>0`; Expert-Review `Approve & publish` button + `Diff` link + amber `.kanban-card.is-active` highlight on the first card; Published `v4 live` green badge + `approved · <date>`.
+- **Approve action:** click → `POST /knowledge/versions/:id/approve` then board reload (pipeline endpoint hit >1×); error-badge path surfacing the API `{message}` body (note: client `errorMessage` prefers `{message}`/`{reason}` over the status line — a 500 `{message:"Boom"}` renders "Boom", a body-less 404 renders "Request failed (404)").
+- **Status-pipeline filter:** clicking the "Published" step narrows the board to one column.
+- **Conversation → Knowledge table:** draft row with from-chat "yes" + localized `expert review` status badge + `Draft` action link; empty state.
+- **Load error:** unmocked endpoints → 404 → error badge, no board.
+
+**Mock tip (new):** the page fans `listDocuments` out once per status via `?status=`, but the fetch mock keys on pathname only — so a single dynamic handler reads the status off `req.url`'s query and serves that column's docs from a map. Captured in progress-state for reuse.
+
+**Honest scope:** the board exposes only "Approve & publish" — "request-changes" (named in the task) is a detail-page action, not on the kanban; noted in the PRD entry.
+
+**Gates:** admin `tsc` clean, `next lint` clean, `jest` 45/45 pass, root `knip` + `lint:css` clean. Test-file-only addition (one scope-literal fix `"tenant"`→`"global_expert"` to match `ContentScopeValue`) → other workspaces unaffected.
+
+**Notes for next iteration:**
+- M15.2.5 (CRUD page tests) next: entitlement matrix staged-publish/discard, access-control add/remove/role-toggle + self-lockout guard, user management role change + deletion request. Same double-load → `waitFor` (LEARNINGS #19).
