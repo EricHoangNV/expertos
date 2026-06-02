@@ -10,6 +10,7 @@ import { ChatLayout } from "./ChatLayout";
 import { ChatSearch, type ChatSearchResultItem } from "./ChatSearch";
 import { ChatSidebar } from "./ChatSidebar";
 import { ChatVoicePicker, type ChatVoiceOption } from "./ChatVoicePicker";
+import { ChatUserIdentity } from "./ChatUserIdentity";
 import { ChatTopbar } from "./ChatTopbar";
 import {
   AVATAR_TONES,
@@ -596,6 +597,57 @@ describe("ChatVoicePicker — expert voice chips (M12.3.2)", () => {
     const { neutral, experts } = parts(el);
     expect((neutral.props as { disabled?: unknown }).disabled).toBe(true);
     expect((experts[0].props as { disabled?: unknown }).disabled).toBe(true);
+  });
+});
+
+describe("ChatUserIdentity — header avatar + name + EN/VI language badge (M12.3.3)", () => {
+  /** Destructure the identity strip's children: [avatar, name, langBadge]. */
+  const parts = (el: ReactElement) => {
+    const [avatar, name, lang] = kids(el) as [ReactElement, ReactElement, ReactElement];
+    return { avatar, name, lang };
+  };
+
+  it("renders the `.chat-user-identity` with an expert-toned avatar, the name, and a language badge", () => {
+    const el = ChatUserIdentity({ name: "James Pierce", language: "en" }) as ReactElement;
+    expect(cls(el)).toBe("chat-user-identity");
+    const { avatar, name, lang } = parts(el);
+    expect(cls(avatar)).toMatch(/^avatar chat-user-avatar tone-/);
+    expect(kids(avatar)).toBe("JP");
+    expect(cls(name)).toBe("chat-user-name");
+    expect(kids(name)).toBe("James Pierce");
+    expect(kids(lang)).toBe("EN");
+  });
+
+  it("shows the VI label when the language is Vietnamese", () => {
+    const el = ChatUserIdentity({ name: "Anh Nguyen", language: "vi" }) as ReactElement;
+    expect(kids(parts(el).lang)).toBe("VI");
+  });
+
+  it("falls back to the email local part for the name and initials when there is no display name", () => {
+    const el = ChatUserIdentity({ email: "eric@gmail.com", language: "en" }) as ReactElement;
+    const { avatar, name } = parts(el);
+    expect(kids(name)).toBe("eric");
+    expect(kids(avatar)).toBe("E");
+  });
+
+  it("falls back to 'You' when neither name nor email is given", () => {
+    const el = ChatUserIdentity({ language: "en" }) as ReactElement;
+    expect(kids(parts(el).name)).toBe("You");
+  });
+
+  it("renders the language as an interactive `.badge.badge-ink` button that toggles on click", () => {
+    const onLanguageToggle = jest.fn();
+    const el = ChatUserIdentity({ name: "Jo", language: "en", onLanguageToggle }) as ReactElement;
+    const { lang } = parts(el);
+    expect(lang.type).toBe("button");
+    expect(cls(lang)).toBe("badge badge-ink chat-user-lang");
+    (lang.props as { onClick: () => void }).onClick();
+    expect(onLanguageToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the language as a static `.badge` span when no toggle handler is given", () => {
+    const el = ChatUserIdentity({ name: "Jo", language: "en" }) as ReactElement;
+    expect(parts(el).lang.type).toBe("span");
   });
 });
 

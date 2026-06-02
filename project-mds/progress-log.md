@@ -2852,3 +2852,31 @@ Built the dark-rail conversation search input and wired it to the existing M3.3 
 **Notes for next iteration:**
 - M12.3.3 (user identity): avatar (`avatarInitials`/`avatarTone`) + name + EN/VI `.badge`, right end of the same `.chat-topbar-aside` slot — append it after the `<ChatVoicePicker>` in the topbar children. The aside is already a flex row (`gap: var(--s3)`).
 - Rebuild ui to `dist/` (`npm run build` in packages/ui) before web typecheck whenever you touch ui exports — web resolves `@expertos/ui` from `dist/`, not src.
+
+---
+
+## M12.3.3 — User identity display (avatar + name + EN/VI language badge)
+**Date:** 2026-06-02
+**Ref:** PRD §M12.3.3 (Frontend UI Overhaul / conversation topbar); requirements/ui-reference-spec.md §2 (Topbar)
+
+**What was done:**
+- New presentational `ChatUserIdentity` component (`packages/ui/src/ChatUserIdentity.tsx`): a right-aligned header strip with an expert-toned `.avatar` (initials via the shared `avatarInitials`/`avatarTone`), the signed-in user's name, and an EN/VI language `.badge.badge-ink`. The badge is an interactive `<button>` when `onLanguageToggle` is supplied (cycles EN↔VI) and a static `<span>` otherwise. Name/initials/tone fall back to the email local part, then to "You", when there's no display name.
+- ds.css `.chat-user-identity` block (avatar 26px, ellipsized name, hover only on the button variant) added right after `.chat-voice-picker`.
+- Exported from `packages/ui/src/index.ts` (`ChatUserIdentity`, `ChatUserIdentityProps`, `ChatLanguage`).
+- Wired into `apps/web/app/chat/page.tsx`: mounted in the `.chat-topbar-aside` slot after `<ChatVoicePicker>`; name/email come from the Firebase `user`. Added a `language` state (`ChatLanguage`, default "en") that replaces the previously-hardcoded `language: "en"` on the `streamChat` call, so toggling the badge actually changes the answer language (M1 EN+VI retrieval). The toggle is disabled (`onLanguageToggle` omitted → static badge) while a turn is streaming, mirroring the voice picker's mid-stream lock. Added `language` to the `ask` `useCallback` deps.
+- +6 ui tests in `primitives.test.ts` (render shape, VI label, email/`"You"` fallbacks, interactive-button toggle, static-span variant). ui suite 73→79, 100% coverage held.
+
+**Key decisions:**
+- Made the language badge a real toggle rather than a static label: the chat had hardcoded `language: "en"` with no UI path to VI despite full M1 VI support, so the badge is the natural control. Kept it presentational — the page owns the state and the streamChat wiring.
+- Used the email local part (split on `@`) for initials/name fallback so an account with no `displayName` still reads sensibly; deterministic `avatarTone` seed keeps the user's color stable.
+
+**Files changed:**
+- `packages/ui/src/ChatUserIdentity.tsx` — new component
+- `packages/ui/src/index.ts` — export the component + types
+- `packages/ui/src/ds.css` — `.chat-user-identity` styles
+- `packages/ui/src/primitives.test.ts` — +6 tests
+- `apps/web/app/chat/page.tsx` — import + mount in topbar aside; `language` state replacing hardcoded "en"; deps fix
+
+**Notes for next iteration:**
+- M12.4 (messages): rebuild the message list as `.msg-user` (dark `--ink-900` bubble) / `.msg-assistant` (expert `.avatar` + name + AI RENDITION `.badge-ink` + source label + optional VERIFIED `.badge-green`). REUSE `AnswerView` (M4.2) for prose+citations, and refactor `AnswerFeedback`/`SaveAnswer` into a horizontal action bar; restyle `ConsultationPrompt`/insufficient/high-stakes cards. Avatar helpers + `.avatar.tone-*` carry over.
+- Reminder: rebuild ui to `dist/` (`tsc -p tsconfig.build.json` in packages/ui) before web typecheck whenever ui exports change — web resolves `@expertos/ui` from `dist/`.

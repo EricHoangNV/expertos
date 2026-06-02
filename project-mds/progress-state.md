@@ -2,6 +2,7 @@
 
 ## Current State
 - Completed:
+  - M12.3.3: `ChatUserIdentity` (`packages/ui/src/ChatUserIdentity.tsx`) — right-aligned header strip: expert-toned `.avatar` (initials) + user name + EN/VI `.badge.badge-ink` language toggle; ds.css `.chat-user-identity`; wired into the `.chat-topbar-aside` slot next to the voice picker, name/email from Firebase auth, toggle drives the chat `language` state (replaces the hardcoded `"en"` on the streamChat call), disabled mid-stream
   - M12.3.2: `ChatVoicePicker` (`packages/ui/src/ChatVoicePicker.tsx`) — `.chat-voice-picker` "Voice" `.label` over `.chip`/`.chip.active` pills (leading "Neutral" + one expert-colored-`.avatar` chip per voice); ds.css `.chat-voice-picker`/`.chat-voice-avatar`; wired into `ChatTopbar`'s `.chat-topbar-aside` slot in `/chat`, replacing the old expert `<Select>`; `onSelect("")`=neutral, hidden when no expert voices exist
   - M12.3.1: `ChatTopbar` (`packages/ui/src/ChatTopbar.tsx`) — `.topbar .chat-topbar` conversation header: click-to-rename title (heading→`.input`, commit on Enter/blur, cancel on Escape) + right-aligned `.chat-topbar-aside` slot for the voice picker (M12.3.2) + identity (M12.3.3); ds.css `.chat-topbar*` block; wired into `/chat` above the scroll region (title state + rename via M3.2 `PATCH /conversations/:id`, auto-title synced from the post-turn list refresh)
   - M12.2.4: `ChatUsageMeter` (`packages/ui/src/ChatUsageMeter.tsx`) — sidebar-bottom "questions this month" + "N / M" count over a crimson `.bar` (amber when warned), plan `.label` badge + crimson "Upgrade →" link; ds.css `.sidebar-usage` dark-rail block; wired into `/chat` `ChatSidebar` footer slot from `/me/entitlements` (M6.1 `ask_question` quota), refreshed after each turn
@@ -36,10 +37,10 @@
   - M2 (voice): LLM provider abstraction, answer-prompt assembly, voice-profile CRUD, fidelity eval
   - M1 (knowledge): ingestion pipeline, hybrid retrieval (RRF), VI quality + NFC normalization
   - P0 (foundation): monorepo, Postgres+pgvector+RLS, Firebase Auth+RBAC, build/deploy, observability, design system
-- Tests: 1081 pass / 0 fail / 0 skip (shared 179, ui 73, db 9, ai 161, api 659)
+- Tests: 1087 pass / 0 fail / 0 skip (shared 179, ui 79, db 9, ai 161, api 659)
 - Build: `pnpm build` builds all 7 workspaces (turbo-orchestrated — see SIGILL note below; build via turbo also affected in this sandbox). Admin standalone build flakily zeroes `.next/server/pages-manifest.json` — only matters for `next start`.
 - Gates: typecheck ✅, test ✅ (coverage gate ≥90% met), lint ✅ (incl. stylelint), deadcode (knip) ✅. NOTE: `turbo` arm64 binary SIGILLs in this sandbox — run gates per-workspace (`tsc --noEmit`, `next lint`, `jest`) directly; `pnpm`-level turbo aggregation fails. (LEARNINGS #2/#13)
 - Next tasks (priority order):
-  1. **M12 (Frontend UI Overhaul)** — M12.1 shell + M12.2 sidebar + M12.3.1 topbar title + M12.3.2 voice picker done. Next: M12.3.3 user identity (avatar+name+EN/VI badge, right-aligned in the `.chat-topbar-aside` slot alongside the voice picker), then M12.4 messages (`.msg-user`/`.msg-assistant`, AnswerView + action bar + cards), M12.5 sources rail, M12.6 input bar, M12.7 Tweaks panel. Read `requirements/ui-reference-spec.md` first. Avatar helpers (`avatarInitials`/`avatarTone` + `.avatar.tone-*`) are reusable for M12.3/M12.4.
+  1. **M12 (Frontend UI Overhaul)** — M12.1 shell + M12.2 sidebar + M12.3 topbar (title + voice picker + user identity) done. Next: M12.4 messages (`.msg-user`/`.msg-assistant`, reuse AnswerView (M4.2) + action bar + recommendation/insufficient/high-stakes cards), M12.5 sources rail, M12.6 input bar, M12.7 Tweaks panel. Read `requirements/ui-reference-spec.md` first. Avatar helpers (`avatarInitials`/`avatarTone` + `.avatar.tone-*`) are reusable for M12.4.
   2. **M13 (Admin Portal UI Overhaul)** — sidebar/dashboard/kanban/matrix/voice/concierge rebuilds.
   3. **M11.1 fixme legs** / **NT human gates** — await external surfaces / PM sign-off.

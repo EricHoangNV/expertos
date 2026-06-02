@@ -13,6 +13,8 @@ import {
   ChatSidebar,
   ChatTopbar,
   ChatUsageMeter,
+  ChatUserIdentity,
+  type ChatLanguage,
   ChatVoicePicker,
   DEFAULT_LAYOUT_DIRECTION,
   Field,
@@ -418,6 +420,9 @@ export default function ChatPage() {
   const { user, getIdToken } = useAuth();
   const [experts, setExperts] = useState<ExpertVoice[]>([]);
   const [expertId, setExpertId] = useState("");
+  // Answer language (M12.3.3) — toggled from the user-identity EN/VI badge in the
+  // header; reused on the next turn (M1 supports EN + VI retrieval).
+  const [language, setLanguage] = useState<ChatLanguage>("en");
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
@@ -685,7 +690,7 @@ export default function ChatPage() {
     let resolvedConversationId = conversationId;
     try {
       await streamChat(
-        { text, conversationId, expertId: expertId || undefined, language: "en" },
+        { text, conversationId, expertId: expertId || undefined, language },
         token,
         (event) => {
           if (event.type === "delta") {
@@ -736,6 +741,7 @@ export default function ChatPage() {
     getIdToken,
     experts,
     expertId,
+    language,
     conversationId,
     editingTitle,
     loadConversations,
@@ -808,6 +814,14 @@ export default function ChatPage() {
             disabled={busy}
           />
         )}
+        <ChatUserIdentity
+          name={user.displayName}
+          email={user.email}
+          language={language}
+          onLanguageToggle={
+            busy ? undefined : () => setLanguage((prev) => (prev === "en" ? "vi" : "en"))
+          }
+        />
       </ChatTopbar>
       <main className="card card-pad chat-content">
         <div>

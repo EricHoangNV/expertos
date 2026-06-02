@@ -477,6 +477,17 @@ kbd { font-family: var(--font-mono); font-size: 11px; background: var(--paper-2)
 .chat-voice-picker { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
 .chat-voice-picker .chat-voice-avatar { width: 20px; height: 20px; font-size: 10px; }
 
+/* User identity (M12.3.3) — avatar + name + EN/VI language badge, right-aligned in the
+   `.chat-topbar-aside` slot next to the voice picker. */
+.chat-user-identity { display: flex; align-items: center; gap: var(--s2); }
+.chat-user-identity .chat-user-avatar { width: 26px; height: 26px; font-size: 11px; }
+.chat-user-identity .chat-user-name {
+  font-weight: 600; color: var(--ink-800); white-space: nowrap;
+  max-width: 9rem; overflow: hidden; text-overflow: ellipsis;
+}
+button.chat-user-lang { cursor: pointer; }
+button.chat-user-lang:hover { border-color: var(--line-2); background: var(--paper-2); }
+
 /* Expert avatar tones — deterministic per expert (reused by the chat header + messages, M12.3–4). */
 .avatar.tone-crimson { background: var(--red-600); color: #fff; }
 .avatar.tone-green   { background: var(--ok-600); color: #fff; }

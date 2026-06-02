@@ -34,6 +34,8 @@ export { ChatSearch } from "./ChatSearch";
 export type { ChatSearchProps, ChatSearchResultItem } from "./ChatSearch";
 export { ChatVoicePicker } from "./ChatVoicePicker";
 export type { ChatVoicePickerProps, ChatVoiceOption } from "./ChatVoicePicker";
+export { ChatUserIdentity } from "./ChatUserIdentity";
+export type { ChatUserIdentityProps, ChatLanguage } from "./ChatUserIdentity";
 export {
   ChatConversationList,
   AVATAR_TONES,
