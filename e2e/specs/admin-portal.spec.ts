@@ -14,8 +14,10 @@ test.describe("admin portal", () => {
     // Expert group is always present; Admin group appears only for a resolved admin role.
     await expect(page.getByText("Expert", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Admin", { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: "Knowledge" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Users" })).toBeVisible();
+    // Exact names: the dashboard also has descriptive links like "Knowledge Review and publish",
+    // so match the sidebar nav items by their exact label.
+    await expect(page.getByRole("link", { name: "Knowledge", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Users", exact: true })).toBeVisible();
   });
 
   test("the knowledge review queue renders and filters by status", async ({ page }) => {
@@ -24,8 +26,9 @@ test.describe("admin portal", () => {
 
     await expect(page.getByRole("heading", { name: "Review queue" })).toBeVisible();
 
-    // Filtering by a published status re-queries without error.
-    await page.getByLabel("Status").selectOption({ label: "Published" });
+    // Filtering by the published status re-queries without error. Select by option value (the
+    // enum), since the visible label is the humanized lowercase form ("published").
+    await page.getByLabel("Status").selectOption("published");
     await expect(page.locator(".badge-red")).toHaveCount(0);
   });
 

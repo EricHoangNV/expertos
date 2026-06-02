@@ -2528,3 +2528,35 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 **Notes for next iteration:**
 - The API will now boot under the Auth emulator, but full M11.1 execution is still blocked in-sandbox on chromium Linux system-deps + a `firebase-tools` emulator + the 3 running services. npm registry is reachable (verified), so a future run could attempt `playwright install chromium` + `firebase-tools` if system deps/network for the browser CDN + emulator jar are granted.
 - M11.3 `load/smoke.mjs` still awaits the running services; the API boot path is now one blocker lighter.
+
+---
+
+## M11.1 — Playwright E2E suite executed green against a live stack
+
+**What:** Stood up the full live stack in-sandbox and ran the opt-in Playwright E2E suite end to end for the first time. Result: **15 passed / 4 skipped / 0 failed** (the 4 skips are the 3 documented `test.fixme` legs + the expert-voice test, which `test.skip`s cleanly when no published voice is seeded). Flipped M11.1 `[~] → [x]`.
+
+**Stack brought up (all in-sandbox, no GCP):**
+- DB: `infra/local-test-db.sh up` (pgvector in Docker, migrate + seed, `app_user` LOGIN).
+- Auth: `firebase-tools` Auth emulator on `:9099` (project `expertos-e2e`); the emulator JAR downloads through the firewall.
+- Services: `pnpm build` then `node dist/main.js` (api, emulator-aware Firebase init) + `next start` (web :3000, admin :3002), all built with the E2E `NEXT_PUBLIC_*` baked in (NEXT_PUBLIC is inlined at **build** time, not start time).
+- Browser: chromium binary was cached but needed `apt-get install` of its system libs **and** base fonts (`fonts-liberation`) — without fonts headless chromium lays out text at 0 height and visibility assertions on bare headings fail (LEARNINGS #11).
+
+**New code — make the suite repeatable:**
+- `e2e/global-setup.ts` (+ `globalSetup` in `playwright.config.ts`, + `@expertos/db` devDep, + knip entry): signs all 4 identities into the emulator + `GET /me` to mirror their rows, then promotes `e2e-admin@`→admin / `e2e-expert@`→expert and puts `e2e-member@` on **Plus** directly in the DB (reads `DATABASE_URL`, via the app's own `applyRlsContext` admin context). Plus (not top tier) keeps the account-billing upgrade CTA visible while lifting the Free 10/mo hard cap and enabling document upload.
+- Programmatic emulator sign-in: each app's `lib/firebase.ts` now exposes an emulator-gated `window.__e2eSignIn` (email/password against the emulator on the app's own Auth instance); `fixtures/auth.ts` drives it instead of the Google popup. `signInWithPopup` loads `apis.google.com` (firewall-blocked offline) → `auth/internal-error`; the programmatic path needs no external network. Gated on `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` (never set in prod).
+
+**Real bugs found + fixed (not just test wiring):**
+- **API had no CORS** (`apps/api/src/main.ts`): web/admin are separate origins from the API, so the first browser cross-origin `fetch` (chat stream) failed its preflight (`Cannot OPTIONS /chat → 404`) and hung forever. Added `enableCors` with a `CORS_ORIGINS` allowlist (default local web/admin) + `Authorization`/`Content-Type` headers; bearer auth so no credentials. LEARNINGS #10 + DIRECTIVE #39.
+- **Admin `<Field label="Status">` had no `htmlFor`** (`apps/admin/app/knowledge/page.tsx`): the DS `Field` renders the `<label>` separately, so the select was programmatically unlabeled — `getByLabel`/screen readers couldn't resolve it. Added `htmlFor`/`id`. LEARNINGS #12 + DIRECTIVE #38.
+
+**Harness/spec selector fixes (latent — the specs had never run):**
+- `ask()` waited on the Send button re-enabling, which never happens (the input is cleared so it stays disabled) → wait on the "Was this helpful?" affordance instead.
+- Loose `getByText("Saved"/"persistent")` matched hidden `<option>`/help text → `{ exact: true }`.
+- `.or(a, b)` of two present elements tripped strict mode → `.first()` (out-of-domain, account-billing).
+- `getByRole("link"/"button", { name })` substring collisions → `exact: true` (Knowledge/Users nav, history Rename action vs conversation titles).
+- Status filter selected by humanized label "Published" (actual option text is lowercase "published") → select by option value.
+- data-deletion clicked the email `<td>` (not clickable) → click the row's "Manage" link.
+
+**Remaining (all by design):** 3 `test.fixme` legs (publish→retrieval round-trip + irreversible deletion cascade need a seed; Stripe-hosted checkout is an external surface) + the expert-voice test (needs a seeded published voice profile to un-skip).
+
+**Gates:** typecheck ✅, test ✅ (1037, coverage gate met), lint ✅ (incl. e2e + stylelint), deadcode ✅, build ✅. E2E run: 15/0/4.

@@ -25,6 +25,9 @@ const webClientEnv: Record<string, string> = {
 
 export default defineConfig({
   testDir: "./specs",
+  // Mirrors the test identities + promotes the expert/admin roles the gated portal specs
+  // need, against the live stack (see global-setup.ts). Runs once before the suite.
+  globalSetup: "./global-setup.ts",
   // Each spec mutates shared server state (knowledge, conversations), so run files in
   // order within a worker; keep a single worker to avoid cross-test interference.
   fullyParallel: false,

@@ -1,5 +1,11 @@
 import { getApp, getApps, initializeApp, type FirebaseOptions } from "firebase/app";
-import { type Auth, connectAuthEmulator, getAuth, GoogleAuthProvider } from "firebase/auth";
+import {
+  type Auth,
+  connectAuthEmulator,
+  getAuth,
+  GoogleAuthProvider,
+  signInWithEmailAndPassword,
+} from "firebase/auth";
 
 /**
  * Firebase **client** config — only `NEXT_PUBLIC_*` values, which are safe to ship
@@ -41,3 +47,22 @@ export function getFirebaseAuth(): Auth {
 }
 
 export const googleProvider = new GoogleAuthProvider();
+
+/**
+ * E2E only: a programmatic email/password sign-in against the Auth **emulator**. Production
+ * sign-in is the Google popup, but `signInWithPopup` loads `apis.google.com` for its OAuth
+ * handler — unreachable from the sandbox/CI the E2E suite runs in. This signs in directly
+ * against the emulator (no popup, no external network) using the app's own Auth instance, so
+ * `onAuthStateChanged` fires exactly as for a real sign-in. Gated on the emulator-host env
+ * (never set in production — same guarantee as `connectAuthEmulator`) and browser-only.
+ */
+declare global {
+  interface Window {
+    __e2eSignIn?: (email: string, password: string) => Promise<unknown>;
+  }
+}
+
+if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST) {
+  window.__e2eSignIn = (email, password) =>
+    signInWithEmailAndPassword(getFirebaseAuth(), email, password);
+}

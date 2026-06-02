@@ -45,8 +45,9 @@ export default function KnowledgeQueuePage() {
           <div className="eyebrow">Knowledge</div>
           <h1 className="h1">Review queue</h1>
         </div>
-        <Field label="Status">
+        <Field label="Status" htmlFor="status-filter">
           <Select
+            id="status-filter"
             value={status}
             onChange={(e) => setStatus(e.target.value as PublishStatusValue | "")}
           >

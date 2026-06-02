@@ -2,13 +2,13 @@
 
 ## Current State
 - Completed:
-  - M11.1 (enabler fix): API Firebase init is now emulator-aware — `createFirebaseApp` branches on `FIREBASE_AUTH_EMULATOR_HOST` to init with just a `projectId` (no service-account cert), mirroring the web/admin `connectAuthEmulator` env-guard; Playwright api `webServer` now passes `FIREBASE_PROJECT_ID`. Fixes a boot-time throw that blocked the *entire* E2E stack from starting. Prod no-op.
-  - M11 (harness): Local live-DB integration runner — `infra/local-test-db.sh` + `pnpm test:integration` stands up pgvector in Docker, migrates+seeds, grants `app_user` LOGIN, runs both opt-in suites; **executed green: 50 live-DB tests (15 RLS + 35 api)** — the DB tier is no longer "not runnable in sandbox"
-  - M6.2 (web): Self-serve checkout CTA in `apps/web` — `GET /me/plans` (priced upgrade tiers) + account-page Upgrade buttons → `POST /billing/checkout` + Manage-billing → `POST /billing/portal`; closes the M11.1 consumer-checkout `test.fixme` leg
-  - NT.3 (technical): Data-retention sweeper (`RetentionService`) — admin `preview`/`sweep` deletes expired temporary uploads + idle conversations + old usage logs, **deletes consultation transcripts (keeps consultation revenue row)** + **anonymizes concierge review records in place** past 1yr, audited; `apps/admin/app/retention` (PM approval still pending)
-  - M11.3: Cache hit/miss instrumentation (`GET /admin/analytics/cache`) + dependency-free `load/smoke.mjs` smoke harness (opt-in, like `e2e/`)
-  - M11.1 (harness): Playwright E2E foundation — opt-in `e2e/` workspace, 19 tests/7 specs grounded in real DOM, emulator auth fixtures + env-guarded `connectAuthEmulator` wiring; execution awaits live stack (2 `test.fixme` legs await seed/external Stripe page)
-  - NT.4 (technical): High-stakes-topic detector → educational-scope prompt rule + disclaimer (live+history) + `high_stakes` logging + topic-trigger CTA (PM/legal sign-off still pending)
+  - M11.1 (executed green): Playwright E2E **15 pass / 4 skip (3 fixme + voice) / 0 fail** vs a live in-sandbox stack; `e2e/global-setup.ts` (mirror users, promote roles + member→Plus), programmatic emulator sign-in, CORS + a11y-label + harness-selector fixes (LEARNINGS #10/#11/#12)
+  - M11.1 (enabler fix): API Firebase init emulator-aware (`createFirebaseApp` inits with just `projectId` when `FIREBASE_AUTH_EMULATOR_HOST` set); fixes E2E boot. Prod no-op
+  - M11 (harness): `infra/local-test-db.sh` + `pnpm test:integration` — pgvector in Docker; **50 live-DB tests green (15 RLS + 35 api)**
+  - M6.2 (web): Self-serve checkout CTA — `GET /me/plans` + account-page Upgrade/Manage-billing
+  - NT.3 (technical): Data-retention sweeper (`RetentionService`) — preview/sweep deletes expired uploads/idle convos/old logs, deletes consultation transcripts, anonymizes concierge records (PM approval pending)
+  - M11.3: Cache hit/miss instrumentation + dependency-free `load/smoke.mjs` smoke harness (opt-in)
+  - NT.4 (technical): High-stakes detector → disclaimer + topic-trigger CTA (PM/legal sign-off pending)
   - M10.4: Validation scorecard (activation/engagement/willingness-to-pay/funnel) — admin analytics
   - M10.3: Concierge volume/SLA/verdict metrics + knowledge-quality signals (admin analytics)
   - M9.3: Concierge async delivery (visible update vs silent) + transactional email
@@ -18,13 +18,11 @@
   - M10.2: Consultation funnel + attribution
   - M10.1: Usage & cost analytics
   - M11.5: Design-system conformance audit
-  - M11: Live-DB integration tests (PgVectorStore, conversation search, expert store, failed queries, expert portal, semantic cache — 35 live tests)
   - M11.2: /cso security audit + per-IP rate limiter + prompt-injection hardening + live-DB authz/RLS tests
-  - Consumer-web: document upload UI, chat history + search + saved-answers, answer affordances, plan & usage page
-  - Admin: TidyCal reconciliation surface, audit + user management + data deletion
-  - M8.5: Expert portal
-  - M8.4: Admin expert-roster + voice-profile admin UI
-  - M8.3: Failed-query inspector, recommendation-rules editor, entitlement matrix editor, revenue reports
+  - Consumer-web: upload UI, history+search+saved, answer affordances, plan & usage page
+  - Admin: TidyCal reconciliation, audit + user mgmt + data deletion
+  - M8.5: Expert portal; M8.4: expert-roster + voice-profile admin UI
+  - M8.3: Failed-query inspector, rec-rules editor, entitlement matrix editor, revenue reports
   - Publish-time cache invalidation
   - M8.1 + M8.2: Knowledge management (API + admin UI)
   - M7.3: Booking provider + reconciliation
@@ -61,9 +59,9 @@
   - M1.2: Hybrid retrieval (vector + keyword RRF fusion)
   - M1.1: Versioned ingestion pipeline
 - Tests: 1037 pass / 0 fail / 0 skip (shared 179, ui 29, db 9, ai 161, api 659)
-- Build: passing — `pnpm build` (turbo) builds all 7 workspaces. (Note: a stale `apps/admin/.next/cache` can corrupt the standalone build with `Unexpected end of JSON input` — `rm -rf apps/admin/.next/cache` clears it; not a code error.)
+- Build: passing — `pnpm build` builds all 7 workspaces. (Note: admin's standalone build flakily truncates `.next/server/pages-manifest.json` to 0 bytes [`Unexpected end of JSON input`] — only matters for `next start`; copy web's manifest or rebuild. Not a code error.)
 - Gates: typecheck ✅, test ✅ (coverage gate ≥90% met), lint ✅ (incl. stylelint), build ✅, deadcode (knip) ✅
 - Next tasks (priority order):
-  1. **M11.1** — execute the Playwright E2E suite against a live stack (Firebase Auth emulator + 3 services + seed); API emulator-init is now fixed, so the API will boot under the emulator. Still blocked in sandbox on chromium Linux system-deps + firebase-tools, NOT on the DB (covered by `infra/local-test-db.sh`). M11.3 `load/smoke.mjs` still awaits the running services. Resolve the 2 `test.fixme` legs as seed/external-page lands.
+  1. **M11.1 fixme legs** — un-skip when their surface lands: seed a published expert voice (voice test), a Draft doc (publish→retrieval round-trip), a throwaway user (deletion cascade), a Stripe test harness (hosted checkout). All currently `test.fixme`/`test.skip` by design.
   2. **M11.4 / NT** — remaining sign-offs are now human gates (NT.3 PM approval, NT.4 copy/ToS, NT.5/6 deferred)
   3. Phase-0 Open Decisions (#3, product halves of #2/#6)

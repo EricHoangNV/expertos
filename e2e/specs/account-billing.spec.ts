@@ -18,8 +18,12 @@ test.describe("plan & usage", () => {
     await expect(page.getByRole("heading", { name: "Plan & usage" })).toBeVisible();
 
     await expect(page.getByText(/Current plan:/i)).toBeVisible();
-    // A metered free plan renders the transparent usage indicator (M6.3 `.bar` meter).
-    await expect(page.getByText("Usage this period").or(page.getByText("Features"))).toBeVisible();
+    // A metered plan renders the transparent usage indicator (M6.3 `.bar` meter); a plan with
+    // boolean features renders the "Features" list. `.first()` keeps the combined locator
+    // single-element when both sections are present (otherwise strict mode trips).
+    await expect(
+      page.getByText("Usage this period").or(page.getByText("Features")).first(),
+    ).toBeVisible();
   });
 
   test("a free user is offered a self-serve upgrade CTA", async ({ page }) => {

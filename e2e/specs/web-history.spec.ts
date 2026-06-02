@@ -40,7 +40,9 @@ test.describe("history + saved answers", () => {
     await page.goto(`${env.webBaseUrl}/history`);
 
     await page.getByRole("button", { name: "Open conversation" }).first().click();
-    await page.getByRole("button", { name: "Rename" }).click();
+    // Exact: conversation entries are buttons whose name is the title, and prior runs leave
+    // titles containing "Rename"/"Renamed" — match only the rename *action* button.
+    await page.getByRole("button", { name: "Rename", exact: true }).click();
     const renamed = `Renamed ${marker}`;
     await page.getByLabel("Conversation title").fill(renamed);
     await page.getByRole("button", { name: "Save", exact: true }).click();

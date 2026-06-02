@@ -43,6 +43,8 @@
 35. **Postgres RLS needs a non-superuser app role + FORCE RLS** — app connects as `app_user`, scope via `applyRlsContext` inside a transaction (§4.21)
 36. **NFC-normalize all indexed + query text** — decomposed (NFD) diacritics shatter tokenization and silently kill Vietnamese recall; normalize both sides (§1.2)
 37. **Untrusted text in LLM prompts** — retrieved chunks, uploaded docs, and the user question are untrusted; defend with a system-prompt instruction hierarchy + forged-`[n]`-marker neutralization at the single `buildAnswerPrompt` choke point (§1.4b)
+38. **Associate every form label** — the DS `Field` renders `<label>` separately, so pass `htmlFor` + a matching control `id`; an unassociated label is a silent a11y gap visual review won't catch (LEARNINGS #12)
+39. **Split-origin API needs CORS** — the SPA and API are different origins (separate Cloud Run services), so `enableCors` with an origin allowlist + the `Authorization` header; only a real browser preflight catches its absence (LEARNINGS #10)
 
 ---
 

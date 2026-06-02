@@ -40,21 +40,47 @@ matrix honest without producing flaky runs.
    and initializes the Admin SDK **without a service-account cert** in this mode; the
    web/admin clients read `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` (see `.env.example`).
 
-### Test identities & roles
+### Test identities, roles & sign-in
 
-The suite signs in as deterministic emulator accounts (`fixtures/env.ts`):
-`e2e-member@`, `e2e-other@`, `e2e-expert@`, `e2e-admin@` (all `@expertos.test`). They are
-created on first sign-in; **expert/admin roles must be granted out-of-band** (seed script
-or `PATCH /admin/users/:id/role`) so the gated portal flows resolve.
+The suite uses deterministic emulator accounts (`fixtures/env.ts`): `e2e-member@`,
+`e2e-other@`, `e2e-expert@`, `e2e-admin@` (all `@expertos.test`).
+
+`global-setup.ts` (wired via `globalSetup` in the Playwright config) prepares them once
+before the run, so the suite is repeatable against a freshly-seeded stack:
+
+1. signs each identity into the emulator and hits `GET /me`, so the API mirrors a local user
+   row (it keys on `firebase_uid`, assigned by the emulator — roles can only be promoted
+   *after* the row exists, not pre-seeded by email);
+2. promotes `e2e-admin@` → `admin` and `e2e-expert@` → `expert` directly in the DB (there is
+   no pre-existing admin to authorize the role-change API — the bootstrap problem), reading
+   `DATABASE_URL` (the same URL the API uses); and
+3. puts `e2e-member@` on the **Plus** plan so the question/upload flows don't hit the Free
+   plan's monthly hard cap across repeated runs (Plus is not the top tier, so the self-serve
+   upgrade CTA still renders).
+
+**Sign-in is programmatic, not the Google popup.** `signInWithPopup` loads `apis.google.com`
+for its OAuth handler, which is unreachable from a sandbox/CI. Each app's `lib/firebase.ts`
+therefore exposes an emulator-gated `window.__e2eSignIn` (email/password against the emulator,
+on the app's own Auth instance) that the fixtures drive — no popup, no external network. The
+helper is gated on `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` (never set in production).
 
 ## Running
 
 ```bash
-pnpm --filter @expertos/e2e exec playwright install chromium   # one-time: browser binary
+# One-time: the chromium binary, its Linux system libraries, AND base fonts. Without fonts,
+# headless chromium renders text at zero height (webfonts are blocked offline) so visibility
+# assertions on bare-text headings fail — install a font package such as fonts-liberation.
+pnpm --filter @expertos/e2e exec playwright install chromium
+sudo pnpm --filter @expertos/e2e exec playwright install-deps   # or: sudo apt-get install <libs>
+sudo apt-get install -y fonts-liberation                        # base glyphs for headless render
+
 pnpm --filter @expertos/e2e test:e2e                            # headless run
 pnpm --filter @expertos/e2e test:e2e:ui                         # interactive UI mode
 pnpm --filter @expertos/e2e test:e2e:report                     # open last HTML report
 ```
+
+`global-setup.ts` reads `DATABASE_URL` for the role/plan promotion, so export it (the same
+app_user URL the API uses) when running with `E2E_NO_WEBSERVER=1`.
 
 ### Configuration (env overrides)
 
@@ -66,6 +92,11 @@ pnpm --filter @expertos/e2e test:e2e:report                     # open last HTML
 | `FIREBASE_AUTH_EMULATOR_HOST` | `localhost:9099` | Auth emulator host:port |
 | `E2E_FIREBASE_PROJECT_ID` | `expertos-e2e` | Firebase project id |
 | `E2E_NO_WEBSERVER` | _unset_ | set to `1` when you start the apps yourself |
+| `DATABASE_URL` | _unset_ | read by `global-setup.ts` to promote roles + the member's plan |
+
+> The API must allow the web/admin origins via CORS (`CORS_ORIGINS`, default
+> `http://localhost:3000,http://localhost:3002`) — the browser sends a cross-origin preflight
+> to `:3001`. The defaults cover the local stack.
 
 ## Notes
 

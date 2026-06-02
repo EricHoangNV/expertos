@@ -22,7 +22,8 @@ test.describe("consumer chat", () => {
     await expect(page.getByRole("button", { name: "Helpful" }).last()).toBeVisible();
 
     await saveLastAnswer(page);
-    await expect(page.getByText("Saved").last()).toBeVisible();
+    // Exact: a loose "Saved" also matches the upload-mode option "Persistent (saved to …)".
+    await expect(page.getByText("Saved", { exact: true }).last()).toBeVisible();
   });
 
   test("helpful feedback with a reason is accepted", async ({ page }) => {
@@ -53,8 +54,12 @@ test.describe("consumer chat", () => {
 
     // Either a graceful limited-knowledge card or a normal answer is acceptable; the
     // contract under test is that the turn always completes with a next step, never hangs.
+    // `ask` already waited for the feedback affordance, so the turn completed; an
+    // insufficient-knowledge turn additionally renders the "Limited knowledge" card. Either
+    // satisfies the contract — `.first()` keeps the combined locator single-element (both can
+    // be present at once, which would otherwise trip strict mode).
     const limited = page.getByText("Limited knowledge").last();
     const completed = page.getByText("Was this helpful?").last();
-    await expect(limited.or(completed)).toBeVisible();
+    await expect(limited.or(completed).first()).toBeVisible();
   });
 });

@@ -23,8 +23,10 @@ test.describe("admin data deletion", () => {
     await signInAdmin(page, users.admin);
     await page.goto(`${env.adminBaseUrl}/users`);
 
-    // Open the target user's detail from the roster.
-    await page.getByText(users.other.email, { exact: false }).first().click();
+    // Open the target user's detail from the roster — the email shows in the row, but the
+    // navigation affordance is the row's "Manage" link.
+    const row = page.getByRole("row").filter({ hasText: users.other.email });
+    await row.getByRole("link", { name: "Manage" }).click();
 
     await expect(page.getByText("Data deletion")).toBeVisible();
     await page.getByRole("button", { name: "Record deletion request" }).click();

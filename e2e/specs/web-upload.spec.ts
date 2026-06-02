@@ -28,7 +28,9 @@ test.describe("document upload", () => {
 
     // The uploaded-file row shows the filename, its persistent badge, and the index result.
     await expect(page.getByText("e2e-revenue.csv")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("persistent")).toBeVisible();
+    // Exact: a loose "persistent" also matches the mode <option> and the panel help text; the
+    // uploaded-file row's confirmation is the green badge whose text is exactly "persistent".
+    await expect(page.getByText("persistent", { exact: true })).toBeVisible();
     await expect(page.getByText(/searchable chunks/i)).toBeVisible();
   });
 

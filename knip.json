@@ -30,7 +30,7 @@
       "project": ["src/**/*.ts"]
     },
     "e2e": {
-      "entry": ["playwright.config.ts", "specs/**/*.spec.ts"],
+      "entry": ["playwright.config.ts", "global-setup.ts", "specs/**/*.spec.ts"],
       "project": ["**/*.ts"]
     }
   },

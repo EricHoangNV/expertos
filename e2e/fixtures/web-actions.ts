@@ -21,13 +21,18 @@ export async function gotoChat(page: Page): Promise<void> {
 export async function ask(page: Page, text: string): Promise<void> {
   await page.getByPlaceholder("Ask a question…").fill(text);
   await page.getByRole("button", { name: "Send" }).click();
-  // The send button flips to "Answering…" while busy, then back to "Send".
-  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled({ timeout: 45_000 });
+  // The send button reads "Answering…" while the turn streams. It does NOT re-enable on
+  // completion (the input is cleared, so it stays disabled until the user types again), so the
+  // robust done-signal is the post-answer feedback affordance, which renders only once the
+  // assistant message has a persisted id — i.e. the `done` frame arrived (M3.4). This shows on
+  // every completed turn, including the insufficient-knowledge path.
   await expect(page.getByText("Was this helpful?").last()).toBeVisible({ timeout: 45_000 });
 }
 
 /** Save the most recent answer; resolves once the "Saved" confirmation badge shows. */
 export async function saveLastAnswer(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Save answer" }).last().click();
-  await expect(page.getByText("Saved").last()).toBeVisible();
+  // Exact match: a loose "Saved" also matches the upload-mode option "Persistent (saved to my
+  // knowledge)". The confirmation is the green badge whose text is exactly "Saved".
+  await expect(page.getByText("Saved", { exact: true }).last()).toBeVisible();
 }

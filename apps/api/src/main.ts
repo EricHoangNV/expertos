@@ -20,6 +20,22 @@ async function bootstrap(): Promise<void> {
   app.useLogger(app.get(StructuredLogger));
   app.enableShutdownHooks();
 
+  // The web + admin clients are deployed as separate origins from the API (distinct Cloud Run
+  // services), so the browser sends cross-origin requests with a CORS preflight. Allow the
+  // configured origins (comma-separated `CORS_ORIGINS`); default to the local dev/E2E origins
+  // so a same-host run works out of the box (production must set the real client URLs). Auth is
+  // a bearer ID token, not a cookie, so credentials are intentionally not enabled.
+  const corsOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:3000,http://localhost:3002")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  app.enableCors({
+    origin: corsOrigins,
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Authorization", "Content-Type"],
+    maxAge: 600,
+  });
+
   // Cloud Run injects PORT (default 8080); fall back to API_PORT for local dev.
   const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3001);
   await app.listen(port, "0.0.0.0");

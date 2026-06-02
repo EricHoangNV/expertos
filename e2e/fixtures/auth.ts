@@ -1,6 +1,13 @@
 import { type APIRequestContext, type Page, expect } from "@playwright/test";
 import { authEmulatorRestBase, env, type TestUser } from "./env";
 
+declare global {
+  interface Window {
+    /** E2E-only programmatic emulator sign-in, exposed by each app's `lib/firebase.ts`. */
+    __e2eSignIn?: (email: string, password: string) => Promise<unknown>;
+  }
+}
+
 /**
  * Mint a Firebase ID token for `user` directly from the Auth **emulator** REST API.
  * Tries sign-up first (idempotent test users), falling back to sign-in if the account
@@ -39,52 +46,38 @@ export async function getEmulatorIdToken(
 }
 
 /**
- * Click the "Sign in with Google" button on the current page and drive the Firebase Auth
- * emulator's popup widget to completion as `user`.
+ * Sign `user` in through the app's own Firebase Auth instance, against the emulator.
  *
- * The emulator widget flow: an account chooser listing known accounts plus an "Add new
- * account" action that opens an auto-fillable Google sign-in form. We reuse an existing
- * account row when present (faster, deterministic) and create one otherwise.
+ * Production sign-in is the Google popup, but `signInWithPopup` loads `apis.google.com` for
+ * its OAuth handler, which is unreachable from the sandbox/CI this suite runs in. The apps
+ * expose an emulator-gated `window.__e2eSignIn` (see each app's `lib/firebase.ts`) that calls
+ * `signInWithEmailAndPassword` on the same Auth instance — no popup, no external network — so
+ * `onAuthStateChanged` fires exactly as it would for a real sign-in. The account is created
+ * idempotently by the global setup (and again here as a safety net for direct fixture use).
  */
-async function clickGoogleSignInAndDrivePopup(page: Page, user: TestUser): Promise<void> {
-  const popupPromise = page.waitForEvent("popup");
-  await page.getByRole("button", { name: "Sign in with Google" }).click();
-  const popup = await popupPromise;
-  await popup.waitForLoadState();
-
-  // Reuse an existing emulator account if the chooser already lists this email.
-  const existing = popup.getByText(user.email, { exact: false }).first();
-  if (await existing.isVisible().catch(() => false)) {
-    await existing.click();
-    return;
-  }
-
-  await popup.getByRole("button", { name: /add new account/i }).click();
-
-  // The emulator pre-fills random data via "Auto-generate user information"; we then
-  // overwrite the email so the API mirrors the deterministic test identity.
-  const autoGen = popup.getByRole("button", { name: /auto-generate user information/i });
-  if (await autoGen.isVisible().catch(() => false)) {
-    await autoGen.click();
-  }
-  const emailField = popup.getByLabel(/email/i).first();
-  if (await emailField.isVisible().catch(() => false)) {
-    await emailField.fill(user.email);
-  }
-  const nameField = popup.getByLabel(/display name/i).first();
-  if (await nameField.isVisible().catch(() => false)) {
-    await nameField.fill(user.displayName);
-  }
-  await popup.getByRole("button", { name: /sign in with google\.com/i }).click();
+async function emulatorSignIn(page: Page, user: TestUser): Promise<void> {
+  await page.waitForFunction(() => typeof window.__e2eSignIn === "function");
+  const error = await page.evaluate(
+    async ({ email, password }) => {
+      try {
+        await window.__e2eSignIn!(email, password);
+        return null;
+      } catch (e) {
+        return e instanceof Error ? e.message : String(e);
+      }
+    },
+    { email: user.email, password: user.password },
+  );
+  expect(error, `emulator sign-in failed for ${user.email}: ${error}`).toBeNull();
 }
 
 /**
- * Sign `user` into the consumer web app through the real UI path. After this resolves the
- * home page shows the signed-in badge, so callers can navigate to gated pages.
+ * Sign `user` into the consumer web app. After this resolves the home page shows the
+ * signed-in badge, so callers can navigate to gated pages.
  */
 export async function signIn(page: Page, user: TestUser): Promise<void> {
   await page.goto(env.webBaseUrl);
-  await clickGoogleSignInAndDrivePopup(page, user);
+  await emulatorSignIn(page, user);
   await expect(page.getByText(/signed in as/i)).toBeVisible();
 }
 
@@ -95,6 +88,6 @@ export async function signIn(page: Page, user: TestUser): Promise<void> {
  */
 export async function signInAdmin(page: Page, user: TestUser): Promise<void> {
   await page.goto(env.adminBaseUrl);
-  await clickGoogleSignInAndDrivePopup(page, user);
+  await emulatorSignIn(page, user);
   await expect(page.getByText("Expert", { exact: true }).first()).toBeVisible();
 }

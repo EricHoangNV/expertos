@@ -115,3 +115,36 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Fix: branch `createFirebaseApp` on `FIREBASE_AUTH_EMULATOR_HOST` → `initializeApp({ projectId })` (project id from `FIREBASE_PROJECT_ID`/`GCLOUD_PROJECT`, placeholder fallback), mirroring the client env-guard; prod no-op since prod never sets that var. Also pass `FIREBASE_PROJECT_ID` to the api `webServer` so the Admin SDK validates tokens under the same project the clients mint them with.
 
 **Rule:** When you add an emulator/sandbox/local-mode switch, wire it on *every* process that initializes the SDK — clients AND servers — and remember each may have a different init contract (the Firebase Admin SDK needs only a `projectId` against the Auth emulator, no service-account cert). A client-only diff that "looks complete" can still leave the server unable to boot; back the switch with at least one test (or a boot smoke) that exercises the server's emulator-mode init.
+
+---
+
+## 10. Split-origin web/admin → API needs CORS, or every browser call fails the preflight (server-side calls hide it)
+
+**Context:** M11.1 — first real browser execution of the E2E suite. Sign-in and `GET /me` worked, but the first cross-origin browser `fetch` (chat stream `POST :3001/chat` from web `:3000`) hung forever. The API log showed `Cannot OPTIONS /chat → 404`: the CORS preflight had no handler because the API never called `app.enableCors(...)` anywhere.
+
+- Root cause: web (`:3000`) and admin (`:3002`) are deployed as **separate origins** from the API (`:3001`) — distinct Cloud Run services in prod, distinct ports locally. Any browser cross-origin request with a non-simple header (here `Authorization`) triggers a CORS preflight `OPTIONS`; with no CORS middleware the preflight 404s and the real request never fires. The gap was invisible to unit tests and to server-to-server calls (the test's `APIRequestContext`, the seed, the emulator REST) — only a real browser surfaces it.
+- Fix: `app.enableCors({ origin: CORS_ORIGINS.split(","), methods, allowedHeaders: ["Authorization","Content-Type"] })`, defaulting to the local web/admin origins (prod sets the real client URLs). Auth is a bearer ID token, not a cookie, so credentials are intentionally off and an allowlist is enough.
+
+**Rule:** If the SPA and its API are served from different origins, the API MUST enable CORS with an origin allowlist + the headers it actually receives (`Authorization`) — and you can only catch its absence by exercising a real browser, since server-side/test HTTP clients never send a preflight.
+
+---
+
+## 11. Headless chromium with no system fonts renders text at zero height — every visibility assertion on bare text fails
+
+**Context:** M11.1 — after sign-in worked, `expect(getByRole("heading", { name: "Chat" })).toBeVisible()` failed. The `<h1>` was in the DOM with the right text and `font-size:30px`, but `offsetHeight === 0` (so Playwright treats it as not visible). Padded elements (badges) still passed, which masked the problem.
+
+- Root cause: the sandbox had **no system fonts installed** (`fc-list` empty). The app's webfont (Sora) is loaded from `fonts.googleapis.com`, which is firewall-blocked offline, and there was no fallback glyph set — so headless chromium laid out text with zero height. Bare-text elements (headings) collapse to 0px; elements with their own box (padding/border) stay visible, which is why only some assertions failed.
+- Fix: install a base font package (`fonts-liberation` / `fonts-dejavu-core` + `fontconfig`). After that the heading measured 34px and became visible. This is environment setup, not app code.
+
+**Rule:** A browser-driven (Playwright/Puppeteer) run needs three host prerequisites, not one: the browser binary, its system libraries (`playwright install-deps`), AND at least one system font. Zero-height/invisible bare text in headless CI with passing padded elements is the signature of missing fonts, not a CSS bug.
+
+---
+
+## 12. A design-system `<Field label>` that renders the `<label>` without `htmlFor` is a silent a11y gap (and breaks `getByLabel`)
+
+**Context:** M11.1 — the admin knowledge spec's `getByLabel("Status").selectOption(...)` timed out. The `<Field label="Status">` rendered `<label>Status</label>` followed by a sibling `<Select>` with no `id`, so the label was associated with nothing — `getByLabel` (and assistive tech) couldn't resolve the control. Other Field usages (chat) passed only because they happened to set `htmlFor`+`id`.
+
+- Root cause: the DS `Field` component renders `<label htmlFor={htmlFor}>` and the control as separate children (no implicit wrapping), so the association is **opt-in** per call site. Omitting `htmlFor`/`id` looks fine visually and passes design review, but leaves the control programmatically unlabeled. The accessibility-first E2E selector is what surfaced it.
+- Fix: pass matching `htmlFor`/`id` (`<Field label="Status" htmlFor="status-filter"><Select id="status-filter">`). Selecting by option **value** (not the humanized label) is also more robust for `selectOption`, since `statusLabel()` lowercases the enum.
+
+**Rule:** Whenever a form control uses the DS `Field` (or any label-renders-separately component), pass `htmlFor` + a matching control `id` — an unassociated label is an invisible a11y defect that visual review won't catch but accessibility-first tests (and screen readers) will.
