@@ -283,3 +283,16 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - **Detection is cheap and must be routine:** after editing a large file on this mount, check `wc -l` and `tail` before committing, and after `git add` sanity-check the commit stat — a one-line change showing hundreds of deletions is the tell. `diff -q <(git show HEAD:path) path` per committed file confirms HEAD == disk.
 
 **Rule:** On the OWC mount, never trust that a successful Edit persisted intact — before committing a large/important file, verify its line count + tail, and treat an unexpected deletion count in the commit stat as corruption to recover from the last good commit (no force-push needed).
+
+---
+
+## 24. An SSE stream consumer must never `JSON.parse` a frame's data payload unguarded — one empty keep-alive frame aborts the whole answer
+
+**Context:** Correctness review of the real LLM drivers (commit 860e7c2, `packages/ai/src/llm/`) — Code Review Cycle 0, the drivers' first correctness pass.
+
+- All three production drivers (OpenAI/Anthropic/Gemini) looped over SSE events as `const data = sseData(event); if (data == null || data === "[DONE]") continue; const frame = JSON.parse(data)`. SSE comment lines (`: …`) were correctly skipped (→ `sseData` returns `null`), **but an empty `data:` frame was not**: `sseData("data:")` returns `""` (a `data:` line *is* present, its payload is just empty), which is neither `null` nor `"[DONE]"`, so the code reached `JSON.parse("")` → `SyntaxError: Unexpected end of JSON input`. That rejects the async generator and aborts the entire answer mid-stream — the user sees a truncated/failed response from a single stray frame.
+- Empty `data:` frames are not exotic: SSE keep-alives and proxies/load-balancers (and some API gateways) inject blank data frames to hold the connection open. The SSE spec itself says a consumer **must ignore** data it can't parse — throwing is the wrong behavior.
+- Fix at the single shared choke point (`http.ts` `parseSseJson<T>()` used by every driver): return `null` for a frame with no usable JSON — no `data:` line, the `[DONE]` sentinel, an empty/whitespace-only payload, or an unparseable fragment (wrapped `try/catch`) — and have callers `continue` on `null`. The terminal `estimateUsage()` fallback still guarantees non-zero cost logging when no usage frame arrives, so resilience doesn't cost the margin signal.
+- Tests that pass a clean, well-formed stream never catch this — the regression only appears with a malformed/blank frame interleaved. Add an explicit "empty/keep-alive frame mid-stream does not abort" case per driver, plus unit tests for the parse helper's null cases.
+
+**Rule:** When consuming SSE (or any newline-framed stream) from an external service, route every `JSON.parse` through one guarded helper that skips empty/sentinel/unparseable frames instead of throwing — a blank keep-alive frame must not abort the stream — and test it with a malformed frame interleaved, not just a clean payload.

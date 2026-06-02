@@ -4572,3 +4572,28 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 - The drivers are code-complete + unit-tested but have NOT been exercised against a live LLM API (no keys in-sandbox, firewall). First real key-backed run should sanity-check the SSE parse against each provider's actual frames (esp. Anthropic `message_start`/`message_delta` usage split + Gemini cumulative `usageMetadata`).
 - Embedding is still the offline `HashingEmbeddingProvider` — a real embedding driver (OpenAI `text-embedding-3-small` / Gemini `text-embedding-004`, both already priced) is the natural follow-up swap at `createDefaultEmbeddingProvider`.
 - Remaining open: M15.3.3/.4 host-validation; M13.5.3/.4/.5 + M13.7.4 (voice widgets, blocked on PM/schema); M11.4 / NT.3 / NT.4 (human sign-off gates).
+
+---
+
+## SSE stream robustness: guard the LLM drivers' frame parse (empty keep-alive frame aborted the answer)
+**Date:** 2026-06-02
+**Ref:** Correctness review of the real LLM drivers (commit 860e7c2) — Code Review Cycle 0 (drivers' first correctness pass); follows the prior log entry's own "next iteration" note to sanity-check the SSE parse.
+
+**What & why:**
+- The three production drivers (OpenAI/Anthropic/Gemini) each looped SSE events as `const data = sseData(event); if (data == null || data === "[DONE]") continue; JSON.parse(data)`. Comment lines (`:`) were skipped, **but an empty `data:` frame was not**: `sseData("data:")` → `""` (a data line is present, payload empty), which is neither `null` nor `"[DONE]"`, so it reached `JSON.parse("")` → `SyntaxError` → the async generator rejects → **the whole answer aborts mid-stream**. Empty `data:` keep-alive frames are routinely injected by proxies/load-balancers; the SSE spec says ignore unparseable data, not throw.
+- Verified the failure with a standalone repro (`sseData("data:")` → `""` → `JSON.parse("")` throws) before fixing.
+
+**Fix (single choke point):**
+- New `parseSseJson<T>(eventBlock)` in `packages/ai/src/llm/http.ts`: returns `null` for a frame with no usable JSON — no `data:` line, the `[DONE]` sentinel, an empty/whitespace-only payload, or an unparseable fragment (`try/catch`). All three drivers now `const frame = parseSseJson<…>(event); if (frame == null) continue;`. The terminal `estimateUsage()` fallback still guarantees non-zero cost logging, so resilience doesn't cost the OD#4 margin signal.
+- `sseData` stays exported (used internally by `parseSseJson` + its direct unit tests); knip clean.
+
+**Tests (+8 → ai 195):**
+- `http.test.ts` — 5 `parseSseJson` unit cases (valid JSON / `[DONE]` incl. surrounding whitespace / comment / empty + whitespace-only payload / unparseable fragment — none throw).
+- `{openai,anthropic,gemini}-llm-provider.test.ts` — 1 each: an empty `data:\n\n` keep-alive interleaved mid-stream does not abort; `complete()` still returns the full concatenated answer.
+
+**Gates:** `@expertos/ai` build/lint clean + jest 195 pass; root knip clean; api consumer (`ingestion.defaults`) 9 pass (provider selection unaffected — Echo path unchanged). File integrity verified (`wc -l`/`tail`) before commit per §3.4.2. Repo total 1516 pass / 0 fail (ai +8).
+
+**Docs:** LEARNINGS #24 (guard every external-stream `JSON.parse`; test with a malformed frame interleaved) + DIRECTIVES Quick Reference #41.
+
+**Notes for next iteration:**
+- Unchanged from prior: M15.3.3/.4 host-validation (sandbox OOMs the live stack, §3.4.1); M13.5.3/.4/.5 + M13.7.4 (voice widgets — blocked on PM/schema); M11.4 / NT.3 / NT.4 (human sign-off gates). All remaining open items are either host-only or human-gated.

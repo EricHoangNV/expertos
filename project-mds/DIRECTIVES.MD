@@ -46,6 +46,7 @@
 38. **Associate every form label** — the DS `Field` renders `<label>` separately, so pass `htmlFor` + a matching control `id`; an unassociated label is a silent a11y gap visual review won't catch (LEARNINGS #12)
 39. **Split-origin API needs CORS** — the SPA and API are different origins (separate Cloud Run services), so `enableCors` with an origin allowlist + the `Authorization` header; only a real browser preflight catches its absence (LEARNINGS #10)
 40. **Verify large-file integrity before committing** — the OWC mount can silently truncate a just-edited file before `git add` reads it; check `wc -l`/`tail` + watch for an unexpected deletion count in the commit stat, recover from the last good commit if hit (§3.4.2, LEARNINGS #23)
+41. **Guard every SSE `JSON.parse`** — route external-stream frame parsing through one helper that skips empty/sentinel/unparseable frames; an unguarded `JSON.parse("")` on a blank keep-alive frame aborts the whole answer mid-stream. Test with a malformed frame interleaved, not just a clean payload (LEARNINGS #24)
 
 ---
 
