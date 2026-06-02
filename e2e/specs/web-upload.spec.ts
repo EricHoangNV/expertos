@@ -13,6 +13,10 @@ test.describe("document upload", () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page, users.member);
     await gotoChat(page);
+    // The upload controls live in a popover behind the input bar's attach button (M12.6.2),
+    // not inline on the page — open it before interacting with the mode select / file input.
+    await page.getByRole("button", { name: "Attach document" }).click();
+    await expect(page.getByLabel("Mode")).toBeVisible();
   });
 
   test("a persistent spreadsheet upload is parsed into searchable chunks", async ({ page }) => {

@@ -72,22 +72,31 @@ async function emulatorSignIn(page: Page, user: TestUser): Promise<void> {
 }
 
 /**
- * Sign `user` into the consumer web app. After this resolves the home page shows the
- * signed-in badge, so callers can navigate to gated pages.
+ * Sign `user` into the consumer web app. The login page (`apps/web/app/page.tsx`) redirects
+ * a signed-in user straight to `/chat` (M12.8.2), so this resolves once that client navigation
+ * lands — proof `onAuthStateChanged` fired and the app sees the user. Callers can then navigate
+ * to any gated page.
  */
 export async function signIn(page: Page, user: TestUser): Promise<void> {
   await page.goto(env.webBaseUrl);
   await emulatorSignIn(page, user);
-  await expect(page.getByText(/signed in as/i)).toBeVisible();
+  await page.waitForURL(/\/chat/, { timeout: 15_000 });
 }
 
 /**
  * Sign `user` into the admin/expert portal (`apps/admin`). Resolves once the portal shell
- * is rendered (the "Expert" nav group is always present for any signed-in role). The role
- * itself (expert/admin) is governed server-side by the user's row, not by this sign-in.
+ * is rendered — the "EXPERT PORTAL" sidebar nav group is present for every authorized role
+ * (admin and expert alike, M13.1.1/M13.7.1), so it is the role-agnostic shell landmark. The
+ * role itself (expert/admin) is governed server-side by the M14 access-control whitelist.
+ *
+ * Authorization is the M14 gate: the signed-in email must be on the `allowed_emails` whitelist
+ * (seeded for the e2e-admin@/e2e-expert@ identities by `global-setup.ts`); a non-whitelisted
+ * email lands on the Access Denied screen instead, and this assertion fails fast.
  */
 export async function signInAdmin(page: Page, user: TestUser): Promise<void> {
   await page.goto(env.adminBaseUrl);
   await emulatorSignIn(page, user);
-  await expect(page.getByText("Expert", { exact: true }).first()).toBeVisible();
+  // The group label renders the EN dictionary value "Expert portal", uppercased by CSS — Playwright
+  // matches textContent (not the CSS transform), so match case-insensitively.
+  await expect(page.getByText(/^expert portal$/i).first()).toBeVisible();
 }

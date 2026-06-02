@@ -10,7 +10,9 @@ import { env } from "./env";
 /** Navigate to the chat page (assumes an already signed-in context). */
 export async function gotoChat(page: Page): Promise<void> {
   await page.goto(`${env.webBaseUrl}/chat`);
-  await expect(page.getByRole("heading", { name: "Chat" })).toBeVisible();
+  // The chat shell has no static "Chat" heading after the M12 overhaul; the composer input
+  // is the stable always-present landmark (empty state or active conversation alike).
+  await expect(page.getByPlaceholder(/Ask .*about your business/)).toBeVisible();
 }
 
 /**
@@ -19,7 +21,7 @@ export async function gotoChat(page: Page): Promise<void> {
  * the assistant message has a persisted id, i.e. the `done` frame arrived.
  */
 export async function ask(page: Page, text: string): Promise<void> {
-  await page.getByPlaceholder("Ask a question…").fill(text);
+  await page.getByPlaceholder(/Ask .*about your business/).fill(text);
   await page.getByRole("button", { name: "Send" }).click();
   // The send button reads "Answering…" while the turn streams. It does NOT re-enable on
   // completion (the input is cleared, so it stays disabled until the user types again), so the

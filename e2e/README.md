@@ -17,11 +17,20 @@ Auth emulator for you.
 | `web-history.spec.ts` | conversation history + full-text search (M3.3); saved answers (M3.2); rename |
 | `web-upload.spec.ts` | spreadsheet upload → searchable chunks (M5.3); unsupported-type rejection |
 | `account-billing.spec.ts` | plan + transparent usage meter (M6.3); self-serve upgrade CTA (M6.2); _completing the Stripe-hosted checkout page: fixme (external surface)_ |
-| `admin-portal.spec.ts` | role-aware portal nav; knowledge review-gate queue (M8.1); _publish→retrieval round-trip: fixme_ |
+| `admin-portal.spec.ts` | role-aware M13.1 nav (OPERATE / MONETIZE / EXPERT PORTAL + role badge); knowledge-approval kanban + step filter (M8.1/M13.3); _publish→retrieval round-trip: fixme_ |
 | `data-deletion.spec.ts` | admin records a deletion request (M8.4); _irreversible cascade: fixme_ |
+| `admin-i18n.spec.ts` | admin portal EN→VI locale toggle: nav, role badge, page headers switch + persist (M13.3, M15.3.1) |
+| `access-control.spec.ts` | admin whitelist add / re-role / remove (M14); Access Denied for a non-whitelisted email (M15.3.2) |
+| `web-i18n.spec.ts` | consumer EN→VI language toggle: chat, account, history switch + persist (M13.1–.5, M15.3.6) |
 
 `fixme` tests document a flow whose UI/seed prerequisite is not yet present — they keep the
-matrix honest without producing flaky runs.
+matrix honest without producing flaky runs. The current matrix is **20 passed / 3 fixme-skipped**.
+
+> **Note on the stack env:** the admin portal is gated by the M14 access-control whitelist, so
+> `global-setup.ts` seeds `e2e-admin@`/`e2e-expert@` into `allowed_emails` (and resets every test
+> identity's profile locale to English, since the i18n specs persist a VI choice). The per-IP rate
+> limiter (M11.2) is relaxed for the run via `RATE_LIMIT_MAX` (the managed `webServer` sets it) —
+> every request shares one loopback IP, so the default 300/60s trips under a full-suite burst.
 
 ## Prerequisites (the live stack)
 

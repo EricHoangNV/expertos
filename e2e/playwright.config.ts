@@ -60,6 +60,11 @@ export default defineConfig({
           env: {
             FIREBASE_AUTH_EMULATOR_HOST: env.authEmulatorHost,
             FIREBASE_PROJECT_ID: env.firebaseProjectId,
+            // The per-IP rate limiter (M11.2) defaults to 300 req/60s. Every request in this
+            // single-machine run originates from one loopback IP, so the whole suite shares one
+            // bucket and bursts (page loads × API calls × specs) trip the limiter, surfacing as
+            // sporadic "couldn't load" errors. Relax it for the test stack — prod sees many IPs.
+            RATE_LIMIT_MAX: process.env.RATE_LIMIT_MAX ?? "100000",
           },
         },
         {

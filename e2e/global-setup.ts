@@ -68,7 +68,28 @@ async function globalSetup(): Promise<void> {
             `global-setup: no user row to promote for ${email} — sign-in mirroring (step 1) did not create it.`,
           );
         }
+
+        // The admin portal gates sign-in on the M14 access-control whitelist (`allowed_emails`):
+        // `POST /me/admin-session` denies any email not on it (and *syncs* the DB role from it, so
+        // the whitelist is the real source of truth for portal roles). Only the bootstrap admin is
+        // seeded, so without this the e2e-admin@/e2e-expert@ identities hit the Access Denied screen
+        // and every portal spec fails. Upsert them here, in the same admin-context transaction.
+        await tx.allowedEmail.upsert({
+          where: { tenantId_email: { tenantId: GLOBAL_TENANT_ID, email } },
+          update: { role },
+          create: { tenantId: GLOBAL_TENANT_ID, email, role },
+        });
       }
+
+      // Reset every test identity's persisted locale to English. The i18n specs (M15.3.1/.6)
+      // toggle to Vietnamese and persist it to the profile (`PATCH /me/locale`); without this
+      // reset a prior run leaves a VI profile that seeds the next run's UI, breaking the English
+      // baseline assertions. localStorage starts clean per browser context, so profile is the
+      // only cross-run locale carrier — pin it back to the deterministic default here.
+      await tx.user.updateMany({
+        where: { email: { in: Object.values(users).map((u) => u.email) } },
+        data: { locale: "en" },
+      });
 
       // Put the consumer member on the Plus plan so the question/upload flows don't hit the
       // Free plan's monthly hard cap across repeated runs (Plus: 200 questions/mo + document

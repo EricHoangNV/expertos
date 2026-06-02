@@ -4479,3 +4479,28 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 **Notes for next iteration:**
 - **M15.2 (admin jest suite) is now COMPLETE.** Next is **M15.3 (E2E expansion)** — admin i18n, access control, concierge, knowledge kanban, web i18n, and resolving the 3 `test.fixme` legs. The `e2e/` workspace is opt-in and needs a live stack (DB + Firebase Auth emulator + the 3 built services per M11.1); it is excluded from the default `pnpm test` and is not runnable in the sandbox without standing that up.
 - Gates run green: admin `tsc` + `next lint` + jest (96) + root `knip` + `lint:css`.
+
+---
+
+## M15.3.1/.2/.6 (E2E) + suite repair — live-validated against the full stack
+
+**What:** Stood up the complete live stack in-sandbox and got the Playwright E2E suite running green (**20 passed / 3 fixme-skipped**), then added new specs for admin i18n (M15.3.1), access control (M15.3.2), and web i18n (M15.3.6). The prior suite (M11.1) was bit-rotted and 16-of-19-failing against the M12/M13/M14 UI overhauls — repaired as enabling work.
+
+**Stack stood up (LEARNINGS #22):** `infra/local-test-db.sh up` (pgvector :5432) + `firebase emulators:start --only auth` (:9099) + `npx nest start` API (:3001, emulator + app_user DB + `RATE_LIMIT_MAX`) + `npx next dev` web (:3000) / admin (:3002). `next build` still arch-fails but `next dev` works. **The `/Volumes/OWC-Express-1M2` mount nondeterministically corrupts Next dev chunks** (served JS with real syntax errors → `window.__e2eSignIn` never installs; admin manifest 500s) — fixed by symlinking each app's `.next` to `/tmp/<app>-next` (local disk).
+
+**Repair (fixtures + specs rewritten against the live DOM):**
+- `e2e/fixtures/auth.ts` — `signIn` waited on a removed "signed in as" badge; login now redirects to `/chat` (M12.8.2) → wait for that. `signInAdmin` waited on a renamed "Expert" nav group (now "Expert portal", M13.1) AND was blocked by the M14 whitelist → match `/expert portal/i` (CSS-uppercased dict value; Playwright matches textContent).
+- `e2e/global-setup.ts` — seed `e2e-admin@`/`e2e-expert@` into `allowed_emails` (M14 gate; role is synced *from* the whitelist by `POST /me/admin-session`) + reset every test identity's profile locale to `en` (the i18n specs persist VI, which seeds the UI on sign-in and pollutes later specs).
+- `e2e/playwright.config.ts` — `RATE_LIMIT_MAX` on the api webServer: the M11.2 per-IP limiter (300/60s) 429'd the single-loopback-IP full-suite burst, surfacing as `GET /conversations` → "couldn't load your conversations".
+- `e2e/specs/web-upload.spec.ts` — upload controls moved into a popover behind the "Attach document" button (M12.6.2) → open it first.
+- `e2e/specs/web-voice-and-consultation.spec.ts` — `<select>` voice picker → `.chip` pills (M12.3.2); "AI rendition of X" is now the badge **aria-label** (assert `[aria-label*=…]`, not `getByText`); consult skip-guard → the Book button.
+- `e2e/specs/admin-portal.spec.ts` — rewrote the knowledge review-queue-dropdown test as the M13.3 kanban (4 `.kanban-col` + step-filter buttons); nav assertions → M13.1 groups (Operate/Monetize/Expert portal) + "Admin view" role badge, all case-insensitive.
+
+**New specs (validated live):** `admin-i18n.spec.ts`, `access-control.spec.ts` (add/re-role/remove via window.confirm + Access-Denied for non-whitelisted `users.other`), `web-i18n.spec.ts`. The two i18n specs reset profile locale to EN in a failure-safe `afterEach`. Access-control add uses placeholder/`<select>` locators (the Field label isn't `htmlFor`-associated — cf. LEARNINGS #12).
+
+**Files:** 8 modified (`e2e/fixtures/{auth,web-actions}.ts`, `e2e/{global-setup,playwright.config}.ts`, `e2e/README.md`, `e2e/specs/{admin-portal,web-upload,web-voice-and-consultation}.spec.ts`) + 3 new specs. `project-mds`: PRD M15.3.1/.2/.6 `[x]`; LEARNINGS #22; progress-state/log. No production code touched (jest stays 1472 pass). Temporary `next.config`/`tsconfig` edits reverted; `.next` symlinks not committed.
+
+**Notes for next iteration:**
+- **M15.3.3** (concierge) + **M15.3.4** (knowledge approve) need seed data in `global-setup.ts` — a `human_review_request` tied to the expert, and a `document`+`document_version` in `expert_review` with chunks. The stack is up; use the recipe in progress-state.
+- **M15.3.5** — Stripe checkout fixme is external (stays). The publish→retrieval + deletion-cascade fixmes need the same seed work as .3/.4 / a throwaway user.
+- Gates: e2e `tsc` + `eslint` clean.

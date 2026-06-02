@@ -3,41 +3,58 @@ import { signInAdmin } from "../fixtures/auth";
 import { env, users } from "../fixtures/env";
 
 /**
- * Admin/Expert portal (M8). Verifies portal access, the role-aware nav, and the
- * expert-review gate surface (M8.1). The full "publish → appears in user retrieval /
- * unpublish → disappears" round-trip is captured as a documented fixme below: it needs a
- * freshly-ingested document to act on, which the live stack seeds out-of-band.
+ * Admin/Expert portal (M8, M13). Verifies portal access through the M14 access-control gate,
+ * the role-aware M13.1 nav (OPERATE / MONETIZE / EXPERT PORTAL groups + role badge), and the
+ * M13.3 knowledge-approval kanban (the expert-review gate surface, M8.1). The full
+ * "publish → appears in user retrieval / unpublish → disappears" round-trip is captured as a
+ * documented fixme below: it needs a freshly-ingested document to act on, which the live stack
+ * seeds out-of-band.
+ *
+ * Nav labels render the EN dictionary values uppercased by CSS; Playwright matches `textContent`
+ * (not the CSS transform), so group/badge text is matched case-insensitively.
  */
 test.describe("admin portal", () => {
-  test("an admin sees both Expert and Admin nav groups", async ({ page }) => {
+  test("an admin sees the full role-aware nav (OPERATE / MONETIZE / EXPERT PORTAL)", async ({
+    page,
+  }) => {
     await signInAdmin(page, users.admin);
-    // Expert group is always present; Admin group appears only for a resolved admin role.
-    await expect(page.getByText("Expert", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("Admin", { exact: true }).first()).toBeVisible();
-    // Exact names: the dashboard also has descriptive links like "Knowledge Review and publish",
-    // so match the sidebar nav items by their exact label.
+    // EXPERT PORTAL is present for every authorized role; MONETIZE is an admin-only group, so
+    // its presence (plus the "Admin view" role badge) confirms the admin role resolved.
+    await expect(page.getByText(/^expert portal$/i).first()).toBeVisible();
+    await expect(page.getByText(/^monetize$/i).first()).toBeVisible();
+    await expect(page.getByText(/^admin view$/i).first()).toBeVisible();
+    // Admin-only sidebar links. Match exact names so descriptive dashboard cards don't collide.
     await expect(page.getByRole("link", { name: "Knowledge", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Users", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Users & Subscriptions", exact: true }),
+    ).toBeVisible();
   });
 
-  test("the knowledge review queue renders and filters by status", async ({ page }) => {
+  test("the knowledge-approval kanban renders and filters by status", async ({ page }) => {
     await signInAdmin(page, users.admin);
     await page.goto(`${env.adminBaseUrl}/knowledge`);
 
-    await expect(page.getByRole("heading", { name: "Review queue" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Knowledge approval" })).toBeVisible();
+    // The board (M13.3.3) is four status columns (Draft / AI Processing / Expert Review /
+    // Published), always present even when empty against a freshly-seeded stack.
+    await expect(page.locator(".kanban-col")).toHaveCount(4);
 
-    // Filtering by the published status re-queries without error. Select by option value (the
-    // enum), since the visible label is the humanized lowercase form ("published").
-    await page.getByLabel("Status").selectOption("published");
-    await expect(page.locator(".badge-red")).toHaveCount(0);
+    // The numbered step indicator (M13.3.2) narrows the board to a single stage without error.
+    // Its buttons carry the stable English stage names.
+    await page.getByRole("button", { name: "Published", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Expert Review", exact: true })).toBeVisible();
   });
 
   test("an expert sees the Expert group but not Admin-only surfaces", async ({ page }) => {
     await signInAdmin(page, users.expert);
-    await expect(page.getByText("Expert", { exact: true }).first()).toBeVisible();
-    // The Admin nav group is a UX gate (the API is the real boundary); an expert role
-    // should not be offered the admin-only links in the sidebar.
-    await expect(page.getByRole("link", { name: "Users" })).toHaveCount(0);
+    await expect(page.getByText(/^expert portal$/i).first()).toBeVisible();
+    // The MONETIZE group and its admin-only links are a UX gate over the real `@Roles` API
+    // boundary; an expert role should not be offered them in the sidebar.
+    await expect(page.getByText(/^monetize$/i)).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Users & Subscriptions", exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByText(/^expert view$/i).first()).toBeVisible();
   });
 
   // Full expert-review gate round-trip — requires a freshly-ingested Draft document to
