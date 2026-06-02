@@ -11,6 +11,7 @@ import {
   ChatSearch,
   type ChatSearchResultItem,
   ChatSidebar,
+  ChatTopbar,
   ChatUsageMeter,
   DEFAULT_LAYOUT_DIRECTION,
   Field,
@@ -42,6 +43,7 @@ import {
   createSavedAnswer,
   getConversation,
   listConversations,
+  renameConversation,
   searchConversations,
 } from "../../src/lib/history-client";
 import { fetchEntitlements } from "../../src/lib/account-client";
@@ -435,6 +437,13 @@ export default function ChatPage() {
   // the most-recent-first reordering) appears without a manual reload.
   const [conversations, setConversations] = useState<ConversationSummaryDto[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
+  // Conversation title for the header (M12.3.1). Best-known title for the active
+  // chat: null for a brand-new (unsaved) conversation, the auto-derived/renamed
+  // title once it exists. `editingTitle`/`titleDraft` drive the click-to-rename
+  // input; the page owns this state since the ds.css topbar is presentational.
+  const [conversationTitle, setConversationTitle] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
   // Plan + usage for the sidebar meter (M12.2.4 → M6.1). Loaded on mount and
   // refreshed after each completed turn so the "questions this month" count moves
   // as the user asks. Best-effort: a failure just hides the meter.
@@ -460,14 +469,16 @@ export default function ChatPage() {
 
   // Load the conversation history list (M12.2.3 → M3.2), most-recent-first.
   // Best-effort: a failure just leaves the list empty (the sidebar still works).
-  const loadConversations = useCallback(async () => {
+  const loadConversations = useCallback(async (): Promise<ConversationSummaryDto[]> => {
     try {
       const token = await getIdToken();
-      if (!token) return;
+      if (!token) return [];
       const list = await listConversations(token, { limit: 30, offset: 0 });
       setConversations(list);
+      return list;
     } catch {
       // The RECENT list is non-critical — swallow and keep whatever we had.
+      return [];
     } finally {
       setLoadingConversations(false);
     }
@@ -567,6 +578,8 @@ export default function ChatPage() {
     if (busy) return;
     setMessages([]);
     setConversationId(undefined);
+    setConversationTitle(null);
+    setEditingTitle(false);
     setDraft("");
     setError(null);
   }, [busy]);
@@ -596,6 +609,8 @@ export default function ChatPage() {
           })),
         );
         setConversationId(detail.id);
+        setConversationTitle(detail.title);
+        setEditingTitle(false);
         setExpertId(detail.expertId ?? "");
         setDraft("");
         setSearchQuery("");
@@ -605,6 +620,38 @@ export default function ChatPage() {
     },
     [busy, getIdToken],
   );
+
+  // The header title (M12.3.1): the best-known title for the active chat, with a
+  // fallback for an unsaved (new) conversation vs a saved one still awaiting its
+  // auto-title. Only a saved conversation (has an id) can be renamed.
+  const displayTitle = conversationTitle ?? (conversationId ? "Untitled conversation" : "New conversation");
+
+  // Click-to-rename (M12.3.1 → M3.2): open the inline editor seeded with the
+  // current title. Guarded to saved conversations (a new chat has nothing to name).
+  const startRename = useCallback(() => {
+    if (!conversationId) return;
+    setTitleDraft(conversationTitle ?? "");
+    setEditingTitle(true);
+  }, [conversationId, conversationTitle]);
+
+  // Commit a rename: a trimmed, changed, non-empty title is persisted (PATCH
+  // /conversations/:id) and optimistically shown; an empty/unchanged edit just
+  // closes the editor. The RECENT list is refreshed so its row title follows.
+  const commitRename = useCallback(async () => {
+    const next = titleDraft.trim();
+    setEditingTitle(false);
+    if (!conversationId || !next || next === conversationTitle) return;
+    setConversationTitle(next);
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      await renameConversation(token, conversationId, next);
+      void loadConversations();
+    } catch {
+      // Best-effort: a failed rename leaves the optimistic title until the next
+      // list refresh reconciles it. Surface nothing — renaming is non-critical.
+    }
+  }, [titleDraft, conversationId, conversationTitle, getIdToken, loadConversations]);
 
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -632,6 +679,9 @@ export default function ChatPage() {
       },
     ]);
 
+    // The conversation id resolved by this turn (a brand-new chat gets one on the
+    // `done` frame) — used below to pick up the server's auto-title (M12.3.1).
+    let resolvedConversationId = conversationId;
     try {
       await streamChat(
         { text, conversationId, expertId: expertId || undefined, language: "en" },
@@ -642,6 +692,7 @@ export default function ChatPage() {
               updateLast(prev, (m) => ({ ...m, content: m.content + event.text })),
             );
           } else if (event.type === "done") {
+            resolvedConversationId = event.conversationId;
             setConversationId(event.conversationId);
             setMessages((prev) =>
               updateLast(prev, (m) => ({
@@ -663,8 +714,14 @@ export default function ChatPage() {
       );
       // Refresh the RECENT list (M12.2.3) so a brand-new conversation appears and
       // the ordering reflects this turn's activity, and the usage meter (M12.2.4)
-      // so the questions-this-month count moves with the turn just spent.
-      void loadConversations();
+      // so the questions-this-month count moves with the turn just spent. The
+      // refreshed list also carries the server's auto-title for the header
+      // (M12.3.1) — adopt it for the active chat (unless the user is mid-rename).
+      const refreshed = await loadConversations();
+      const summary = refreshed.find((c) => c.id === resolvedConversationId);
+      if (summary) {
+        setConversationTitle((prev) => (editingTitle ? prev : summary.title));
+      }
       void loadEntitlements();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Chat failed.");
@@ -679,6 +736,7 @@ export default function ChatPage() {
     experts,
     expertId,
     conversationId,
+    editingTitle,
     loadConversations,
     loadEntitlements,
   ]);
@@ -731,9 +789,17 @@ export default function ChatPage() {
         </ChatSidebar>
       }
     >
+      <ChatTopbar
+        title={displayTitle}
+        titleEditable={Boolean(conversationId)}
+        editing={editingTitle}
+        draft={titleDraft}
+        onDraftChange={setTitleDraft}
+        onEditStart={startRename}
+        onCommit={() => void commitRename()}
+        onCancel={() => setEditingTitle(false)}
+      />
       <main className="card card-pad chat-content">
-        <h1>Chat</h1>
-
         <Field label="Expert voice" htmlFor="expert">
           <Select
             id="expert"

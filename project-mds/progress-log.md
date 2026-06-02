@@ -2796,3 +2796,30 @@ Built the dark-rail conversation search input and wired it to the existing M3.3 
 **Notes for next iteration:**
 - M12.2 sidebar is complete (shell + search + list + usage meter). Next is M12.3 topbar (editable title, voice `.chip` picker, user identity + language badge).
 - ui rebuilt to `dist/` (`npx tsc -p tsconfig.build.json`) so the web typecheck sees the new export — do this before web typecheck whenever you add a ui export.
+
+## M12.3.1 — Conversation header (topbar) with editable title
+**Date:** 2026-06-02
+**Ref:** PRD Task Manifest M12.3.1; `requirements/ui-reference-spec.md` §"Topbar / Conversation Header"
+
+**What was done:**
+- New `packages/ui/src/ChatTopbar.tsx` (`ChatTopbar`) — the `.topbar .chat-topbar` strip at the top of the chat column. Presentational, pure (no hooks, testable by tree inspection like the other M12 components). Renders the conversation title three ways: a clickable `.chat-topbar-title` `<button>` (editable, fires `onEditStart`), a controlled `.input.chat-topbar-title-input` when `editing` (Enter/blur → `onCommit`, Escape → `onCancel`, `onChange` → `onDraftChange`, `maxLength=100`), or a static `.chat-topbar-title-static` `<span>` when `titleEditable=false` (a brand-new chat has nothing to rename). Optional `children` mount into a right-aligned `.chat-topbar-aside` slot reserved for the M12.3.2 voice picker + M12.3.3 identity.
+- ds.css `.chat-topbar*` block (justify-content + title typography on `--font-display`/17px, hover affordance on the editable button, input sizing, aside flex row). Exported from `packages/ui/src/index.ts`; rebuilt to `dist/`.
+- Wired into `apps/web/app/chat/page.tsx`: new `conversationTitle`/`editingTitle`/`titleDraft` state; `displayTitle` falls back to "New conversation" (unsaved) vs "Untitled conversation" (saved, awaiting auto-title). `startRename`/`commitRename` (optimistic set + `renameConversation` PATCH from M3.2 + list refresh). `openConversation` seeds the title from the detail; `startNewConversation` clears it. `loadConversations` now returns the list so `send` can adopt the server's auto-title for the active chat after a turn (skipped while the user is mid-rename). Removed the now-redundant inner `<h1>Chat</h1>`. The expert `<Select>` stays in chat-content for now — M12.3.2 moves it into the aside as chips.
+- Tests: +6 in `packages/ui/src/primitives.test.ts` (editable button + onEditStart, static span, editing-but-not-editable fallback, controlled input commit/cancel/keydown matrix, omitted-handler tolerance, aside slot). ui 61→67, 100% coverage maintained.
+
+**Key decisions:**
+- Kept ChatTopbar pure/controlled (page owns edit state) to match the existing M12 test harness, which invokes components as plain functions and inspects the returned element tree (no jsdom/RTL in `packages/ui`).
+- Scoped this commit to M12.3.1 only (title). The voice `<Select>` is intentionally left in place so the UI never regresses mid-task; M12.3.2 replaces it with `.chip` pills in the aside slot.
+- Auto-title sync derives from the post-turn `loadConversations()` result (now returned) rather than a new API field — no backend change needed.
+
+**Files changed:**
+- `packages/ui/src/ChatTopbar.tsx` — new component.
+- `packages/ui/src/index.ts` — export ChatTopbar + ChatTopbarProps.
+- `packages/ui/src/ds.css` — `.chat-topbar*` styles.
+- `packages/ui/src/primitives.test.ts` — +6 ChatTopbar tests.
+- `apps/web/app/chat/page.tsx` — title state + rename wiring + topbar render; `loadConversations` returns the list.
+
+**Notes for next iteration:**
+- M12.3.2: add a `voices`/`activeVoiceId`/`onSelectVoice` prop set (or a child component) for `.chip`/`.chip.active` pills with a "VOICE" `.label`, mount in the `.chat-topbar-aside` slot, and delete the chat-content expert `<Select>`. Reuse `Chip` from ui.
+- M12.3.3: avatar (`avatarInitials`/`avatarTone`) + name + EN/VI `.badge`, right end of the aside.
+- Rebuild ui to `dist/` before web typecheck whenever you touch ui exports.

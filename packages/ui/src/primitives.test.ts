@@ -9,6 +9,7 @@ import { Content, Shell, Topbar } from "./Shell";
 import { ChatLayout } from "./ChatLayout";
 import { ChatSearch, type ChatSearchResultItem } from "./ChatSearch";
 import { ChatSidebar } from "./ChatSidebar";
+import { ChatTopbar } from "./ChatTopbar";
 import {
   AVATAR_TONES,
   avatarInitials,
@@ -419,6 +420,113 @@ describe("ChatSidebar — dark rail shell (M12.2.1)", () => {
   it("merges a caller className onto the rail", () => {
     const el = ChatSidebar({ onNewConversation: noop, className: "z" }) as ReactElement;
     expect(cls(el)).toBe("side chat-side z");
+  });
+});
+
+describe("ChatTopbar — conversation header with editable title (M12.3.1)", () => {
+  const noop = () => {};
+
+  it("renders the `.topbar .chat-topbar` strip with a clickable title button when editable", () => {
+    const onEditStart = jest.fn();
+    const el = ChatTopbar({
+      title: "Franchise unit economics",
+      onEditStart,
+    }) as ReactElement;
+    expect(cls(el)).toBe("topbar chat-topbar");
+    const [titleNode, aside] = kids(el) as unknown[];
+    const button = titleNode as ReactElement;
+    expect(cls(button)).toBe("chat-topbar-title");
+    expect((button.props as { type?: unknown }).type).toBe("button");
+    expect(kids(button)).toBe("Franchise unit economics");
+    (button.props as { onClick: () => void }).onClick();
+    expect(onEditStart).toHaveBeenCalledTimes(1);
+    // No aside region without children.
+    expect(aside).toBeFalsy();
+  });
+
+  it("renders a static (non-clickable) title span when not editable", () => {
+    const el = ChatTopbar({ title: "New conversation", titleEditable: false }) as ReactElement;
+    const [titleNode] = kids(el) as unknown[];
+    const span = titleNode as ReactElement;
+    expect(cls(span)).toBe("chat-topbar-title chat-topbar-title-static");
+    expect(span.type).toBe("span");
+    expect(kids(span)).toBe("New conversation");
+  });
+
+  it("falls back to the static span when editing is requested but the title is not editable", () => {
+    const el = ChatTopbar({
+      title: "New conversation",
+      titleEditable: false,
+      editing: true,
+    }) as ReactElement;
+    const [titleNode] = kids(el) as unknown[];
+    expect(cls(titleNode as ReactElement)).toBe("chat-topbar-title chat-topbar-title-static");
+  });
+
+  it("renders a controlled `.input` when editing, wired to draft + commit/cancel", () => {
+    const onDraftChange = jest.fn();
+    const onCommit = jest.fn();
+    const onCancel = jest.fn();
+    const el = ChatTopbar({
+      title: "Old title",
+      editing: true,
+      draft: "Edited title",
+      onDraftChange,
+      onCommit,
+      onCancel,
+    }) as ReactElement;
+    const [input] = kids(el) as ReactElement[];
+    expect(cls(input)).toBe("input chat-topbar-title-input");
+    const props = input.props as {
+      value?: unknown;
+      maxLength?: unknown;
+      "aria-label"?: unknown;
+      onChange: (e: unknown) => void;
+      onBlur: () => void;
+      onKeyDown: (e: { key: string; preventDefault: () => void }) => void;
+    };
+    expect(props.value).toBe("Edited title");
+    expect(props.maxLength).toBe(100);
+    expect(props["aria-label"]).toBe("Conversation title");
+    // onChange → onDraftChange with the new value.
+    props.onChange({ target: { value: "Edited titl" } });
+    expect(onDraftChange).toHaveBeenCalledWith("Edited titl");
+    // Blur commits.
+    props.onBlur();
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    // Enter commits (preventing the default newline); Escape cancels; other keys are inert.
+    const preventDefault = jest.fn();
+    props.onKeyDown({ key: "Enter", preventDefault });
+    expect(onCommit).toHaveBeenCalledTimes(2);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    props.onKeyDown({ key: "Escape", preventDefault });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(preventDefault).toHaveBeenCalledTimes(2);
+    props.onKeyDown({ key: "a", preventDefault });
+    expect(onCommit).toHaveBeenCalledTimes(2);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("tolerates omitted optional handlers on the editing input (no throw)", () => {
+    const el = ChatTopbar({ title: "x", editing: true }) as ReactElement;
+    const [input] = kids(el) as ReactElement[];
+    const props = input.props as {
+      onChange: (e: unknown) => void;
+      onBlur: () => void;
+      onKeyDown: (e: { key: string; preventDefault: () => void }) => void;
+    };
+    expect(() => props.onChange({ target: { value: "y" } })).not.toThrow();
+    expect(() => props.onBlur()).not.toThrow();
+    expect(() => props.onKeyDown({ key: "Enter", preventDefault: noop })).not.toThrow();
+    expect(() => props.onKeyDown({ key: "Escape", preventDefault: noop })).not.toThrow();
+  });
+
+  it("mounts children into the right-aligned `.chat-topbar-aside` slot", () => {
+    const el = ChatTopbar({ title: "T", children: "voice + identity" }) as ReactElement;
+    const [, aside] = kids(el) as unknown[];
+    const asideEl = aside as ReactElement;
+    expect(cls(asideEl)).toBe("chat-topbar-aside");
+    expect(kids(asideEl)).toBe("voice + identity");
   });
 });
 

@@ -122,7 +122,7 @@
 - [x] M12.2.4 Usage meter at sidebar bottom: "questions this month" label, "N / M" count, `.bar` progress (crimson fill), plan badge (`.label`), "Upgrade" link (crimson); wired to `/me/entitlements` API (M6.1) — **DONE** (`packages/ui/src/ChatUsageMeter.tsx` — dark-rail "questions this month" + "N / M" count over a crimson `.bar` [amber `.bar.warn` near the cap], plan `.label` badge + crimson "Upgrade →" link; measures against the hard `limit` else the fair-use `softLimit` else "Unlimited", NaN-guarded, upgrade link omitted with no href; ds.css `.sidebar-usage` block; wired into `/chat` `ChatSidebar` footer from `/me/entitlements` `ask_question` quota, refreshed after each turn; +5 ui tests, 100% coverage)
 
 ##### M12.3 — Conversation header (topbar)
-- [ ] M12.3.1 Topbar component: conversation title (auto-titled from M3.2), editable on click
+- [x] M12.3.1 Topbar component: conversation title (auto-titled from M3.2), editable on click — **DONE** (`packages/ui/src/ChatTopbar.tsx` `ChatTopbar`: `.topbar .chat-topbar` strip with click-to-rename title [heading→`.input`, commit on Enter/blur, cancel on Escape] + right-aligned `.chat-topbar-aside` slot for M12.3.2–3; ds.css `.chat-topbar*`; wired into `/chat` with title state + `renameConversation` PATCH (M3.2) + post-turn auto-title sync; +6 ui tests, 100% coverage)
 - [ ] M12.3.2 Voice picker: "VOICE" `.label` + `.chip` / `.chip.active` pills for each expert voice; wired to existing experts API; selecting a chip switches the active expert for the conversation
 - [ ] M12.3.3 User identity display: avatar + name + language badge (EN/VI) right-aligned
 
