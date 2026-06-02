@@ -386,6 +386,28 @@ kbd { font-family: var(--font-mono); font-size: 11px; background: var(--paper-2)
 }
 
 /* ============================================================
+   Sources rail (consumer web — right panel) — M12.5
+   The content container that fills the 320px `.chat-rail` grid area: a
+   scrollable column with a `--line` left border showing the cited sources for
+   the currently selected / latest answer. The header (M12.5.2) + source cards
+   (M12.5.3) mount inside; the empty state keeps the panel from being a blank gap.
+   The grid already drops the rail < 1280px (→ drawer, M12.5.4).
+   ============================================================ */
+.sources-rail {
+  height: 100vh;
+  overflow-y: auto;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  padding: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+.sources-rail .sources-rail-head { display: flex; flex-direction: column; gap: var(--s2); }
+.sources-rail .sources-rail-body { display: flex; flex-direction: column; gap: var(--s3); min-height: 0; }
+.sources-rail .sources-rail-empty { margin: 0; font-size: 13px; }
+
+/* ============================================================
    Chat sidebar (consumer web) — M12.2
    Reuses the dark `.side` rail + `.brand` header inside the `.chat-layout`
    grid; adds the collapse control, full-width "New conversation" action, and

@@ -16,6 +16,7 @@ import { ChatAssistantMessage } from "./ChatAssistantMessage";
 import { ChatAnswerActions } from "./ChatAnswerActions";
 import { ChatConsultationCard } from "./ChatConsultationCard";
 import { ChatStateNotice } from "./ChatStateNotice";
+import { SourcesRail } from "./SourcesRail";
 import { AnswerProse } from "./AnswerProse";
 import { ChatTopbar } from "./ChatTopbar";
 import {
@@ -1362,5 +1363,49 @@ describe("ChatStateNotice — answer-state cards/badge (M12.4.6)", () => {
       variant: "note",
     }) as ReactElement;
     expect((kids(el) as unknown[])[1]).toBeFalsy();
+  });
+});
+
+describe("SourcesRail — right-panel container (M12.5.1)", () => {
+  /** The container's children with omitted (null/false) slots filtered out. */
+  const parts = (el: ReactElement): ReactElement[] =>
+    (kids(el) as unknown[]).filter((c): c is ReactElement => Boolean(c));
+
+  it("renders the scrollable `.sources-rail` container", () => {
+    const el = SourcesRail({}) as ReactElement;
+    expect(cls(el)).toBe("sources-rail");
+  });
+
+  it("shows the muted empty state when there are no source cards", () => {
+    const el = SourcesRail({}) as ReactElement;
+    const [empty] = parts(el);
+    expect(cls(empty)).toBe("sources-rail-empty muted");
+    expect(kids(empty)).toMatch(/will appear here/);
+  });
+
+  it("honors a custom empty label", () => {
+    const el = SourcesRail({ emptyLabel: "Pick an answer to see its sources." }) as ReactElement;
+    expect(kids(parts(el)[0])).toBe("Pick an answer to see its sources.");
+  });
+
+  it("renders the cards body (and no empty state) when children are given", () => {
+    const el = SourcesRail({ children: "card" }) as ReactElement;
+    const [body] = parts(el);
+    expect(cls(body)).toBe("sources-rail-body");
+    expect(kids(body)).toBe("card");
+    expect(parts(el).some((c) => /sources-rail-empty/.test(String(cls(c))))).toBe(false);
+  });
+
+  it("renders the header slot above the body/empty state", () => {
+    const el = SourcesRail({ header: "SOURCES", children: "card" }) as ReactElement;
+    const [head, body] = parts(el);
+    expect(cls(head)).toBe("sources-rail-head");
+    expect(kids(head)).toBe("SOURCES");
+    expect(cls(body)).toBe("sources-rail-body");
+  });
+
+  it("omits the header region when no header is given", () => {
+    const el = SourcesRail({ children: "card" }) as ReactElement;
+    expect(parts(el).some((c) => /sources-rail-head/.test(String(cls(c))))).toBe(false);
   });
 });

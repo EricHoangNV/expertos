@@ -3048,3 +3048,22 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 - M12.4 is complete (all six). Next M12 leg is M12.5 (sources rail) — the `AnswerView` sources drawer is already decoupled from `AnswerProse` and toggled by the M12.4.4 `sourcesOpen` prop, so lifting it into a persistent `.sources-rail` (studio mode) with a drawer fallback (classic/focus) is the move.
 - Rebuild `packages/ui` (`pnpm --filter @expertos/ui build`) after editing it — apps consume `dist/`, and the web typecheck fails on a stale dist (hit this: web couldn't see the new export until the ui build ran).
 - Gate runner reminder: `turbo` SIGILLs in this sandbox — run gates per-workspace (`tsc --noEmit`, `next lint`, `jest`, `knip`) directly.
+
+---
+
+## M12.5.1 — SourcesRail container (sources rail shell)
+
+**What:** Built `SourcesRail` (`packages/ui/src/SourcesRail.tsx`) — the scrollable `.sources-rail` content container that fills the 320px `.chat-rail` grid area of the chat layout. It is the shell for M12.5: a full-height `overflow-y:auto` column with a `--line` left border and `--surface` background, exposing a `header` slot (for the M12.5.2 "SOURCES" label + passage count + `.trust-badge`), a `children` cards slot (for the M12.5.3 numbered source cards), and a muted empty state (`sources-rail-empty`) so the panel is never a blank gap when no answer has resolved sources. Presentational only — all data wiring lives in the chat page.
+
+**ds.css:** New "Sources rail (M12.5)" block — `.sources-rail` (height:100vh, overflow-y:auto, border-left `--line`, `--surface` bg, `--s5` padding, flex column gap `--s4`) + `.sources-rail-head`/`-body`/`-empty` child hooks. Tokens only (no hardcoded colors; `1px`/`13px`/`100vh` match existing ds.css idiom and pass stylelint).
+
+**Wiring:** Exported from `packages/ui/src/index.ts`; imported into `apps/web/app/chat/page.tsx` and passed as `ChatLayout`'s `rail` prop. Per M12.1.3 `layoutPanes`, the rail only renders in `studio` direction (classic/focus drop it → drawer fallback is M12.5.4), so no behavior change in the default layout besides the rail now appearing in studio with its empty state until M12.5.2/3 fill it.
+
+**Tests:** +6 ui tests (`primitives.test.ts` `SourcesRail` describe) — container class, empty state + custom label, cards body suppresses empty state, header slot ordering, header omitted when absent. `SourcesRail.tsx` 100% all metrics. ui suite 118 → 124.
+
+**Gates:** ui `tsc --noEmit` ✅, web `tsc --noEmit` ✅ (after `pnpm --filter @expertos/ui build` — apps consume `dist/`), ui jest 124 ✅, ui + web eslint ✅, `lint:css` (stylelint) ✅, knip ✅.
+
+**Notes for next iteration:**
+- M12.5.1 done. Next: M12.5.2 (rail header: `.label` "SOURCES" + passage count + new `.trust-badge` outlined-crimson "ALL CITATIONS RESOLVED TO A REAL CHUNK" pill) → mounts in the `header` slot; M12.5.3 (source cards: numbered, match %, crimson/blue doc icon, title + version badge, `.source-prov` mono location, `.source-quote` left-bordered excerpt) → mounts as `children` — lift the existing `.source` markup out of `AnswerView`'s drawer; M12.5.4 (drawer fallback for classic/focus + narrow viewport).
+- Rebuild `packages/ui` after editing — apps consume `dist/` (web typecheck fails on a stale dist).
+- `turbo` SIGILLs in this sandbox — run gates per-workspace directly.

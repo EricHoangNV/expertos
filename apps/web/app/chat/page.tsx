@@ -26,6 +26,7 @@ import {
   Input,
   type LayoutDirection,
   Select,
+  SourcesRail,
   Textarea,
 } from "@expertos/ui";
 import type {
@@ -817,6 +818,7 @@ export default function ChatPage() {
   return (
     <ChatLayout
       direction={direction}
+      rail={<SourcesRail />}
       sidebar={
         <ChatSidebar
           onNewConversation={startNewConversation}

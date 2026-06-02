@@ -2,6 +2,7 @@
 
 ## Current State
 - Completed:
+  - M12.5.1: `SourcesRail` (`packages/ui/src/SourcesRail.tsx`) — the scrollable `.sources-rail` right-panel container filling the 320px `.chat-rail` grid area (`--line` left border, `--surface` bg, full-height `overflow-y:auto`): `header` slot (SOURCES label + trust badge, M12.5.2) + `children` cards slot (M12.5.3) + muted empty state; presentational. ds.css `.sources-rail`/`-head`/`-body`/`-empty`; wired into `/chat` via `ChatLayout` `rail` prop (studio-only per M12.1.3); +6 ui tests, 100% coverage
   - M12.4.6: `ChatStateNotice` (`packages/ui/src/ChatStateNotice.tsx`) — presentational primitive for the three post-answer states (PRD §"State Mapping"): `card` variant = amber `.msg-notice` card (tone-tinted bg + matching `.badge` + body) for insufficient-knowledge + high-stakes disclaimer (NT.4); `note` variant = compact `.msg-note` (badge + muted) for fair-use degrade (M6.3); badge tone matches accent; ds.css `.msg-notice`/`.msg-note`; +5 ui tests. Wired into `/chat`: `HighStakesNotice` + insufficient `Card` → amber card; degraded `Badge` → info note
   - M12.4.5: `ChatConsultationCard` — warm `.consult-card` (amber bg, calendar icon, heading + reason + Book/Maybe-later/Ask-another M7.2 actions); wired into `/chat` `ConsultationPrompt` (funnel attribution M10.2)
   - M12.4.4: `ChatAnswerActions` — `.msg-actions` bar (ghost View-sources toggle + Save + Yes/No feedback); merged former `AnswerFeedback`+`SaveAnswer` into page-local `AnswerActions`; `AssistantTurn` owns per-message `sourcesOpen` (shared prose drawer + bar); `AnswerView` gained controlled `sourcesOpen`
@@ -43,10 +44,10 @@
   - M2 (voice): LLM provider abstraction, answer-prompt assembly, voice-profile CRUD, fidelity eval
   - M1 (knowledge): ingestion pipeline, hybrid retrieval (RRF), VI quality + NFC normalization
   - P0 (foundation): monorepo, Postgres+pgvector+RLS, Firebase Auth+RBAC, build/deploy, observability, design system
-- Tests: 1126 pass / 0 fail / 0 skip (shared 179, ui 118, db 9, ai 161, api 659)
+- Tests: 1132 pass / 0 fail / 0 skip (shared 179, ui 124, db 9, ai 161, api 659)
 - Build: `pnpm build` builds all 7 workspaces (turbo-orchestrated — see SIGILL note below; build via turbo also affected in this sandbox). Admin standalone build flakily zeroes `.next/server/pages-manifest.json` — only matters for `next start`.
 - Gates: typecheck ✅, test ✅ (coverage gate ≥90% met), lint ✅ (incl. stylelint), deadcode (knip) ✅. NOTE: `turbo` arm64 binary SIGILLs in this sandbox — run gates per-workspace (`tsc --noEmit`, `next lint`, `jest`) directly; `pnpm`-level turbo aggregation fails. (LEARNINGS #2/#13)
 - Next tasks (priority order):
-  1. **M12 (Frontend UI Overhaul)** — M12.1 shell + M12.2 sidebar + M12.3 topbar + M12.4 (all 6) done. Next: M12.5 sources rail (`.sources-rail` 320px panel — the `AnswerView` sources drawer is decoupled from `AnswerProse` and toggled by the M12.4.4 `sourcesOpen` prop, so lift it into the rail), M12.6 input bar, M12.7 Tweaks panel, M12.9 polish/responsive. Read `requirements/ui-reference-spec.md` first. Avatar helpers (`avatarInitials`/`avatarTone` + `.avatar.tone-*`) reusable. NOTE: rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after changing it — apps consume `dist/`.
+  1. **M12 (Frontend UI Overhaul)** — M12.1–M12.4 + M12.5.1 (rail container shell) done. Next: M12.5.2 rail header (`SOURCES` label + count + `.trust-badge`), M12.5.3 source cards (lift the `AnswerView` `.source` markup — decoupled from `AnswerProse`, toggled by `sourcesOpen` — into the rail `children`), M12.5.4 drawer fallback, M12.6 input bar, M12.7 Tweaks panel, M12.9 polish/responsive. Read `requirements/ui-reference-spec.md` first. Avatar helpers (`avatarInitials`/`avatarTone` + `.avatar.tone-*`) reusable. NOTE: rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after changing it — apps consume `dist/`.
   2. **M13 (Admin Portal UI Overhaul)** — sidebar/dashboard/kanban/matrix/voice/concierge rebuilds.
   3. **M11.1 fixme legs** / **NT human gates** — await external surfaces / PM sign-off.
