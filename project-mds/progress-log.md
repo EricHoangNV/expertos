@@ -4229,3 +4229,30 @@ Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:
 **Notes for next iteration:**
 - M15.1.4 (account page) is next: plan display + usage meter (`GET /me/entitlements`), locale toggle persistence (`PATCH /me/locale` + localStorage `expertos:locale`), sign-out (firebase `signOut` mock). Self-serve checkout uses `GET /me/plans` + `POST /billing/checkout`/`/portal`.
 - Same harness applies; account page reads entitlements like the chat sidebar meter (see chat test's `entitlements()` helper for the metered `ask_question` shape).
+
+---
+
+## M15.1.4 — Web account page jest suite (8 tests)
+
+**What:** Added `apps/web/app/account/page.test.tsx` — drives the real `/account` page through the M15.1.1 harness (real Auth + Locale providers over the firebase + manual-`fetch` mocks). Covers the M6.1/M6.3 plan & usage surface:
+  - current-plan badge ("Current plan: Plus") from `GET /me/entitlements`.
+  - M6.3 metered usage meter: `used / limit` count rendered (the transparent quota indicator).
+  - disabled metered feature → "Not included" badge (not a 0/0 meter), with no meter count present.
+  - boolean features → "Included" / "Not included" badges.
+  - self-serve upgrade CTA (M6.2): click "Upgrade to Plus — $4.99/mo" → `POST /billing/checkout` with `{planKey, interval}` body → `window.location.href` set to the returned hosted URL.
+  - "Manage billing" (active subscription) → `POST /billing/portal` → redirect.
+  - signed-out sign-in prompt + load-error state (entitlements/plans 500 → localized error).
+  - VI locale: VI dictionary copy ("Gói & mức dùng" / "Nâng cấp") + locale-aware currency ("9,99 …/tháng").
+
+**Key decisions:**
+- The PRD line names "locale toggle persistence" + "sign-out flow", but neither is rendered by the account page — the EN/VI toggle + sign-out live in the chat topbar (`ChatUserIdentity` / `signOutUser`), and persistence lives in `LocaleProvider` (localStorage `expertos:locale` + `PATCH /me/locale`). Rather than invent missing affordances, those mechanisms are deferred to the i18n/shared-lib suites (M15.1.5/.6); the account page's *own* locale dependence — price formatting — is covered here via the VI test.
+- jsdom doesn't implement navigation, so the billing redirect (`window.location.href = …`) would log "Not implemented" and leave href unchanged. The suite swaps in a writable `window.location` stub (defineProperty, restored in afterEach) so the redirect target is assertable.
+- The VI test awaits the data-dependent upgrade section (`findByText("Nâng cấp")`) before asserting the always-present static heading — the heading renders before the mount fetches resolve, so asserting it first raced the load.
+
+**Files changed:**
+- `apps/web/app/account/page.test.tsx` — NEW: the 8-test suite (test-only).
+
+**Gates:** web `tsc` clean, `next lint` clean, `jest` 33/33 pass (5 harness + 10 chat + 10 history + 8 account), root `knip` clean. Test-only change → other workspaces unaffected (1305 → 1313 total tests).
+
+**Notes for next iteration:**
+- M15.1.5 (i18n) + M15.1.6 (shared hooks/lib) are next. M15.1.5: `LocaleProvider` EN→VI switching + persistence (localStorage `expertos:locale` + `PATCH /me/locale`), dictionary key completeness (every `useT` key resolves, EN/VI lockstep), locale-aware formatters. M15.1.6: `useMediaQuery`, `useLocale`/`useT`, account/chat/history client fns, firebase emulator-aware init. The sign-out flow naturally lands in M15.1.6 (auth-context `signOutUser` → firebase `signOut` mock).
