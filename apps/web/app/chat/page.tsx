@@ -18,6 +18,7 @@ import {
   ChatSidebar,
   ChatStateNotice,
   ChatTopbar,
+  ChatTweaksToggle,
   ChatUploadPopover,
   ChatUsageMeter,
   ChatUserIdentity,
@@ -1069,6 +1070,7 @@ export default function ChatPage() {
         onCommit={() => void commitRename()}
         onCancel={() => setEditingTitle(false)}
       >
+        <ChatTweaksToggle open={tweaksOpen} onToggle={() => setTweaksOpen((open) => !open)} />
         {experts.length > 0 && (
           <ChatVoicePicker
             options={experts.map((e) => ({ id: e.expertId, name: e.displayName }))}

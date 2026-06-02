@@ -32,6 +32,8 @@ export { ChatSidebar } from "./ChatSidebar";
 export type { ChatSidebarProps } from "./ChatSidebar";
 export { ChatTopbar } from "./ChatTopbar";
 export type { ChatTopbarProps } from "./ChatTopbar";
+export { ChatTweaksToggle } from "./ChatTweaksToggle";
+export type { ChatTweaksToggleProps } from "./ChatTweaksToggle";
 export { ChatSearch } from "./ChatSearch";
 export type { ChatSearchProps, ChatSearchResultItem } from "./ChatSearch";
 export { ChatVoicePicker } from "./ChatVoicePicker";

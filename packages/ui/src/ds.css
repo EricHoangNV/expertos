@@ -772,3 +772,7 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
   display: flex; align-items: center; justify-content: space-between;
   gap: var(--s3); cursor: pointer; font-size: 14px; color: var(--ink-700);
 }
+/* M12.7.4 topbar "Hide tweaks"/"Show tweaks" toggle — lives in the `.chat-topbar-aside`
+   toolbar group; the icon hugs the label. */
+.chat-tweaks-toggle { display: inline-flex; align-items: center; gap: var(--s2); }
+.chat-tweaks-toggle .chat-tweaks-toggle-icon { flex: none; }

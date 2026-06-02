@@ -27,6 +27,7 @@ import { TweaksPanel } from "./TweaksPanel";
 import { TweaksLayoutControl } from "./TweaksLayoutControl";
 import { AnswerProse } from "./AnswerProse";
 import { ChatTopbar } from "./ChatTopbar";
+import { ChatTweaksToggle } from "./ChatTweaksToggle";
 import {
   AVATAR_TONES,
   avatarInitials,
@@ -1988,6 +1989,49 @@ describe("TweaksPanel — floating layout-preferences panel (M12.7.1)", () => {
   it("merges a caller className", () => {
     const el = TweaksPanel({ onClose: noop, className: "extra" }) as ReactElement;
     expect(cls(el)).toBe("tweaks-panel extra");
+  });
+});
+
+describe("ChatTweaksToggle — topbar Hide/Show tweaks toggle (M12.7.4)", () => {
+  const noop = () => {};
+
+  it("renders a `.btn-subtle` toggle reading 'Hide tweaks' when open + reports aria-pressed", () => {
+    const el = ChatTweaksToggle({ open: true, onToggle: noop }) as ReactElement;
+    expect(el.type).toBe("button");
+    expect(cls(el)).toBe("btn btn-subtle btn-sm chat-tweaks-toggle");
+    const props = el.props as { type?: unknown; "aria-pressed"?: unknown };
+    expect(props.type).toBe("button");
+    expect(props["aria-pressed"]).toBe(true);
+    // children = [icon svg, label]
+    const [, label] = kids(el) as unknown[];
+    expect(label).toBe("Hide tweaks");
+  });
+
+  it("reads 'Show tweaks' and aria-pressed=false when closed", () => {
+    const el = ChatTweaksToggle({ open: false, onToggle: noop }) as ReactElement;
+    expect((el.props as { "aria-pressed"?: unknown })["aria-pressed"]).toBe(false);
+    const [, label] = kids(el) as unknown[];
+    expect(label).toBe("Show tweaks");
+  });
+
+  it("renders an aria-hidden icon ahead of the label", () => {
+    const el = ChatTweaksToggle({ open: false, onToggle: noop }) as ReactElement;
+    const [icon] = kids(el) as ReactElement[];
+    expect(icon.type).toBe("svg");
+    expect(cls(icon)).toBe("chat-tweaks-toggle-icon");
+    expect((icon.props as { "aria-hidden"?: unknown })["aria-hidden"]).toBe("true");
+  });
+
+  it("fires onToggle on click", () => {
+    const onToggle = jest.fn();
+    const el = ChatTweaksToggle({ open: true, onToggle }) as ReactElement;
+    (el.props as { onClick: () => void }).onClick();
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("merges a caller className", () => {
+    const el = ChatTweaksToggle({ open: true, onToggle: noop, className: "extra" }) as ReactElement;
+    expect(cls(el)).toBe("btn btn-subtle btn-sm chat-tweaks-toggle extra");
   });
 });
 

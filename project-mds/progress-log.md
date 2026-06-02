@@ -3365,3 +3365,34 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 - `apps/web/app/chat/page.tsx` — density + toggle state/persistence; wired control into `TweaksPanel`; `.chat-thread` wrapper; `AssistantTurn` `showVerifiedBadge`.
 
 **Gates:** ui jest 191 pass / 100% cov; tsc (ui + web, after `pnpm --filter @expertos/ui build`) clean; eslint (ui + web) clean; stylelint clean; knip clean. (turbo arm64 SIGILLs in sandbox — ran per-workspace per LEARNINGS #2/#13.)
+
+---
+
+## M12.7.4 — Topbar "Hide tweaks" / "Show tweaks" toggle
+**Date:** 2026-06-02
+**Ref:** PRD §"UI Reference Spec" (M12.7.4; Topbar toolbar row in spec #2 / Tweaks Panel #7)
+
+**What was done:**
+- New `packages/ui/src/ChatTweaksToggle.tsx` `ChatTweaksToggle` — a presentational `.btn-subtle .btn-sm .chat-tweaks-toggle` icon+label control. A sliders SVG (`currentColor`, aria-hidden) precedes a caption that flips with the `open` prop: "Hide tweaks" while the panel is showing, "Show tweaks" when hidden. Reports state via `aria-pressed={open}`; fires `onToggle` on click; merges a caller `className`. Page owns the open state (presentational pattern, matching the rest of M12).
+- ds.css: `.chat-tweaks-toggle` (inline-flex, icon hugs label via `--s2` gap) + `.chat-tweaks-toggle-icon { flex: none }`. Tokens only.
+- Wired into `/chat`: mounted as the leading child of the `ChatTopbar` `.chat-topbar-aside` toolbar group (ahead of the voice picker + identity), flipping the existing `tweaksOpen` state that already gates the M12.7.1 `TweaksPanel`. The panel's close X already clears `tweaksOpen`, so the toggle and the X stay in sync on one state value.
+- +5 ui tests (open/closed label + aria-pressed, aria-hidden icon ahead of label, onToggle click, className merge); 100% coverage on the new file. **M12.7 (Tweaks panel) COMPLETE.**
+
+**Key decisions:**
+- Reused the existing `tweaksOpen` state + `ChatTopbar` `children` aside slot rather than adding a new `toolbar` prop to `ChatTopbar` — the aside is already the right-aligned toolbar region and the toggle is conceptually one more toolbar control, so no `ChatTopbar` API change was needed (minimal footprint, no churn to existing ChatTopbar tests).
+- Kept the panel default-open (established by M12.7.2) — the toggle reads "Hide tweaks" on first load and dismissing via either the panel X or the topbar toggle works identically. No localStorage persistence for the open/closed state (not required by the task; layout/density prefs already persist).
+- Icon style mirrors the existing TweaksPanel close-X (stroke `currentColor`, `strokeWidth=2`, round caps) for visual consistency.
+
+**Files changed:**
+- `packages/ui/src/ChatTweaksToggle.tsx` — new component.
+- `packages/ui/src/index.ts` — export `ChatTweaksToggle` + `ChatTweaksToggleProps`.
+- `packages/ui/src/ds.css` — `.chat-tweaks-toggle` styles (M12.7.4 block).
+- `packages/ui/src/primitives.test.ts` — +5 tests + import.
+- `apps/web/app/chat/page.tsx` — import + mount `ChatTweaksToggle` in the topbar aside, toggling `tweaksOpen`.
+- `project-mds/PRD.md` — M12.7.4 marked `[x]` (M12.7 complete).
+
+**Gates:** ui jest 196 pass / 100% cov; tsc (ui + web, after `pnpm --filter @expertos/ui build`) clean; eslint (ui + web) clean; stylelint clean; knip clean. (turbo arm64 SIGILLs in sandbox — ran per-workspace per LEARNINGS #2/#13.)
+
+**Notes for next iteration:**
+- M12.7 is done. Next M12 work: M12.8.2 (post-login redirect / skip login when session active) and M12.9 polish/responsive (mobile slide-over sidebar <900px, ds.css conformance sweep, dark-sidebar render check, loading/empty states).
+- Remember to rebuild `packages/ui` (`pnpm --filter @expertos/ui build`) after editing it — `apps/web` consumes `dist/`, so a new export won't typecheck in the app until the build runs.
