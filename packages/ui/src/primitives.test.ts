@@ -9,6 +9,8 @@ import { Content, Shell, Topbar } from "./Shell";
 import { ChatLayout } from "./ChatLayout";
 import { ChatSearch, type ChatSearchResultItem } from "./ChatSearch";
 import { ChatSidebar } from "./ChatSidebar";
+import { ChatSidebarDrawer } from "./ChatSidebarDrawer";
+import { ChatMenuButton } from "./ChatMenuButton";
 import { ChatVoicePicker, type ChatVoiceOption } from "./ChatVoicePicker";
 import { ChatUserIdentity } from "./ChatUserIdentity";
 import { ChatUserMessage } from "./ChatUserMessage";
@@ -463,7 +465,9 @@ describe("ChatTopbar — conversation header with editable title (M12.3.1)", () 
       onEditStart,
     }) as ReactElement;
     expect(cls(el)).toBe("topbar chat-topbar");
-    const [titleNode, aside] = kids(el) as unknown[];
+    // children = [leading slot (false when absent), title node, aside slot].
+    const [leading, titleNode, aside] = kids(el) as unknown[];
+    expect(leading).toBeFalsy();
     const button = titleNode as ReactElement;
     expect(cls(button)).toBe("chat-topbar-title");
     expect((button.props as { type?: unknown }).type).toBe("button");
@@ -476,7 +480,7 @@ describe("ChatTopbar — conversation header with editable title (M12.3.1)", () 
 
   it("renders a static (non-clickable) title span when not editable", () => {
     const el = ChatTopbar({ title: "New conversation", titleEditable: false }) as ReactElement;
-    const [titleNode] = kids(el) as unknown[];
+    const [, titleNode] = kids(el) as unknown[];
     const span = titleNode as ReactElement;
     expect(cls(span)).toBe("chat-topbar-title chat-topbar-title-static");
     expect(span.type).toBe("span");
@@ -489,7 +493,7 @@ describe("ChatTopbar — conversation header with editable title (M12.3.1)", () 
       titleEditable: false,
       editing: true,
     }) as ReactElement;
-    const [titleNode] = kids(el) as unknown[];
+    const [, titleNode] = kids(el) as unknown[];
     expect(cls(titleNode as ReactElement)).toBe("chat-topbar-title chat-topbar-title-static");
   });
 
@@ -505,7 +509,7 @@ describe("ChatTopbar — conversation header with editable title (M12.3.1)", () 
       onCommit,
       onCancel,
     }) as ReactElement;
-    const [input] = kids(el) as ReactElement[];
+    const [, input] = kids(el) as ReactElement[];
     expect(cls(input)).toBe("input chat-topbar-title-input");
     const props = input.props as {
       value?: unknown;
@@ -539,7 +543,7 @@ describe("ChatTopbar — conversation header with editable title (M12.3.1)", () 
 
   it("tolerates omitted optional handlers on the editing input (no throw)", () => {
     const el = ChatTopbar({ title: "x", editing: true }) as ReactElement;
-    const [input] = kids(el) as ReactElement[];
+    const [, input] = kids(el) as ReactElement[];
     const props = input.props as {
       onChange: (e: unknown) => void;
       onBlur: () => void;
@@ -553,10 +557,20 @@ describe("ChatTopbar — conversation header with editable title (M12.3.1)", () 
 
   it("mounts children into the right-aligned `.chat-topbar-aside` slot", () => {
     const el = ChatTopbar({ title: "T", children: "voice + identity" }) as ReactElement;
-    const [, aside] = kids(el) as unknown[];
+    const [, , aside] = kids(el) as unknown[];
     const asideEl = aside as ReactElement;
     expect(cls(asideEl)).toBe("chat-topbar-aside");
     expect(kids(asideEl)).toBe("voice + identity");
+  });
+
+  it("mounts a leading slot before the title (M12.9.1 menu button)", () => {
+    const el = ChatTopbar({ title: "T", leading: "menu" }) as ReactElement;
+    const [leading, titleNode] = kids(el) as unknown[];
+    const leadingEl = leading as ReactElement;
+    expect(cls(leadingEl)).toBe("chat-topbar-leading");
+    expect(kids(leadingEl)).toBe("menu");
+    // The title still follows the leading slot.
+    expect(cls(titleNode as ReactElement)).toBe("chat-topbar-title");
   });
 });
 
@@ -1943,6 +1957,100 @@ describe("SourcesDrawer — slide-over sources fallback (M12.5.4)", () => {
     expect(props.header).toBe("SOURCES");
     expect(props.emptyLabel).toBe("none");
     expect(props.children).toBe("cards");
+  });
+});
+
+describe("ChatSidebarDrawer — slide-over sidebar fallback (M12.9.1)", () => {
+  const noop = () => {};
+  /** The `<aside>` panel inside the backdrop. */
+  const panel = (el: ReactElement): ReactElement => kids(el) as ReactElement;
+
+  it("renders nothing while closed", () => {
+    expect(ChatSidebarDrawer({ open: false, onClose: noop })).toBeNull();
+  });
+
+  it("renders a left-anchored dimmed backdrop that dismisses on click", () => {
+    const onClose = jest.fn();
+    const el = ChatSidebarDrawer({ open: true, onClose }) as ReactElement;
+    expect(cls(el)).toBe("chat-sidebar-drawer-backdrop");
+    (el.props as { onClick: () => void }).onClick();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a labelled modal dialog panel that keeps inner clicks from dismissing", () => {
+    const onClose = jest.fn();
+    const p = panel(ChatSidebarDrawer({ open: true, onClose }) as ReactElement);
+    expect(p.type).toBe("aside");
+    const props = p.props as {
+      className?: unknown;
+      role?: unknown;
+      "aria-modal"?: unknown;
+      "aria-label"?: unknown;
+      onClick: (e: { stopPropagation: () => void }) => void;
+    };
+    expect(props.className).toBe("chat-sidebar-drawer");
+    expect(props.role).toBe("dialog");
+    expect(props["aria-modal"]).toBe("true");
+    expect(props["aria-label"]).toBe("Navigation");
+    const stopPropagation = jest.fn();
+    props.onClick({ stopPropagation });
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("accepts a custom accessible title and merges a className", () => {
+    const p = panel(
+      ChatSidebarDrawer({ open: true, onClose: noop, title: "Menu", className: "extra" }) as ReactElement,
+    );
+    expect((p.props as { "aria-label"?: unknown })["aria-label"]).toBe("Menu");
+    expect(cls(p)).toBe("chat-sidebar-drawer extra");
+  });
+
+  it("dismisses on Escape but ignores other keys", () => {
+    const onClose = jest.fn();
+    const p = panel(ChatSidebarDrawer({ open: true, onClose }) as ReactElement);
+    const onKeyDown = (p.props as { onKeyDown: (e: { key: string }) => void }).onKeyDown;
+    onKeyDown({ key: "Enter" });
+    expect(onClose).not.toHaveBeenCalled();
+    onKeyDown({ key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("hosts the sidebar content passed as children", () => {
+    const p = panel(
+      ChatSidebarDrawer({ open: true, onClose: noop, children: "sidebar" }) as ReactElement,
+    );
+    expect(kids(p)).toBe("sidebar");
+  });
+});
+
+describe("ChatMenuButton — topbar sidebar menu toggle (M12.9.1)", () => {
+  it("renders a `.btn-subtle .btn-icon` hamburger labelled 'Open navigation'", () => {
+    const el = ChatMenuButton({ onOpen: () => {} }) as ReactElement;
+    expect(el.type).toBe("button");
+    expect(cls(el)).toBe("btn btn-subtle btn-icon chat-menu-btn");
+    const props = el.props as { type?: unknown; "aria-label"?: unknown };
+    expect(props.type).toBe("button");
+    expect(props["aria-label"]).toBe("Open navigation");
+  });
+
+  it("renders an aria-hidden icon", () => {
+    const el = ChatMenuButton({ onOpen: () => {} }) as ReactElement;
+    const icon = kids(el) as ReactElement;
+    expect(icon.type).toBe("svg");
+    expect((icon.props as { "aria-hidden"?: unknown })["aria-hidden"]).toBe("true");
+  });
+
+  it("fires onOpen on click", () => {
+    const onOpen = jest.fn();
+    const el = ChatMenuButton({ onOpen }) as ReactElement;
+    (el.props as { onClick: () => void }).onClick();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("merges a caller className", () => {
+    const el = ChatMenuButton({ onOpen: () => {}, className: "extra" }) as ReactElement;
+    expect(cls(el)).toBe("btn btn-subtle btn-icon chat-menu-btn extra");
   });
 });
 

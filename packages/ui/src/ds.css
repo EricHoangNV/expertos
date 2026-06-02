@@ -493,6 +493,30 @@ button.source-card:focus-visible { outline: none; box-shadow: var(--sh-focus); }
 @keyframes sources-drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
 
 /* ============================================================
+   Sidebar drawer (consumer web) — M12.9.1
+   The left-anchored slide-over presentation of the conversation sidebar for when the
+   persistent `.chat-sidebar` pane is not in the grid: a narrow viewport (< 900px) or the
+   `focus` layout direction. A dimmed full-screen backdrop anchors a left-edge panel that
+   slides in and hosts the same dark `.side` / `.chat-side` content as the grid pane.
+   ============================================================ */
+.chat-sidebar-drawer-backdrop {
+  position: fixed; inset: 0; z-index: 40;
+  background: color-mix(in srgb, var(--ink-900) 45%, transparent);
+  display: flex; justify-content: flex-start;
+  animation: sources-drawer-fade .14s ease-out;
+}
+.chat-sidebar-drawer {
+  position: relative;
+  width: min(288px, 85vw); height: 100vh;
+  box-shadow: var(--sh-lg);
+  animation: chat-sidebar-drawer-in .18s ease-out;
+}
+/* The hosted rail fills the panel (the grid version is `position: sticky`). */
+.chat-sidebar-drawer .side { position: static; height: 100%; }
+
+@keyframes chat-sidebar-drawer-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+
+/* ============================================================
    Chat sidebar (consumer web) — M12.2
    Reuses the dark `.side` rail + `.brand` header inside the `.chat-layout`
    grid; adds the collapse control, full-width "New conversation" action, and
@@ -578,6 +602,11 @@ button.source-card:focus-visible { outline: none; box-shadow: var(--sh-focus); }
 .chat-topbar .chat-topbar-title-static { padding: 7px 0; }
 .chat-topbar .chat-topbar-title-input { width: auto; flex: 1; padding: 7px 10px; }
 .chat-topbar .chat-topbar-aside { margin-left: auto; display: flex; align-items: center; gap: var(--s3); }
+/* Leading slot (M12.9.1) — the sidebar menu (hamburger) button, shown only while the
+   sidebar is an overlay (narrow viewport / focus direction) so it never sits next to a
+   visible sidebar. */
+.chat-topbar .chat-topbar-leading { display: flex; align-items: center; flex: none; }
+.chat-menu-btn { flex: none; }
 
 /* Voice picker (M12.3.2) — "VOICE" label + `.chip`/`.chip.active` pills, one per
    expert voice plus a leading "Neutral". Lives in the `.chat-topbar-aside` slot. */

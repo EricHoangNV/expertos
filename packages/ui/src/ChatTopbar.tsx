@@ -22,6 +22,11 @@ export interface ChatTopbarProps {
   /** Abandon the edit (Escape). */
   onCancel?: () => void;
   /**
+   * Optional leading region before the title — the sidebar menu button (M12.9.1) mounts here when the
+   * sidebar is an overlay rather than in the grid, so the hamburger sits at the left of the header.
+   */
+  leading?: ReactNode;
+  /**
    * Optional right-aligned region — the voice picker (M12.3.2) + user identity (M12.3.3) mount here.
    * Kept as a slot so this task ships the title bar without those pieces existing yet.
    */
@@ -46,6 +51,7 @@ export function ChatTopbar({
   onEditStart,
   onCommit,
   onCancel,
+  leading,
   children,
 }: ChatTopbarProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -60,6 +66,7 @@ export function ChatTopbar({
 
   return (
     <header className="topbar chat-topbar">
+      {leading != null && <div className="chat-topbar-leading">{leading}</div>}
       {editing && titleEditable ? (
         <input
           className="input chat-topbar-title-input"

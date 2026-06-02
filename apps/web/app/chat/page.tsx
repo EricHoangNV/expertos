@@ -13,9 +13,11 @@ import {
   ChatInputBar,
   ChatInputHelper,
   ChatLayout,
+  ChatMenuButton,
   ChatSearch,
   type ChatSearchResultItem,
   ChatSidebar,
+  ChatSidebarDrawer,
   ChatStateNotice,
   ChatTopbar,
   ChatTweaksToggle,
@@ -653,12 +655,24 @@ export default function ChatPage() {
   const [drawerCitations, setDrawerCitations] = useState<ChatCitationDto[] | null>(null);
   // Whether the attach-document popover (M12.6.2) is open above the input bar.
   const [attachOpen, setAttachOpen] = useState(false);
+  // Sidebar surface (M12.9.1): the persistent sidebar is in the grid only when the
+  // direction keeps it (studio/classic) AND the viewport is wide enough (≥900px — below
+  // that ds.css collapses it). Otherwise the sidebar becomes a left slide-over overlay
+  // opened from the topbar menu button.
+  const wideSidebar = useMediaQuery("(min-width: 900px)");
+  const sidebarInGrid = layoutPanes(direction).sidebar && wideSidebar;
+  const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
 
   // If the persistent rail comes back (widened viewport / switched to studio), close
   // the drawer so sources aren't shown twice.
   useEffect(() => {
     if (railVisible) setDrawerCitations(null);
   }, [railVisible]);
+  // If the persistent sidebar comes back (widened viewport / left focus mode), close the
+  // overlay so the sidebar isn't shown twice.
+  useEffect(() => {
+    if (sidebarInGrid) setSidebarDrawerOpen(false);
+  }, [sidebarInGrid]);
   // Conversation search (M12.2.2) — full-text search across the user's chats
   // (M3.3). The sidebar input is debounced into `searchQuery`; results render
   // under the field and selecting one loads that conversation into the chat.
@@ -846,6 +860,8 @@ export default function ChatPage() {
     setEditingTitle(false);
     setDraft("");
     setError(null);
+    // Selecting from the sidebar overlay (M12.9.1) dismisses it.
+    setSidebarDrawerOpen(false);
   }, [busy]);
 
   // Open a conversation from search (M12.2.2) — fetch its transcript and replay
@@ -878,6 +894,8 @@ export default function ChatPage() {
         setExpertId(detail.expertId ?? "");
         setDraft("");
         setSearchQuery("");
+        // Selecting from the sidebar overlay (M12.9.1) dismisses it.
+        setSidebarDrawerOpen(false);
       } catch {
         setError("Couldn't open that conversation — please try again.");
       }
@@ -1017,6 +1035,40 @@ export default function ChatPage() {
     );
   }
 
+  // The sidebar body + footer (M12.2) — shared by the in-grid pane and the M12.9.1
+  // slide-over overlay so the two never diverge. The overlay's `ChatSidebar` gets an
+  // `onClose` (its collapse X dismisses the drawer); the grid pane has none.
+  const sidebarFooter =
+    entitlements && questionUsage?.enabled ? (
+      <ChatUsageMeter
+        used={questionUsage.used ?? 0}
+        limit={questionUsage.limit ?? null}
+        softLimit={questionUsage.softLimit ?? null}
+        planName={entitlements.plan.name}
+        upgradeHref="/account"
+      />
+    ) : undefined;
+  const sidebarBody = (
+    <>
+      <ChatSearch
+        query={searchQuery}
+        onQueryChange={setSearchQuery}
+        results={searchResults}
+        searching={searching}
+        onSelect={(id) => void openConversation(id)}
+        activeId={conversationId}
+      />
+      {searchQuery.trim().length < 2 && (
+        <ChatConversationList
+          items={conversationItems}
+          activeId={conversationId}
+          onSelect={(id) => void openConversation(id)}
+          loading={loadingConversations}
+        />
+      )}
+    </>
+  );
+
   return (
     <ChatLayout
       direction={direction}
@@ -1027,36 +1079,8 @@ export default function ChatPage() {
         </SourcesRail>
       }
       sidebar={
-        <ChatSidebar
-          onNewConversation={startNewConversation}
-          footer={
-            entitlements && questionUsage?.enabled ? (
-              <ChatUsageMeter
-                used={questionUsage.used ?? 0}
-                limit={questionUsage.limit ?? null}
-                softLimit={questionUsage.softLimit ?? null}
-                planName={entitlements.plan.name}
-                upgradeHref="/account"
-              />
-            ) : undefined
-          }
-        >
-          <ChatSearch
-            query={searchQuery}
-            onQueryChange={setSearchQuery}
-            results={searchResults}
-            searching={searching}
-            onSelect={(id) => void openConversation(id)}
-            activeId={conversationId}
-          />
-          {searchQuery.trim().length < 2 && (
-            <ChatConversationList
-              items={conversationItems}
-              activeId={conversationId}
-              onSelect={(id) => void openConversation(id)}
-              loading={loadingConversations}
-            />
-          )}
+        <ChatSidebar onNewConversation={startNewConversation} footer={sidebarFooter}>
+          {sidebarBody}
         </ChatSidebar>
       }
     >
@@ -1069,6 +1093,11 @@ export default function ChatPage() {
         onEditStart={startRename}
         onCommit={() => void commitRename()}
         onCancel={() => setEditingTitle(false)}
+        leading={
+          sidebarInGrid ? undefined : (
+            <ChatMenuButton onOpen={() => setSidebarDrawerOpen(true)} />
+          )
+        }
       >
         <ChatTweaksToggle open={tweaksOpen} onToggle={() => setTweaksOpen((open) => !open)} />
         {experts.length > 0 && (
@@ -1131,6 +1160,18 @@ export default function ChatPage() {
       >
         {drawerCitations ? sourceCards(drawerCitations) : undefined}
       </SourcesDrawer>
+      <ChatSidebarDrawer
+        open={sidebarDrawerOpen && !sidebarInGrid}
+        onClose={() => setSidebarDrawerOpen(false)}
+      >
+        <ChatSidebar
+          onNewConversation={startNewConversation}
+          onClose={() => setSidebarDrawerOpen(false)}
+          footer={sidebarFooter}
+        >
+          {sidebarBody}
+        </ChatSidebar>
+      </ChatSidebarDrawer>
       {tweaksOpen && (
         <TweaksPanel onClose={() => setTweaksOpen(false)}>
           <TweaksLayoutControl value={direction} onChange={changeDirection} />
