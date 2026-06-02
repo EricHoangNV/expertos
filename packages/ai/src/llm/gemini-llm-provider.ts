@@ -11,7 +11,7 @@ import {
   defaultFetch,
   estimateUsage,
   readSseEvents,
-  sseData,
+  parseSseJson,
   LlmRequestError,
   type FetchLike,
 } from "./http";
@@ -76,9 +76,8 @@ export class GeminiLlmProvider extends StreamingLlmProvider {
     let full = "";
     let usage: LlmStreamChunk["usage"];
     for await (const event of readSseEvents(res.body)) {
-      const data = sseData(event);
-      if (data == null) continue;
-      const frame = JSON.parse(data) as GeminiFrame;
+      const frame = parseSseJson<GeminiFrame>(event);
+      if (frame == null) continue;
       const text = (frame.candidates?.[0]?.content?.parts ?? [])
         .map((p) => p.text ?? "")
         .join("");

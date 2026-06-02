@@ -81,6 +81,26 @@ export function sseData(eventBlock: string): string | null {
   return data.length > 0 ? data.join("\n") : null;
 }
 
+/**
+ * Parses one SSE event block's `data:` payload as JSON, or returns `null` for a frame that carries
+ * no usable object — no `data:` line, the `[DONE]` sentinel, an empty/whitespace keep-alive payload,
+ * or an unparseable fragment. The SSE spec requires a consumer to ignore data it can't parse; doing
+ * the `JSON.parse` here (the single choke point every driver shares) means one stray keep-alive or
+ * malformed frame is skipped rather than throwing and aborting the whole answer mid-stream. Callers
+ * `continue` on `null`.
+ */
+export function parseSseJson<T>(eventBlock: string): T | null {
+  const data = sseData(eventBlock);
+  if (data == null) return null;
+  const trimmed = data.trim();
+  if (trimmed.length === 0 || trimmed === "[DONE]") return null;
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    return null;
+  }
+}
+
 /** Token estimate used when an API response omits usage, so cost logging is never silently zero. */
 export function estimateUsage(messages: ChatMessage[], text: string): LlmCompletion["usage"] {
   return {

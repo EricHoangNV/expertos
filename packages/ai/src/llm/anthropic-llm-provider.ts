@@ -11,7 +11,7 @@ import {
   defaultFetch,
   estimateUsage,
   readSseEvents,
-  sseData,
+  parseSseJson,
   LlmRequestError,
   type FetchLike,
 } from "./http";
@@ -87,9 +87,8 @@ export class AnthropicLlmProvider extends StreamingLlmProvider {
     let completionTokens = 0;
     let sawUsage = false;
     for await (const event of readSseEvents(res.body)) {
-      const data = sseData(event);
-      if (data == null) continue;
-      const frame = JSON.parse(data) as AnthropicEvent;
+      const frame = parseSseJson<AnthropicEvent>(event);
+      if (frame == null) continue;
       if (frame.type === "content_block_delta" && frame.delta?.type === "text_delta") {
         const text = frame.delta.text ?? "";
         if (text.length > 0) {

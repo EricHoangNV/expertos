@@ -11,7 +11,7 @@ import {
   defaultFetch,
   estimateUsage,
   readSseEvents,
-  sseData,
+  parseSseJson,
   LlmRequestError,
   type FetchLike,
 } from "./http";
@@ -67,9 +67,8 @@ export class OpenAiLlmProvider extends StreamingLlmProvider {
     let full = "";
     let usage: LlmStreamChunk["usage"];
     for await (const event of readSseEvents(res.body)) {
-      const data = sseData(event);
-      if (data == null || data === "[DONE]") continue;
-      const frame = JSON.parse(data) as OpenAiStreamFrame;
+      const frame = parseSseJson<OpenAiStreamFrame>(event);
+      if (frame == null) continue;
       const delta = frame.choices?.[0]?.delta?.content;
       if (delta != null && delta.length > 0) {
         full += delta;

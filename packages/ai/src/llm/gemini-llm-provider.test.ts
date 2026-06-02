@@ -79,6 +79,19 @@ describe("GeminiLlmProvider", () => {
     expect(result.usage).toEqual({ promptTokens: 8, completionTokens: 2 });
   });
 
+  it("does not abort the answer on an empty/keep-alive data frame mid-stream", async () => {
+    const { fetch } = recordingFetch(
+      sseResponse([
+        'data: {"candidates":[{"content":{"parts":[{"text":"Hallo"}]}}]}\n\n',
+        "data:\n\n", // empty keep-alive frame — must be skipped, not throw
+        'data: {"candidates":[{"content":{"parts":[{"text":" Welt"}]}}]}\n\n',
+      ]),
+    );
+    const provider = new GeminiLlmProvider({ apiKey: "key", fetch });
+    const result = await provider.complete(MESSAGES);
+    expect(result.text).toBe("Hallo Welt");
+  });
+
   it("throws LlmRequestError on a non-2xx response", async () => {
     const { fetch } = recordingFetch(errorResponse(400, "bad request"));
     const provider = new GeminiLlmProvider({ apiKey: "key", fetch });

@@ -92,6 +92,20 @@ describe("OpenAiLlmProvider", () => {
     expect(usage?.completionTokens).toBeGreaterThan(0);
   });
 
+  it("does not abort the answer on an empty/keep-alive data frame mid-stream", async () => {
+    const { fetch } = recordingFetch(
+      sseResponse([
+        'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+        "data:\n\n", // empty keep-alive frame a proxy can inject — must be skipped, not throw
+        'data: {"choices":[{"delta":{"content":" world"}}]}\n\n',
+        "data: [DONE]\n\n",
+      ]),
+    );
+    const provider = new OpenAiLlmProvider({ apiKey: "sk-test", fetch });
+    const result = await provider.complete(MESSAGES);
+    expect(result.text).toBe("Hello world");
+  });
+
   it("throws LlmRequestError on a non-2xx response", async () => {
     const { fetch } = recordingFetch(errorResponse(429, "rate limit exceeded"));
     const provider = new OpenAiLlmProvider({ apiKey: "sk-test", fetch });

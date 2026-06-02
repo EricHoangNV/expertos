@@ -91,6 +91,19 @@ describe("AnthropicLlmProvider", () => {
     expect(JSON.parse(calls[0].init.body).system).toBeUndefined();
   });
 
+  it("does not abort the answer on an empty/keep-alive data frame mid-stream", async () => {
+    const { fetch } = recordingFetch(
+      sseResponse([
+        'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Xin "}}\n\n',
+        "data:\n\n", // empty keep-alive frame — must be skipped, not throw
+        'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"chào"}}\n\n',
+      ]),
+    );
+    const provider = new AnthropicLlmProvider({ apiKey: "key", fetch });
+    const result = await provider.complete(MESSAGES);
+    expect(result.text).toBe("Xin chào");
+  });
+
   it("throws LlmRequestError on a non-2xx response", async () => {
     const { fetch } = recordingFetch(errorResponse(500, "overloaded"));
     const provider = new AnthropicLlmProvider({ apiKey: "key", fetch });

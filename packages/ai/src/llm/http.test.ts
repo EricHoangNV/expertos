@@ -2,6 +2,7 @@ import {
   LlmRequestError,
   StreamingLlmProvider,
   estimateUsage,
+  parseSseJson,
   readSseEvents,
   sseData,
 } from "./http";
@@ -55,6 +56,28 @@ describe("sseData", () => {
   it("passes through sentinels and returns null when there is no data line", () => {
     expect(sseData("data: [DONE]")).toBe("[DONE]");
     expect(sseData(": this is a comment")).toBeNull();
+  });
+});
+
+describe("parseSseJson", () => {
+  it("parses a JSON data frame", () => {
+    expect(parseSseJson<{ a: number }>('data: {"a":1}')).toEqual({ a: 1 });
+  });
+  it("returns null for the [DONE] sentinel (incl. surrounding whitespace)", () => {
+    expect(parseSseJson("data: [DONE]")).toBeNull();
+    expect(parseSseJson("data:  [DONE] ")).toBeNull();
+  });
+  it("returns null for a frame with no data line (comment / keep-alive)", () => {
+    expect(parseSseJson(": keep-alive")).toBeNull();
+  });
+  it("returns null for an empty or whitespace-only data payload (never throws)", () => {
+    // The bug: `data:` with no payload yielded "" → JSON.parse("") threw → aborted the answer.
+    expect(parseSseJson("data:")).toBeNull();
+    expect(parseSseJson("data: ")).toBeNull();
+    expect(parseSseJson("data:    ")).toBeNull();
+  });
+  it("returns null (does not throw) for an unparseable fragment", () => {
+    expect(parseSseJson("data: {not json")).toBeNull();
   });
 });
 
