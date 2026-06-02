@@ -26,6 +26,16 @@ describe("costMicrosFor (Open Decision #4 unit-economics model)", () => {
     expect(costMicrosFor("text-embedding-3-small", 0, 1000)).toBe(0);
   });
 
+  it("prices the real chat-provider default models (each is a modeled key, not the unknown fallback)", () => {
+    // The factory's per-provider default model ids (ingestion.defaults.ts) must all be modeled so
+    // usage logs get a real cost_micros rather than the unknown-model fallback.
+    expect(costMicrosFor("gpt-4o-mini", 1000, 1000)).toBe(costMicrosFor("echo-dev", 1000, 1000));
+    expect(costMicrosFor("claude-haiku-4-5", 1000, 1000)).toBe(costMicrosFor("echo-dev", 1000, 1000));
+    expect(costMicrosFor("gemini-1.5-flash", 1000, 1000)).toBe(costMicrosFor("echo-dev", 1000, 1000));
+    // The premium Gemini tier is priced ~20× the flash tier, mirroring the other providers.
+    expect(costMicrosFor("gemini-1.5-pro", 3000, 600)).toBe(costMicrosFor("gpt-4o", 3000, 600));
+  });
+
   it("defaults an unknown model to the standard tier (never silently free)", () => {
     expect(costMicrosFor("some-future-model", 100, 100)).toBe(
       costMicrosFor("echo-dev", 100, 100),

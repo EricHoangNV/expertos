@@ -10,6 +10,20 @@ export {
 export type { Summarizer, ExtractiveOptions } from "./ingestion/summarize";
 export { HashingEmbeddingProvider } from "./embedding/hashing-embedding-provider";
 export { EchoLlmProvider } from "./llm/echo-llm-provider";
+export { OpenAiLlmProvider } from "./llm/openai-llm-provider";
+export type { OpenAiLlmConfig } from "./llm/openai-llm-provider";
+export { AnthropicLlmProvider } from "./llm/anthropic-llm-provider";
+export type { AnthropicLlmConfig } from "./llm/anthropic-llm-provider";
+export { GeminiLlmProvider } from "./llm/gemini-llm-provider";
+export type { GeminiLlmConfig } from "./llm/gemini-llm-provider";
+export {
+  StreamingLlmProvider,
+  LlmRequestError,
+  readSseEvents,
+  sseData,
+  estimateUsage,
+} from "./llm/http";
+export type { FetchLike, FetchRequestInit, FetchResponseLike } from "./llm/http";
 export type {
   ChatMessage,
   LlmCompletion,

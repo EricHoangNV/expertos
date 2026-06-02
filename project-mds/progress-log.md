@@ -4536,3 +4536,39 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 - **Host-validate M15.3.3/.4/.5** with the live-stack recipe (progress-state). Expect the fixme count to drop 3 → 2 and ~3 new passing tests (concierge ×2, knowledge ×1, deletion-cascade ×1 minus the now-removed fixme). After a green host run, flip M15.3.3/.4 to `[x]` and bump the README count.
 - The deletion-cascade spec's pre-delete assertion depends on the seed creating the conversation — if the seed is changed, keep the owned conversation so the test doesn't pass vacuously.
 - Remaining open after M15.3: M13.5.3/.4/.5 + M13.7.4 (voice widgets, blocked on PM/schema), M11.4 / NT.3 / NT.4 (human sign-off gates).
+
+## Real LLM chat drivers (OpenAI / Anthropic / Gemini) — production swap of the Echo stub
+**Date:** 2026-06-02
+**Ref:** PRD M3.1 / M6.3 (the "production swaps the real OpenAI/Anthropic driver in here" TODO scattered across `ingestion.defaults.ts` + `model-pricing.ts`). Adopted + completed in-progress work left uncommitted by a prior session.
+
+**What was done:**
+- Found a prior session's uncommitted WIP (untracked `packages/ai/src/llm/{http,openai-llm-provider,anthropic-llm-provider,gemini-llm-provider}.ts` + tests, modified `ingestion.defaults.ts`/`index.ts`/`.env.example`). Audited it end-to-end, fixed one defect, brought all gates green, committed.
+- The drivers replace the offline `EchoLlmProvider` with real network providers behind the existing `LlmProvider` contract:
+  - `http.ts` — shared seam: `FetchLike` (injected `fetch`, no DOM/undici dep, fakeable in tests), `readSseEvents`/`sseData` (chunk-boundary-tolerant SSE reader, every provider streams SSE), `StreamingLlmProvider` base (subclasses implement `completeStream`; `complete()` is derived so stream-concat === complete().text by construction), `LlmRequestError` (provider+status), `estimateUsage` (token fallback when an API omits usage so cost logging is never silently zero).
+  - `openai-llm-provider.ts` — `POST /v1/chat/completions` streaming, `stream_options.include_usage` for real terminal usage; 1:1 role mapping; `Authorization: Bearer`.
+  - `anthropic-llm-provider.ts` — `POST /v1/messages`; lifts system turns to the top-level `system` field; usage split across `message_start`/`message_delta`.
+  - `gemini-llm-provider.ts` — `:streamGenerateContent?alt=sse`; assistant→`model`, `contents[].parts[].text`, top-level `systemInstruction`; key via `x-goog-api-key` header (not URL, so it can't leak in logs); cumulative `usageMetadata`.
+- `ingestion.defaults.ts` — `selectChatLlm(env, tier)` resolves a provider from env: explicit `LLM_PROVIDER` (openai|anthropic|gemini) if its key is present, else first provider with a key; `LLM_MODEL` (standard) / `LLM_MODEL_MINI` (M6.3 fair-use degrade) override the per-provider default model; returns `null` → `EchoLlmProvider` when no key, so dev with no keys is unchanged. `createDefaultLlmProvider`/`createDegradedLlmProvider` now take an injectable `env` (defaults `process.env`) so selection is unit-testable without network.
+- `.env.example` — documented the `LLM_PROVIDER`/`LLM_MODEL`/`LLM_MODEL_MINI` knobs + the no-key→echo default.
+
+**Defect found + fixed:**
+- The `ingestion.defaults.ts` doc-comment claimed every per-provider default model id is a key in `model-pricing.ts`, but the Gemini default `gemini-1.5-flash` was missing — it fell through to the unknown-model `DEFAULT_RATE` (still STANDARD, so not silently-free, but unmodeled). Added `gemini-1.5-flash` (STANDARD) + `gemini-1.5-pro` (PREMIUM) to the pricing map (mirrors the OpenAI/Anthropic standard+premium pairs) + a `model-pricing.test.ts` assertion that all three chat defaults are modeled keys, not the fallback.
+
+**Key decisions:**
+- Kept the offline `EchoLlmProvider` as the no-key default (not a hard requirement) so the whole dev/test/E2E pipeline keeps running deterministically with zero keys — the drivers only fire in prod where a key is set. All provider tests inject a fake `fetch`; nothing hits the network.
+- The untrusted-text prompt defense (§1.4b) stays at the `buildAnswerPrompt` choke point; the drivers send the built messages verbatim — correct layering, no new injection surface.
+- Did NOT commit the `apps/{web,admin}/.next` symlinks (leftover from the documented E2E live-stack workaround — `.next/` gitignore doesn't match symlinks).
+
+**Files changed:**
+- `packages/ai/src/llm/{http,openai-llm-provider,anthropic-llm-provider,gemini-llm-provider}.ts` (+ `.test.ts` each) — new drivers + tests.
+- `packages/ai/src/index.ts` — export the drivers + http seam.
+- `apps/api/src/ingestion/ingestion.defaults.ts` (+ new `ingestion.defaults.test.ts`) — env-based provider selection.
+- `apps/api/src/observability/model-pricing.ts` (+ `.test.ts`) — Gemini pricing entries + assertion.
+- `.env.example` — provider/model env knobs.
+
+**Gates:** ai lint/build clean + jest 187; api lint/typecheck clean + jest 696; root knip clean. Repo total 1508 pass / 0 fail (ai +26, api +10). `next build`/`tsx` seed still blocked in-sandbox (arch mismatch) as before.
+
+**Notes for next iteration:**
+- The drivers are code-complete + unit-tested but have NOT been exercised against a live LLM API (no keys in-sandbox, firewall). First real key-backed run should sanity-check the SSE parse against each provider's actual frames (esp. Anthropic `message_start`/`message_delta` usage split + Gemini cumulative `usageMetadata`).
+- Embedding is still the offline `HashingEmbeddingProvider` — a real embedding driver (OpenAI `text-embedding-3-small` / Gemini `text-embedding-004`, both already priced) is the natural follow-up swap at `createDefaultEmbeddingProvider`.
+- Remaining open: M15.3.3/.4 host-validation; M13.5.3/.4/.5 + M13.7.4 (voice widgets, blocked on PM/schema); M11.4 / NT.3 / NT.4 (human sign-off gates).

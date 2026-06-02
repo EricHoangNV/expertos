@@ -68,6 +68,8 @@ const MODEL_PRICING: Record<string, ModelRate> = {
   // Backup providers (Anthropic + Google).
   "claude-haiku-4-5": STANDARD,
   "claude-sonnet-4-6": PREMIUM,
+  "gemini-1.5-flash": STANDARD,
+  "gemini-1.5-pro": PREMIUM,
   "text-embedding-004": EMBEDDING,
 };
 
