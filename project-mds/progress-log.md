@@ -4029,3 +4029,37 @@ The M7 funnel rule `reason` is dynamic admin-configured DB text — correctly ou
 **Gates:** `@expertos/shared` build + jest 190 green; `@expertos/ui` build + jest 227 green; web `tsc --noEmit` + `next lint --max-warnings 0` clean; shared/ui eslint clean; root `lint:css` + `knip` clean (cleared `apps/*/.next` first). Dictionary EN/VI lockstep re-verified (chat 55 / history 42 / account 16). API unaffected — no backend code references the disclaimer or the consultation card (both are client-render only); the shared change is purely additive (new export, const value identical).
 
 **Notes for next iteration:** Remaining M13 i18n = M13.3 (admin portal — needs its own provider + EN/VI dictionaries on the `@expertos/ui` core) and M13.5 (locale-aware date/number/currency: `apps/web/app/account` `formatPrice` + history `when()` still use the system locale; VI date + VND).
+
+## M13.5 — i18n: locale-aware date/number/currency formatting
+**Date:** 2026-06-02
+**Ref:** PRD Task Manifest M13.5 (i18n — "RTL-safe + locale-aware formatting"); §"UI Internationalization (i18n)"
+
+**What:** The M12.3.3 language toggle / M13.1 `LocaleProvider` already drive both the AI answer language and (after M13.2/M13.4) the UI copy — but two web surfaces still formatted dates and prices against the **ambient system locale** (`Intl.*` / `toLocaleString` called with `undefined`), so a VI user saw US-formatted dates/currency regardless of toggle. This task makes formatting locale-aware.
+
+Architectural choice: rather than inline `new Intl.*` in each page, added four **pure, reusable formatters to the `@expertos/ui` i18n core** (same module as `translate`/`createTranslator`, no React/DOM so directly unit-testable) — M13.3 (admin i18n) will reuse them:
+- `localeTag(locale)` — single source mapping `en→en-US`, `vi→vi-VN` (comma decimals, day-first dates).
+- `formatNumber(locale, value, options?)` — NaN/Infinity → `""` (directive §3.5).
+- `formatCurrency(locale, amount, currency)` — major-unit amount + ISO-4217 code; locale drives symbol placement/grouping (EN `$4.99` vs VI `4,99 US$`), the currency drives fraction digits (USD 2, VND 0 → `499.000 ₫`). NaN-guarded.
+- `formatDateTime(locale, value, options?)` — ISO string or `Date`; invalid → `""`; default medium date + short time.
+
+Wired the two call sites:
+1. `apps/web/app/account/page.tsx` `formatPrice` → `formatCurrency(locale, amountCents/100, currency)`; the hardcoded `/mo`·`/yr` suffix is now localized via 2 new `account` dictionary keys `perMonth`/`perYear` (EN "mo"/"yr", VI "tháng"/"năm"). Pulled `locale` from `useLocale()`.
+2. `apps/web/app/history/page.tsx` `when()` → `formatDateTime(locale, iso)` at all **3** call sites (ConversationDetail, SavedAnswers, HistoryPage list) — each component now reads `useLocale()`.
+
+**Scope notes:** RTL-safe is **N/A** — both supported locales (EN/VI) are LTR; there's no RTL language to mirror. `relativeTime` (`@expertos/ui` ChatConversationList) keeps its English relative words ("ago"/"Yesterday"/"Last week") — those are M13.2 copy-extraction scope, not M13.5 formatting; half-translating it (VI month names + English "ago") would read worse, so left untouched.
+
+**Files:**
+- `packages/ui/src/i18n.ts` — `localeTag`/`formatNumber`/`formatCurrency`/`formatDateTime`
+- `packages/ui/src/index.ts` — export the 4 formatters
+- `packages/ui/src/i18n.test.ts` — +7 (tag map, number grouping EN vs VI, NaN/∞ guard, currency by locale + VND zero-fraction, date by locale + bad-input + Date instance + custom options)
+- `apps/web/app/account/page.tsx` — `formatPrice(price, locale, t)` + `useLocale`
+- `apps/web/app/history/page.tsx` — `when(iso, locale)` + `useLocale` in 3 components
+- `apps/web/src/lib/i18n/dictionaries.ts` — +2 account keys `perMonth`/`perYear` EN+VI (lockstep)
+
+**Tests:** ui 227→234 (+7). Test total 1267→1274. web has no jest suite — page wiring covered by `tsc` + the `satisfies Messages` lockstep.
+
+**Gates:** rebuilt `@expertos/ui` (apps consume `dist/`); ui jest 234 + eslint green; web `tsc --noEmit` + `next lint --max-warnings 0` clean; admin `tsc` clean (consumes the additive ui exports, doesn't use them yet); root `lint:css` + `knip` clean (`formatNumber`/`localeTag` are used via the test imports, so not flagged dead; cleared `apps/*/.next` first). API/ai/db/shared unaffected (no backend change).
+
+**Gotcha (LEARNINGS-worthy):** `Intl.NumberFormat` currency output inserts a **no-break space** (U+00A0 / U+202F) between amount and symbol — `"4,99 US$"` typed with a regular space fails `.toBe()` against the formatter output even though they look identical. Normalize with `.replace(/\s/g, " ")` in assertions (`\s` matches both no-break variants).
+
+**Notes for next iteration:** The only remaining M13 i18n task is **M13.3 (admin portal)** — needs its own `LocaleProvider`/dictionaries on the `@expertos/ui` core + a locale toggle in `AdminFrame`; ~5.3K LOC across 26 pages (large). It can reuse the M13.5 formatters for its date/currency cells.

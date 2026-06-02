@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Button, Card, Field, Input } from "@expertos/ui";
+import { Badge, Button, Card, Field, formatDateTime, Input, type Locale } from "@expertos/ui";
 import type {
   ConversationDetailDto,
   ConversationSearchResultDto,
@@ -25,9 +25,9 @@ import {
 /** How many list/search rows to fetch per page. */
 const PAGE = 20;
 
-/** Formats an ISO-8601 timestamp for display. */
-function when(iso: string): string {
-  return new Date(iso).toLocaleString();
+/** Formats an ISO-8601 timestamp for display in the active locale (M13.5). */
+function when(iso: string, locale: Locale): string {
+  return formatDateTime(locale, iso);
 }
 
 /** A conversation's title, falling back to a (localized) placeholder for the rare untitled row. */
@@ -129,7 +129,7 @@ function ConversationDetail({
           </>
         )}
       </div>
-      <span className="muted">{t("lastActivity", { when: when(detail.updatedAt) })}</span>
+      <span className="muted">{t("lastActivity", { when: when(detail.updatedAt, locale) })}</span>
       {error && <Badge tone="red">{error}</Badge>}
 
       <div>
@@ -176,6 +176,7 @@ function ConversationDetail({
 function SavedAnswers({ onOpen }: { onOpen: (conversationId: string) => void }) {
   const { getIdToken } = useAuth();
   const t = useT("history");
+  const { locale } = useLocale();
   const [items, setItems] = useState<SavedAnswerDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -226,7 +227,7 @@ function SavedAnswers({ onOpen }: { onOpen: (conversationId: string) => void }) 
             {t("openConversation")}
           </Button>
           {item.note && <span className="muted">{item.note}</span>}
-          <span className="muted">{when(item.createdAt)}</span>
+          <span className="muted">{when(item.createdAt, locale)}</span>
           <Button variant="subtle" size="sm" onClick={() => void remove(item.id)}>
             {t("remove")}
           </Button>
@@ -239,6 +240,7 @@ function SavedAnswers({ onOpen }: { onOpen: (conversationId: string) => void }) 
 export default function HistoryPage() {
   const { user, getIdToken } = useAuth();
   const t = useT("history");
+  const { locale } = useLocale();
   const [conversations, setConversations] = useState<ConversationSummaryDto[]>([]);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -404,7 +406,7 @@ export default function HistoryPage() {
               <Button variant="ghost" size="sm" onClick={() => void open(c.id)}>
                 {titleOf(c, t("untitled"))}
               </Button>
-              <span className="muted">{when(c.updatedAt)}</span>
+              <span className="muted">{when(c.updatedAt, locale)}</span>
             </div>
           ))}
           {hasMore && (

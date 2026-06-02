@@ -66,6 +66,61 @@ export function createTranslator(
   return (key, params) => translate(messages, `${prefix}${key}`, params);
 }
 
+/**
+ * Map a {@link Locale} to the BCP-47 tag the `Intl.*` formatters expect (M13.5). Centralizing this
+ * keeps every locale-aware formatter — currency, number, date — anchored to the same regional
+ * conventions (VI → `vi-VN`: comma decimals, day-first dates) instead of the ambient system locale.
+ */
+export function localeTag(locale: Locale): string {
+  return locale === "vi" ? "vi-VN" : "en-US";
+}
+
+/**
+ * Locale-aware number formatting (M13.5). NaN/Infinity yield an empty string rather than a
+ * literal "NaN" (directive §3.5 — guard before formatting).
+ */
+export function formatNumber(
+  locale: Locale,
+  value: number,
+  options?: Intl.NumberFormatOptions,
+): string {
+  if (!Number.isFinite(value)) return "";
+  return new Intl.NumberFormat(localeTag(locale), options).format(value);
+}
+
+/**
+ * Locale-aware currency formatting (M13.5): `amount` is a major-unit value (e.g. dollars, not
+ * cents — the caller divides), `currency` an ISO-4217 code (case-insensitive). The active locale
+ * drives symbol placement and digit grouping (EN "$4.99" vs VI "4,99 US$"); the currency's own
+ * conventions drive fraction digits (USD 2, VND 0), so a VND price renders as "499.000 ₫".
+ */
+export function formatCurrency(
+  locale: Locale,
+  amount: number,
+  currency: string,
+): string {
+  if (!Number.isFinite(amount)) return "";
+  return new Intl.NumberFormat(localeTag(locale), {
+    style: "currency",
+    currency: currency.toUpperCase(),
+  }).format(amount);
+}
+
+/**
+ * Locale-aware date+time formatting (M13.5). Accepts an ISO-8601 string or a `Date`; an
+ * unparseable/invalid date yields an empty string (directive §3.5). Defaults to a medium date +
+ * short time, so EN reads "Jun 2, 2026, 3:04 PM" and VI reads "15:04 2 thg 6, 2026".
+ */
+export function formatDateTime(
+  locale: Locale,
+  value: string | Date,
+  options: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeStyle: "short" },
+): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Intl.DateTimeFormat(localeTag(locale), options).format(date);
+}
+
 /** Walk a dot-path to its node (a leaf string, a branch, or undefined if absent). */
 function lookup(messages: Messages, key: string): string | Messages | undefined {
   let node: string | Messages | undefined = messages;

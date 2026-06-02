@@ -115,5 +115,9 @@ export {
   isLocale,
   translate,
   createTranslator,
+  localeTag,
+  formatNumber,
+  formatCurrency,
+  formatDateTime,
 } from "./i18n";
 export type { Locale, Messages, TranslateParams, Translator } from "./i18n";

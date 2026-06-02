@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Button, Card, UsageMeter } from "@expertos/ui";
+import { Badge, Button, Card, formatCurrency, UsageMeter, type Locale, type Translator } from "@expertos/ui";
 import type {
   AvailablePlansDto,
   EntitlementsDto,
@@ -9,7 +9,7 @@ import type {
   PlanPriceDto,
 } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
-import { useT } from "../../src/lib/i18n";
+import { useLocale, useT } from "../../src/lib/i18n";
 import {
   fetchEntitlements,
   fetchUpgradePlans,
@@ -17,13 +17,14 @@ import {
   startCheckout,
 } from "../../src/lib/account-client";
 
-/** Formats a `plan_prices` amount (cents) as a localized price, e.g. `$15.00/mo`. */
-function formatPrice({ amountCents, currency, interval }: PlanPriceDto): string {
-  const amount = new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency.toUpperCase(),
-  }).format(amountCents / 100);
-  return `${amount}/${interval === "month" ? "mo" : "yr"}`;
+/** Formats a `plan_prices` amount (cents) as a locale-aware price, e.g. EN `$15.00/mo` / VI `15,00 US$/tháng`. */
+function formatPrice(
+  { amountCents, currency, interval }: PlanPriceDto,
+  locale: Locale,
+  t: Translator,
+): string {
+  const amount = formatCurrency(locale, amountCents / 100, currency);
+  return `${amount}/${interval === "month" ? t("perMonth") : t("perYear")}`;
 }
 
 /** One metered feature rendered as a quota meter (M6.3 transparent usage indicator). */
@@ -68,6 +69,7 @@ function BooleanFeature({ feature }: { feature: EntitlementView }) {
 export default function AccountPage() {
   const { user, getIdToken } = useAuth();
   const t = useT("account");
+  const { locale } = useLocale();
   const [data, setData] = useState<EntitlementsDto | null>(null);
   const [plans, setPlans] = useState<AvailablePlansDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -187,7 +189,7 @@ export default function AccountPage() {
                           )
                         }
                       >
-                        {t("upgradeTo", { name: plan.name, price: formatPrice(price) })}
+                        {t("upgradeTo", { name: plan.name, price: formatPrice(price, locale, t) })}
                       </Button>
                     ))}
                   </div>

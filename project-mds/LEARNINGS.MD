@@ -198,3 +198,15 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - `document.status` is therefore a denormalized "where is the latest work" pointer for the board/analytics, distinct from the per-version lifecycle. Any new transition must keep it in sync.
 
 **Rule:** When a state machine denormalizes the same status onto a parent row that the UI/analytics read from, every transition path (not just the create/publish ones) must update both rows — and confirm which row the read paths (retrieval vs. board) actually key off before assuming a parent-status change is harmless.
+
+---
+
+## 17. `Intl.NumberFormat` currency output uses a no-break space — exact `.toBe()` assertions with a normal space fail invisibly
+
+**Context:** M13.5 (locale-aware formatting) — a test asserting `formatCurrency("vi", 4.99, "USD")` equalled `"4,99 US$"` failed with `Expected: "4,99 US$"` / `Received: "4,99 US$"` — visually identical.
+
+- `Intl.NumberFormat(..., { style: "currency" })` separates the amount from the symbol with a **no-break space** — U+00A0 (or the narrow no-break U+202F in some locales/ICU builds), not an ASCII U+0020. A test literal typed with a regular space therefore never `.toBe()`-matches the formatter output, and the jest diff prints both sides looking the same because the terminal renders all three space code points identically.
+- The same applies to `toLocaleString`/`Intl.DateTimeFormat` outputs that contain spaces. The exact code point can also shift between Node/ICU versions, so hardcoding the no-break char in the expected string is brittle.
+- Fix: normalize whitespace before comparing — `s.replace(/\s/g, " ")`. JS `\s` matches both U+00A0 and U+202F (and other Unicode spaces), so this collapses any separator the formatter chose to a plain space. Alternatively assert with `.toContain()` on the digits + symbol substrings.
+
+**Rule:** Never assert `Intl.*`-formatted strings against a literal containing spaces with `.toBe()` — the separator is a no-break space (U+00A0/U+202F). Normalize with `.replace(/\s/g, " ")` (or use substring assertions) so the test is stable across whitespace variants and ICU versions.
