@@ -311,7 +311,7 @@ E2E tests should create all their own data, not depend on existing state. Clean 
 
 ### 3.4.1 Sandbox E2E Constraint: Write Specs, Do NOT Run the Live Stack
 
-The Docker sandbox VM has only 4GB RAM. Running the full E2E stack (PostgreSQL + Firebase Auth emulator + NestJS API + two Next.js dev servers + Playwright/Chromium + Claude CLI) exceeds this limit and causes OOM kills (Claude exits with code 143 mid-iteration, losing uncommitted work).
+The Docker sandbox VM has only 4GB RAM and its network policy blocks `host.docker.internal` access to the host's dev servers. Running the full E2E stack inside the sandbox (PostgreSQL + Firebase Auth emulator + NestJS API + two Next.js dev servers + Playwright/Chromium + Claude CLI) causes OOM kills (Claude exits with code 143 mid-iteration, losing uncommitted work).
 
 **Rule:** When working on E2E specs (`e2e/`) inside the sandbox:
 1. **Write** the spec files and seed data in `global-setup.ts`
