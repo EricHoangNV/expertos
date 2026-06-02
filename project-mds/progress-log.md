@@ -4400,3 +4400,25 @@ Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:
 
 **Notes for next iteration:**
 - M15.2.5 (CRUD page tests) next: entitlement matrix staged-publish/discard, access-control add/remove/role-toggle + self-lockout guard, user management role change + deletion request. Same double-load → `waitFor` (LEARNINGS #19).
+
+## M15.2.5 — Admin CRUD page jest suites (26 tests)
+
+**Date:** 2026-06-02
+
+Closed M15.2.5: jest coverage for the three admin CRUD pages flagged by the milestone — the plan-entitlement matrix editor (M13.4), the access-control whitelist (M14), and user management (M8.4). +26 tests → admin 71, repo total **1447** (shared 190, ui 234, db 9, ai 161, api 686, web 96, admin 71).
+
+**New test files**
+- `apps/admin/app/entitlements/page.test.tsx` (9) — matrix render (plan column headers + real pricing `$0`/`$4.99/mo`/`$9.99/mo · $69.99/yr`, premium-column emphasis, feature rows + metered/boolean type badges, disabled-boolean em-dash vs metered hard-limit input); the staged-edit model (toggle a boolean cell → "Unsaved" badge + "Publish 1 change"; publish → per-cell PATCH `/admin/entitlements/:planId/features/:featureId` with `{enabled,limit:null,softLimit:null,window:null}` + "Published 1 change." note; discard → revert); metered non-integer-limit validation blocks publish (no PATCH) + surfaces the limits error; load-error + per-cell save-error (API `{message}` inline).
+- `apps/admin/app/access-control/page.test.tsx` (9) — whitelist table (localized role badge "Admin", adder email, demote action) + empty state; add form → POST `{email,role:"expert"}` + "Added …" notice (lowercased display) + blank-email client rejection (no POST); role toggle → PATCH `{role:"admin"}` + "… is now Admin." notice; remove → DELETE behind a confirmed `window.confirm` (+ cancel path makes no DELETE); **self-lockout** = server 400 surfaced as the error badge; load error.
+- `apps/admin/app/users/page.test.tsx` (8) — list row (role badge, "free" plan fallback, Manage link) + empty state; detail render (heading, activity stat "3", no-subscription note); role change → PATCH `/admin/users/:id/role` `{role:"expert"}` + "Role updated." + save-disabled-until-dirty; **data deletion** — record request → POST `/deletion-request` + "Deletion request recorded.", and execute → two-step confirm → DELETE `/admin/users/:id` → `router.push("/users")`; load error.
+
+**Harness changes**
+- Added `useParams` to `apps/admin/__mocks__/next/navigation.ts` + a controllable `getMockParams`/`setMockParams` in `test/router-state.ts` (re-exported from `test/render`), since the user-detail page reads `useParams<{id}>()`. Reset between tests.
+
+**Bug/flakiness fixed — LEARNINGS #20 (quiescence gate)**
+- The matrix toggle tests flaked ~30%: a staged cell edit was wiped by a trailing re-seed. Root cause: these data pages re-load **3×** on mount in the harness — `renderWithProviders` sets the mock `currentUser` before render, so the auth context's `getIdToken` (which reads `getFirebaseAuth().currentUser`) already returns a token on the **mount** load, then again on the `user` set, then again when `POST /me/admin-session` resolves the `role`. Each `load()` calls `seedDrafts()`, overwriting staged edits. A fixed `calls>=2` gate is unreliable (the role-load can land late). Fix: gate interactions on **quiescence** — `waitFor` until the page's matrix-load count is stable across two consecutive polls with the anchor row present — before the first `fireEvent`. Stable over 6 consecutive runs of each file.
+
+**Gates:** admin `tsc` + `next lint` clean; admin jest 71/71; root `knip` + `lint:css` clean (`rm -rf apps/*/.next` before knip). No source changes — tests + harness mock additions only.
+
+**Notes for next iteration:**
+- M15.2.6 (concierge review queue) next: two-pane layout, Open/Mine/Done filter bucketing, verdict-card selection, refined-answer submit → respond, escalate → escalate. M15.2.7 = admin i18n (`useStatusLabel` 43 tokens + EN/VI dictionary lockstep across 24 namespaces). Use `waitFor` (LEARNINGS #19); gate any staged-edit interactions on quiescence (LEARNINGS #20).

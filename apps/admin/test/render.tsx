@@ -89,4 +89,4 @@ export function renderWithProviders(
 export * from "@testing-library/react";
 export { makeMockUser, setMockUser } from "./auth-state";
 export { mockApi, apiCalls, resetApiMocks } from "./api-mock";
-export { getMockRouter, setMockPathname } from "./router-state";
+export { getMockRouter, setMockPathname, setMockParams } from "./router-state";

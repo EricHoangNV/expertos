@@ -13,6 +13,7 @@ export interface MockRouter {
 
 let router: MockRouter = makeRouter();
 let pathname = "/";
+let params: Record<string, string> = {};
 
 function makeRouter(): MockRouter {
   return {
@@ -37,8 +38,18 @@ export function setMockPathname(next: string): void {
   pathname = next;
 }
 
-/** Reset the router spies + pathname between tests (called from `jest.setup`). */
+/** The dynamic route params a page reads via `useParams()` (e.g. `{ id }` for `/users/[id]`). */
+export function getMockParams(): Record<string, string> {
+  return params;
+}
+
+export function setMockParams(next: Record<string, string>): void {
+  params = next;
+}
+
+/** Reset the router spies + pathname + params between tests (called from `jest.setup`). */
 export function resetRouterState(): void {
   router = makeRouter();
   pathname = "/";
+  params = {};
 }

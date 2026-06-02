@@ -1,6 +1,7 @@
 // Manual jest mock for `next/navigation` (auto-applied to every admin test, M15.2.1).
 // Delegates to the test-controllable `test/router-state` singleton.
 import {
+  getMockParams,
   getMockPathname,
   getMockRouter,
   type MockRouter,
@@ -12,6 +13,10 @@ export function useRouter(): MockRouter {
 
 export function usePathname(): string {
   return getMockPathname();
+}
+
+export function useParams<T extends Record<string, string> = Record<string, string>>(): T {
+  return getMockParams() as T;
 }
 
 export function useSearchParams(): URLSearchParams {
