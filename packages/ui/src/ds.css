@@ -511,3 +511,20 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
   white-space: pre-wrap; overflow-wrap: anywhere;
   line-height: 1.5;
 }
+
+/* The assistant turn (M12.4.2): a header row — expert avatar + bold author name +
+   "AI rendition" disclosure + mono source label + right-aligned "Verified" badge —
+   over the answer body (prose, citations, action bar fill `.msg-assistant-body`). */
+.msg-assistant { display: flex; flex-direction: column; gap: var(--s3); }
+.msg-assistant .msg-assistant-head {
+  display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+}
+.msg-assistant .msg-assistant-avatar { width: 32px; height: 32px; font-size: 12px; }
+.msg-assistant .msg-assistant-name {
+  font-family: var(--font-display); font-weight: 700; color: var(--ink-900);
+}
+.msg-assistant .msg-assistant-source {
+  font-family: var(--font-mono); font-size: 12px;
+}
+.msg-assistant .msg-assistant-verified { margin-left: auto; }
+.msg-assistant .msg-assistant-body { display: flex; flex-direction: column; gap: var(--s3); }

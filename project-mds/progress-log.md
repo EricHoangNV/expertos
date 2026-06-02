@@ -2905,3 +2905,34 @@ Built the dark-rail conversation search input and wired it to the existing M3.3 
 - `apps/web/app/chat/page.tsx` — message-map branch for user turns.
 
 **Gates:** ui tsc ✅ / jest 82 pass 100% cov ✅ / stylelint ✅ / eslint ✅; web tsc ✅ / next lint ✅; knip ✅. (ui `dist/` rebuilt via `tsc -p tsconfig.build.json` before web typecheck — web resolves `@expertos/ui` from dist.)
+
+## M12.4.2 — Assistant message (`.msg-assistant` header)
+**Date:** 2026-06-02
+**Ref:** PRD §"M12 — Frontend UI Overhaul" / requirements/ui-reference-spec.md §3 (Assistant message)
+
+**What was done:**
+- New `packages/ui/src/ChatAssistantMessage.tsx` — `.msg-assistant` container: a header row (`.msg-assistant-head`) with an expert-toned `.avatar` (initials), a bold `.msg-assistant-name`, a `.badge-ink` "AI rendition" disclosure (M2.2), a mono `.muted` source-provenance label, and a right-aligned `.badge-green` "Verified" badge; over a `.msg-assistant-body` children slot for the prose/citations/action-bar. Presentational, no hooks.
+- ds.css "assistant turn" block after the M12.4.1 user-bubble block: `.msg-assistant` flex column, `.msg-assistant-head` (wrap row), `.msg-assistant-avatar` (32px), `.msg-assistant-name` (display/700), `.msg-assistant-source` (mono 12px), `.msg-assistant-verified` (margin-left:auto → right-aligned), `.msg-assistant-body`. Tokens only.
+- Exported from `packages/ui/src/index.ts`; rebuilt `dist/` so web resolves the new export.
+- Wired into `apps/web/app/chat/page.tsx`: the assistant branch now renders `<Card><ChatAssistantMessage …>{AnswerView + state cards + feedback}</ChatAssistantMessage></Card>`, replacing the old green "Assistant" + amber rendition badges. New `answerSourceLabel(citations)` derives the source label from citation kinds (knowledge / upload / both); `verified` = `done && citations>0 && !insufficientKnowledge`; the redundant `m.role === "assistant" &&` guards inside the (already-assistant) branch were dropped.
+- Removed the now-dead `renditionLabel` export from `apps/web/src/lib/chat-client.ts` (its "AI rendition of [Expert]" string now lives as the badge's aria-label inside the component).
+- +7 ui tests in `primitives.test.ts` (container/avatar/name, body children, rendition badge + aria-disclosure, omitted-by-default, source label, verified-only-when-set, neutral fallback). ui 82→89.
+
+**Key decisions:**
+- Kept the M2.2 disclosure verbatim ("AI rendition of [Expert]") as the badge's `aria-label` while the visible badge reads the compact "AI rendition" + the author name — satisfies the disclosure requirement and the mockup at once.
+- VERIFIED uses the established `.badge .dot` pattern (no checkmark glyph) to honor the anti-slop "no emoji/rendered-symbol" rule from M11.5; right-aligned via `margin-left:auto`.
+- Component owns only the header; AnswerView (M4.2) and the state cards remain `children`, so M12.4.3/4 can refine the body without touching this shell. Source label and verified are computed on the page (it has the citation/done state), keeping the component pure.
+
+**Files changed:**
+- `packages/ui/src/ChatAssistantMessage.tsx` — new component.
+- `packages/ui/src/ds.css` — `.msg-assistant*` block.
+- `packages/ui/src/index.ts` — export.
+- `packages/ui/src/primitives.test.ts` — +7 tests.
+- `apps/web/app/chat/page.tsx` — wire `ChatAssistantMessage`, add `answerSourceLabel`, drop `renditionLabel` import.
+- `apps/web/src/lib/chat-client.ts` — remove dead `renditionLabel`.
+
+**Gates:** ui tsc ✅ / jest 89 pass ✅ / eslint ✅ / stylelint ✅; web tsc ✅ / next lint ✅; knip ✅. (ui `dist/` rebuilt before web typecheck — web resolves `@expertos/ui` from dist.)
+
+**Notes for next iteration:**
+- M12.4.3 (answer prose + inline citations) is largely already satisfied — `AnswerView` (M4.2) renders inside the `ChatAssistantMessage` body. M12.4.4 should refactor `AnswerFeedback` + `SaveAnswer` + a "View sources (N)" toggle into a horizontal `.btn-ghost` action bar.
+- The sources drawer currently renders inside `AnswerView`; M12.5 (sources rail) will likely move it to the right pane — coordinate the `verified`/source-label signals then.

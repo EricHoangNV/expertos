@@ -12,6 +12,7 @@ import { ChatSidebar } from "./ChatSidebar";
 import { ChatVoicePicker, type ChatVoiceOption } from "./ChatVoicePicker";
 import { ChatUserIdentity } from "./ChatUserIdentity";
 import { ChatUserMessage } from "./ChatUserMessage";
+import { ChatAssistantMessage } from "./ChatAssistantMessage";
 import { ChatTopbar } from "./ChatTopbar";
 import {
   AVATAR_TONES,
@@ -672,6 +673,75 @@ describe("ChatUserMessage — user bubble (M12.4.1)", () => {
   it("preserves the raw text (newlines kept by the CSS, not stripped here)", () => {
     const el = ChatUserMessage({ content: "line one\nline two" }) as ReactElement;
     expect(kids(bubble(el))).toBe("line one\nline two");
+  });
+});
+
+describe("ChatAssistantMessage — assistant header + body (M12.4.2)", () => {
+  /** Destructure the message into its header and body regions. */
+  const regions = (el: ReactElement) => {
+    const [head, body] = kids(el) as [ReactElement, ReactElement];
+    return { head, body };
+  };
+  /** The header children, with omitted (false) slots filtered out. */
+  const headParts = (el: ReactElement): ReactElement[] =>
+    (kids(regions(el).head) as unknown[]).filter((c): c is ReactElement => Boolean(c));
+
+  it("renders the `.msg-assistant` container with an expert-toned avatar and bold name", () => {
+    const el = ChatAssistantMessage({ expertName: "John-Ngo" }) as ReactElement;
+    expect(cls(el)).toBe("msg-assistant");
+    const [avatar, name] = headParts(el);
+    expect(cls(avatar)).toMatch(/^avatar msg-assistant-avatar tone-/);
+    expect(kids(avatar)).toBe("JN");
+    expect(cls(name)).toBe("msg-assistant-name");
+    expect(kids(name)).toBe("John-Ngo");
+  });
+
+  it("renders children in the `.msg-assistant-body`", () => {
+    const el = ChatAssistantMessage({ expertName: "Jo", children: "answer prose" }) as ReactElement;
+    const { body } = regions(el);
+    expect(cls(body)).toBe("msg-assistant-body");
+    expect(kids(body)).toBe("answer prose");
+  });
+
+  it("shows the `.badge-ink` 'AI rendition' disclosure with the M2.2 attribution aria-label", () => {
+    const el = ChatAssistantMessage({ expertName: "John-Ngo", aiRendition: true }) as ReactElement;
+    const rendition = headParts(el).find((c) => /badge-ink/.test(String(cls(c))));
+    expect(rendition).toBeDefined();
+    expect(kids(rendition as ReactElement)).toBe("AI rendition");
+    expect((rendition as ReactElement).props as { "aria-label": string }).toMatchObject({
+      "aria-label": "AI rendition of John-Ngo",
+    });
+  });
+
+  it("omits the rendition badge by default", () => {
+    const el = ChatAssistantMessage({ expertName: "Jo" }) as ReactElement;
+    expect(headParts(el).some((c) => /badge-ink/.test(String(cls(c))))).toBe(false);
+  });
+
+  it("renders a mono source label when provided", () => {
+    const el = ChatAssistantMessage({
+      expertName: "Jo",
+      sourceLabel: "grounded in published knowledge + your upload",
+    }) as ReactElement;
+    const source = headParts(el).find((c) => /msg-assistant-source/.test(String(cls(c))));
+    expect(cls(source as ReactElement)).toBe("msg-assistant-source muted");
+    expect(kids(source as ReactElement)).toBe("grounded in published knowledge + your upload");
+  });
+
+  it("renders the right-aligned green 'Verified' badge only when verified", () => {
+    const off = ChatAssistantMessage({ expertName: "Jo" }) as ReactElement;
+    expect(headParts(off).some((c) => /msg-assistant-verified/.test(String(cls(c))))).toBe(false);
+    const on = ChatAssistantMessage({ expertName: "Jo", verified: true }) as ReactElement;
+    const badge = headParts(on).find((c) => /msg-assistant-verified/.test(String(cls(c))));
+    expect(cls(badge as ReactElement)).toBe("badge badge-green msg-assistant-verified");
+  });
+
+  it("falls back to a neutral 'Assistant' author with no tone for an expert-less answer", () => {
+    const el = ChatAssistantMessage({}) as ReactElement;
+    const [avatar, name] = headParts(el);
+    expect(cls(avatar)).toBe("avatar msg-assistant-avatar");
+    expect(kids(avatar)).toBe("A");
+    expect(kids(name)).toBe("Assistant");
   });
 });
 

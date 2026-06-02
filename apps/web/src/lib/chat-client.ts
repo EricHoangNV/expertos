@@ -13,16 +13,6 @@ export interface ExpertVoice {
 }
 
 /**
- * The visible "AI rendition of [Expert]" disclosure (M2.2). Mirrors `buildAttribution` in
- * `@expertos/ai`, which is the canonical source — kept as a one-liner here because that package
- * is CommonJS and importing it would pull the whole module (incl. eval harnesses) into the
- * client bundle. Consolidate against the canonical helper if the API ever returns the label.
- */
-export function renditionLabel(expertName: string): string {
-  return `AI rendition of ${expertName}`;
-}
-
-/**
  * Base URL of the API. Defaults to the local dev port; production passes `NEXT_PUBLIC_API_URL`
  * as a build arg (the value is public — it only identifies the endpoint).
  */

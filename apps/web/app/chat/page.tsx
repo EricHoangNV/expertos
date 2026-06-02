@@ -5,6 +5,7 @@ import {
   Badge,
   Button,
   Card,
+  ChatAssistantMessage,
   ChatConversationList,
   type ChatConversationItem,
   ChatLayout,
@@ -37,7 +38,6 @@ import { useAuth } from "../../src/lib/auth-context";
 import { AnswerView } from "../../src/components/answer-view";
 import {
   fetchExperts,
-  renditionLabel,
   respondToRecommendation,
   streamChat,
   submitFeedback,
@@ -87,6 +87,20 @@ function HighStakesNotice() {
       <p className="muted">{HIGH_STAKES_DISCLAIMER}</p>
     </Card>
   );
+}
+
+/**
+ * The mono source-provenance label under the assistant header (M12.4.2) — derived from the kinds of
+ * the resolved citations so the user sees what grounded the answer. Returns undefined when there are
+ * no citations yet (mid-stream or insufficient knowledge), so the label only appears once grounded.
+ */
+function answerSourceLabel(citations: ChatCitationDto[]): string | undefined {
+  if (citations.length === 0) return undefined;
+  const hasKnowledge = citations.some((c) => c.kind === "knowledge");
+  const hasUpload = citations.some((c) => c.kind === "upload");
+  if (hasKnowledge && hasUpload) return "grounded in published knowledge + your upload";
+  if (hasUpload) return "grounded in your upload";
+  return "grounded in published knowledge";
 }
 
 /** Replaces the last message in the list via `fn` (immutably). */
@@ -831,36 +845,42 @@ export default function ChatPage() {
               <ChatUserMessage key={i} content={m.content} />
             ) : (
             <Card key={i} className="card-pad">
-              <Badge tone="green">Assistant</Badge>
-              {m.expertName && <Badge tone="amber">{renditionLabel(m.expertName)}</Badge>}
-              <AssistantAnswer message={m} />
-              {m.role === "assistant" && m.done && m.degraded && (
-                <Badge tone="info">
-                  Fair-use mode — answered with a lighter model while you’re over this period’s soft
-                  limit.
-                </Badge>
-              )}
-              {m.role === "assistant" && m.done && m.insufficientKnowledge && (
-                <Card className="card-pad">
-                  <Badge tone="amber">Limited knowledge</Badge>
-                  <p>
-                    I couldn’t find enough in the expert’s knowledge base to answer this confidently.
-                    Try rephrasing your question, or book a consultation for a direct answer.
-                  </p>
-                </Card>
-              )}
-              {m.role === "assistant" && m.done && m.highStakes && <HighStakesNotice />}
-              {m.role === "assistant" && m.done && m.recommendation && (
-                <ConsultationPrompt recommendation={m.recommendation} />
-              )}
-              {m.role === "assistant" && m.done && m.messageId && (
-                <>
-                  <AnswerFeedback messageId={m.messageId} />
-                  <div className="row gap2 wrap">
-                    <SaveAnswer messageId={m.messageId} />
-                  </div>
-                </>
-              )}
+              <ChatAssistantMessage
+                expertName={m.expertName}
+                aiRendition={Boolean(m.expertName)}
+                sourceLabel={m.done ? answerSourceLabel(m.citations) : undefined}
+                verified={m.done && m.citations.length > 0 && !m.insufficientKnowledge}
+              >
+                <AssistantAnswer message={m} />
+                {m.done && m.degraded && (
+                  <Badge tone="info">
+                    Fair-use mode — answered with a lighter model while you’re over this period’s soft
+                    limit.
+                  </Badge>
+                )}
+                {m.done && m.insufficientKnowledge && (
+                  <Card className="card-pad">
+                    <Badge tone="amber">Limited knowledge</Badge>
+                    <p>
+                      I couldn’t find enough in the expert’s knowledge base to answer this
+                      confidently. Try rephrasing your question, or book a consultation for a direct
+                      answer.
+                    </p>
+                  </Card>
+                )}
+                {m.done && m.highStakes && <HighStakesNotice />}
+                {m.done && m.recommendation && (
+                  <ConsultationPrompt recommendation={m.recommendation} />
+                )}
+                {m.done && m.messageId && (
+                  <>
+                    <AnswerFeedback messageId={m.messageId} />
+                    <div className="row gap2 wrap">
+                      <SaveAnswer messageId={m.messageId} />
+                    </div>
+                  </>
+                )}
+              </ChatAssistantMessage>
             </Card>
             ),
           )}

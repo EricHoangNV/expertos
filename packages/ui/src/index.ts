@@ -38,6 +38,8 @@ export { ChatUserIdentity } from "./ChatUserIdentity";
 export type { ChatUserIdentityProps, ChatLanguage } from "./ChatUserIdentity";
 export { ChatUserMessage } from "./ChatUserMessage";
 export type { ChatUserMessageProps, ChatUserMessageAlign } from "./ChatUserMessage";
+export { ChatAssistantMessage } from "./ChatAssistantMessage";
+export type { ChatAssistantMessageProps } from "./ChatAssistantMessage";
 export {
   ChatConversationList,
   AVATAR_TONES,
