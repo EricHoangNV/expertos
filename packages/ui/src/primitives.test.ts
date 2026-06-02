@@ -17,6 +17,7 @@ import { ChatAnswerActions } from "./ChatAnswerActions";
 import { ChatConsultationCard } from "./ChatConsultationCard";
 import { ChatStateNotice } from "./ChatStateNotice";
 import { ChatInputBar } from "./ChatInputBar";
+import { ChatUploadPopover, UPLOAD_FILE_TYPES } from "./ChatUploadPopover";
 import { SourcesRail } from "./SourcesRail";
 import { SourcesRailHeader } from "./SourcesRailHeader";
 import { SourceCard } from "./SourceCard";
@@ -1466,6 +1467,79 @@ describe("ChatInputBar — sticky bottom composer (M12.6.1)", () => {
       children: "popover",
     }) as ReactElement;
     expect(barParts(el)[0]).toBe("popover");
+  });
+});
+
+describe("ChatUploadPopover — upload attachment popover (M12.6.2)", () => {
+  const noop = () => {};
+  /** [head, types, children] children of `.upload-popover`. */
+  const parts = (el: ReactElement): unknown[] => kids(el) as unknown[];
+
+  it("renders the `.upload-popover` dialog with a header + file-type row", () => {
+    const el = ChatUploadPopover({
+      onClose: noop,
+      modeLabel: "Temporary · not indexed",
+    }) as ReactElement;
+    expect(cls(el)).toBe("upload-popover");
+    expect((el.props as { role?: unknown }).role).toBe("dialog");
+    const [head, types] = parts(el);
+    expect(cls(head as ReactElement)).toBe("upload-popover-head");
+    expect(cls(types as ReactElement)).toBe("upload-popover-types");
+  });
+
+  it("shows the retention-mode label as a `.badge-info` pill", () => {
+    const types = parts(
+      ChatUploadPopover({ onClose: noop, modeLabel: "Temporary · not indexed" }) as ReactElement,
+    )[1] as ReactElement;
+    const [badge] = kids(types) as unknown[];
+    expect(cls(badge as ReactElement)).toBe("badge badge-info");
+    expect(kids(badge as ReactElement)).toBe("Temporary · not indexed");
+  });
+
+  it("renders the accepted file-type `.chip` pills (default = M5 document allowlist)", () => {
+    const types = parts(
+      ChatUploadPopover({ onClose: noop, modeLabel: "x" }) as ReactElement,
+    )[1] as ReactElement;
+    const [, chips] = kids(types) as unknown[];
+    const chipEls = chips as ReactElement[];
+    expect(chipEls.map((c) => kids(c))).toEqual([...UPLOAD_FILE_TYPES]);
+    chipEls.forEach((c) => expect(cls(c)).toBe("chip"));
+  });
+
+  it("honors a custom file-type list", () => {
+    const types = parts(
+      ChatUploadPopover({ onClose: noop, modeLabel: "x", fileTypes: ["PDF"] }) as ReactElement,
+    )[1] as ReactElement;
+    const [, chips] = kids(types) as unknown[];
+    expect((chips as ReactElement[]).map((c) => kids(c))).toEqual(["PDF"]);
+  });
+
+  it("fires onClose from the close button", () => {
+    const onClose = jest.fn();
+    const head = parts(
+      ChatUploadPopover({ onClose, modeLabel: "x" }) as ReactElement,
+    )[0] as ReactElement;
+    const [, close] = kids(head) as unknown[];
+    ((close as ReactElement).props as { onClick: () => void }).onClick();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the children slot (the upload controls) after the chips", () => {
+    const el = ChatUploadPopover({
+      onClose: noop,
+      modeLabel: "x",
+      children: "controls",
+    }) as ReactElement;
+    expect(parts(el)[2]).toBe("controls");
+  });
+
+  it("merges a caller className", () => {
+    const el = ChatUploadPopover({
+      onClose: noop,
+      modeLabel: "x",
+      className: "extra",
+    }) as ReactElement;
+    expect(cls(el)).toBe("upload-popover extra");
   });
 });
 

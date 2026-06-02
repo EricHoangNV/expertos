@@ -710,3 +710,22 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
   flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%;
 }
 .input-bar .input-bar-send .ic { width: 18px; height: 18px; }
+
+/* Upload-attachment popover (M12.6.2) — the dropdown that opens above the input
+   row from the attach button: a header (title + close), a row of accepted
+   file-type `.chip` pills with a `.badge-info` mode label, then the upload
+   controls. Mounts inside the `.input-bar` `children` slot so it stays anchored. */
+.upload-popover {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-md);
+  padding: var(--s4);
+  display: flex; flex-direction: column; gap: var(--s3);
+}
+.upload-popover .upload-popover-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s2);
+}
+.upload-popover .upload-popover-types {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2);
+}

@@ -50,6 +50,8 @@ export { ChatStateNotice } from "./ChatStateNotice";
 export type { ChatStateNoticeProps, ChatStateNoticeTone } from "./ChatStateNotice";
 export { ChatInputBar } from "./ChatInputBar";
 export type { ChatInputBarProps } from "./ChatInputBar";
+export { ChatUploadPopover, UPLOAD_FILE_TYPES } from "./ChatUploadPopover";
+export type { ChatUploadPopoverProps } from "./ChatUploadPopover";
 export { SourcesRail } from "./SourcesRail";
 export type { SourcesRailProps } from "./SourcesRail";
 export { SourcesRailHeader } from "./SourcesRailHeader";

@@ -17,6 +17,7 @@ import {
   ChatSidebar,
   ChatStateNotice,
   ChatTopbar,
+  ChatUploadPopover,
   ChatUsageMeter,
   ChatUserIdentity,
   type ChatLanguage,
@@ -455,8 +456,18 @@ function formatBytes(bytes: number): string {
  * (i.e. after the first message), which is surfaced as a hint. The server is the authority on
  * type/safety; a rejected upload shows the API's message verbatim. `chunkCount === 0` means the
  * file was stored but a parser for its format has not landed yet (PDF/DOCX), so it isn't searchable.
+ *
+ * Rendered inside the {@link ChatUploadPopover} (M12.6.2) that opens above the input bar from the
+ * attach button — the popover supplies the chrome (header, close, accepted file-type chips + the
+ * mode label); this owns the mode/file/upload state and the controls.
  */
-function UploadPanel({ conversationId }: { conversationId: string | undefined }) {
+function UploadPanel({
+  conversationId,
+  onClose,
+}: {
+  conversationId: string | undefined;
+  onClose: () => void;
+}) {
   const { getIdToken } = useAuth();
   const [mode, setMode] = useState<UploadMode>("temporary");
   const [busy, setBusy] = useState(false);
@@ -487,9 +498,15 @@ function UploadPanel({ conversationId }: { conversationId: string | undefined })
     [getIdToken, mode, conversationId],
   );
 
+  // The `.badge-info` mode label in the popover header (M12.6.2): a temporary upload
+  // applies to this chat only and is never indexed into the user's knowledge; a
+  // persistent upload is saved + indexed for future questions. Rendered uppercase by
+  // the `.badge` text-transform, so "Temporary · not indexed" reads "TEMPORARY · NOT INDEXED".
+  const modeLabel =
+    mode === "persistent" ? "Persistent · saved to knowledge" : "Temporary · not indexed";
+
   return (
-    <Card className="card-pad">
-      <Badge tone="info">Documents</Badge>
+    <ChatUploadPopover onClose={onClose} modeLabel={modeLabel}>
       <p className="muted">
         Add a document for this chat. Persistent files are saved to your private knowledge and used
         in future questions; temporary files apply to this conversation only and expire.
@@ -539,7 +556,7 @@ function UploadPanel({ conversationId }: { conversationId: string | undefined })
           ))}
         </div>
       )}
-    </Card>
+    </ChatUploadPopover>
   );
 }
 
@@ -566,6 +583,8 @@ export default function ChatPage() {
   const railVisible = layoutPanes(direction).rail && wideViewport;
   // The answer whose sources the slide-over drawer is showing, or null when closed.
   const [drawerCitations, setDrawerCitations] = useState<ChatCitationDto[] | null>(null);
+  // Whether the attach-document popover (M12.6.2) is open above the input bar.
+  const [attachOpen, setAttachOpen] = useState(false);
 
   // If the persistent rail comes back (widened viewport / switched to studio), close
   // the drawer so sources aren't shown twice.
@@ -1005,8 +1024,6 @@ export default function ChatPage() {
         </div>
 
         {error && <Badge tone="red">{error}</Badge>}
-
-        <UploadPanel conversationId={conversationId} />
       </main>
       <ChatInputBar
         value={draft}
@@ -1014,7 +1031,13 @@ export default function ChatPage() {
         onSend={() => void send()}
         busy={busy}
         placeholder={inputPlaceholder}
-      />
+        onAttach={() => setAttachOpen((open) => !open)}
+        attachActive={attachOpen}
+      >
+        {attachOpen && (
+          <UploadPanel conversationId={conversationId} onClose={() => setAttachOpen(false)} />
+        )}
+      </ChatInputBar>
       <SourcesDrawer
         open={drawerCitations !== null}
         onClose={() => setDrawerCitations(null)}

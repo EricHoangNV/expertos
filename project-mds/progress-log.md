@@ -3190,3 +3190,31 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 - M12.6.4: add Enter-to-send (Shift+Enter newline) + textarea auto-resize on `.input-bar-input`.
 - Visual seam: `.chat-content` is a `.card` (rounded) and the input bar is a flat full-width strip below it — acceptable for the shell; M12.9 polish can reconcile the chrome.
 - Rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing — apps consume `dist/`. `turbo`/`pnpm typecheck` SIGILLs in this sandbox; run gates per-workspace directly.
+
+## M12.6.2 — Upload attachment popover above the input bar
+**Date:** 2026-06-02
+**Ref:** PRD §"UI Reference Spec" (M12.6.2) / `requirements/ui-reference-spec.md` §5 "Input Bar"
+
+**What was done:**
+- New presentational `packages/ui/src/ChatUploadPopover.tsx` — the `.upload-popover` dropdown chrome that opens above the sticky input bar from the M12.6.1 attach button: a header ("Attach document" `.label` + a `.btn-subtle .btn-icon` close X), a row with a `.badge-info` retention-mode label and accepted-format `.chip` pills (`UPLOAD_FILE_TYPES` = XLSX/CSV/PDF/DOCX, overridable), and a `children` slot for the actual upload controls. Pure (no hooks) — invoked directly in tests.
+- ds.css `.upload-popover` / `.upload-popover-head` / `.upload-popover-types` block (tokens only: `--line`, `--r-lg`, `--surface`, `--sh-md`, `--s2/3/4`).
+- Wired into `apps/web/app/chat/page.tsx`: the existing stateful `UploadPanel` (mode select + file input + uploaded-files list) now renders **inside** `ChatUploadPopover` instead of an always-on `Card` in the scroll region. It derives the popover's mode label from its own `mode` state ("Temporary · not indexed" / "Persistent · saved to knowledge" — uppercased by the `.badge` text-transform, satisfying the spec's "TEMPORARY · NOT INDEXED"). New page `attachOpen` state toggles the popover; the panel mounts in the `ChatInputBar` `children` slot, with `onAttach`/`attachActive` driving the attach button's aria state, and an `onClose` X.
+- Removed the always-visible inline `<UploadPanel>` from `.chat-content` (it lived below the messages); uploads are now attach-button-gated per the mockup.
+- Exported `ChatUploadPopover` + `UPLOAD_FILE_TYPES` from the package index; +8 ui tests (100% coverage on the new file).
+
+**Key decisions:**
+- Made the popover **presentational chrome only** and kept all upload state (`mode`, `files`, `busy`, `error`) in the page's `UploadPanel`, mirroring the M12.5 rail/drawer split. `UploadPanel` renders the popover and passes a mode-derived label down — so the "not indexed" consequence stays truthful to the selected mode rather than hardcoded.
+- Reused the existing `UploadPanel` upload logic + `upload-client.ts` wholesale (checklist item f: reuse, don't rebuild) — only the surrounding chrome moved.
+- File-type chips default to the spec's four document types (XLSX/CSV/PDF/DOCX); the native picker still accepts the full M5 allowlist via `UPLOAD_ACCEPT` and the server remains the type authority.
+
+**Files changed:**
+- `packages/ui/src/ChatUploadPopover.tsx` — new presentational popover component + `UPLOAD_FILE_TYPES`.
+- `packages/ui/src/ds.css` — `.upload-popover*` block.
+- `packages/ui/src/index.ts` — export the component + constant.
+- `packages/ui/src/primitives.test.ts` — +8 tests (dialog/header/types structure, mode badge, default + custom chips, close, children slot, className merge).
+- `apps/web/app/chat/page.tsx` — `UploadPanel` renders inside the popover with `onClose` + mode label; `attachOpen` state; popover mounted in `ChatInputBar` `children`; removed inline panel from `.chat-content`.
+- `project-mds/PRD.md`, `project-mds/progress-state.md`, `project-mds/progress-log.md` — manifest/state/log.
+
+**Notes for next iteration:**
+- M12.6.3 (helper text: Enter/Shift+Enter hints left + "N questions left this month" right) and M12.6.4 (Enter-to-send unless Shift; textarea auto-resize) are the remaining input-bar legs — both land in `ChatInputBar` (the `children` slot already hosts a helper row; `questionUsage` from `/me/entitlements` is already loaded in the page for the right-side count).
+- Remember to rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing it — `apps/web` consumes `dist/`, so typecheck fails against new exports until the build runs (hit this again here).
