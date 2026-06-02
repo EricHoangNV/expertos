@@ -266,6 +266,23 @@ describe("AdminHomePage — Questions Answered card", () => {
       expect(screen.getByText("No answers in this window yet.")).toBeInTheDocument(),
     );
   });
+
+  it("renders one trend column per day in the window, zero-filling empty days", async () => {
+    mockDashboard({
+      questions: questions({
+        windowDays: 7,
+        since: "2026-05-27T00:00:00.000Z",
+        total: 3,
+        breakdown: { grounded: 2, lowConfidence: 0, insufficient: 1 },
+        // Only one active day — the chart should still span all 7 days of the window.
+        periods: [{ period: "2026-05-29", grounded: 2, lowConfidence: 0, insufficient: 1 }],
+      }),
+    });
+    const { container } = renderWithProviders(<AdminHomePage />, { role: "admin" });
+
+    await waitFor(() => expect(screen.getByText("Questions answered")).toBeInTheDocument());
+    expect(container.querySelectorAll(".qa-chart .qa-col")).toHaveLength(7);
+  });
 });
 
 describe("AdminHomePage — Consultation Funnel card", () => {

@@ -10,6 +10,7 @@ import type {
   KnowledgePipelineDto,
   PublishStatusValue,
   QuestionsAnalyticsDto,
+  QuestionsPeriodDto,
   RevenueReportDto,
   ValidationAnalyticsDto,
 } from "@expertos/shared";
@@ -143,10 +144,26 @@ interface DashboardData {
  * trend. The partition is by citation count (the only grounding signal the system stores) — see
  * {@link QuestionsAnalyticsDto}.
  */
+/**
+ * Expands the DTO's sparse series (`periods` carries only days with activity) into one entry per
+ * day across the whole window, so the trend chart always spans the full range — empty days render
+ * as a flat baseline column instead of the active days collapsing to fill the width. Keys are
+ * `YYYY-MM-DD` in UTC to match the DTO's day buckets (`since` is the UTC start-of-day).
+ */
+function fullDailySeries(data: QuestionsAnalyticsDto): QuestionsPeriodDto[] {
+  const byDay = new Map(data.periods.map((p) => [p.period, p]));
+  const start = new Date(data.since);
+  return Array.from({ length: data.windowDays }, (_, i) => {
+    const key = new Date(start.getTime() + i * 86_400_000).toISOString().slice(0, 10);
+    return byDay.get(key) ?? { period: key, grounded: 0, lowConfidence: 0, insufficient: 0 };
+  });
+}
+
 function QuestionsCard({ data }: { data: QuestionsAnalyticsDto }) {
   const t = useT("dashboard");
-  const { total, breakdown, periods } = data;
-  const maxDay = periods.reduce(
+  const { total, breakdown } = data;
+  const series = fullDailySeries(data);
+  const maxDay = series.reduce(
     (max, p) => Math.max(max, p.grounded + p.lowConfidence + p.insufficient),
     0,
   );
@@ -182,9 +199,9 @@ function QuestionsCard({ data }: { data: QuestionsAnalyticsDto }) {
           },
         ]}
       />
-      {periods.length > 0 ? (
+      {data.periods.length > 0 ? (
         <div className="qa-chart" aria-hidden>
-          {periods.map((p) => (
+          {series.map((p) => (
             <div
               className="qa-col"
               key={p.period}

@@ -3,7 +3,7 @@ import type { Messages } from "@expertos/ui";
 /** TODO(M13.3): string extraction for the `dashboard` admin page. */
 export const en = {
   // Page head: eyebrow, hour-keyed greeting, validation-loop lede, time-range control.
-  eyebrow: "Phase 1 · MVP · Last {days} days",
+  eyebrow: "Last {days} days",
   greeting: {
     morning: "Good morning",
     afternoon: "Good afternoon",
@@ -80,7 +80,7 @@ export const en = {
 } satisfies Messages;
 
 export const vi = {
-  eyebrow: "Giai đoạn 1 · MVP · {days} ngày qua",
+  eyebrow: "{days} ngày qua",
   greeting: {
     morning: "Chào buổi sáng",
     afternoon: "Chào buổi chiều",
