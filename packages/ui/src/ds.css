@@ -382,6 +382,43 @@ button { font-family: inherit; cursor: pointer; }
 .sla-time { font-family: var(--font-display); font-size: 40px; font-weight: 700; color: #fff; margin: 14px 0 4px; line-height: 1.1; }
 .sla-sub { margin: 0 0 18px; }
 
+/* ============================================================
+   Knowledge approval — status pipeline + kanban board (M13.3)
+   A numbered horizontal step indicator (active stage crimson) over
+   a 4-column status board. `.kanban` is a horizontal flex row of
+   `.kanban-col` cards; each column scrolls independently and never
+   reflows its accent — DRAFT (ink) → AI PROCESSING (info) →
+   EXPERT REVIEW (amber; the action column, with an amber-highlighted
+   active card) → PUBLISHED (green). `.kanban`/`.kanban-col` are the
+   reusable status-board primitive (M13.7.3). */
+.kanban-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 20px; }
+.kanban-step { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: var(--r-pill); border: 1px solid var(--line-2); font-size: 13px; font-weight: 600; color: var(--ink-600); background: var(--surface); }
+.kanban-step .kanban-step-n { font-family: var(--font-mono); font-size: 11px; color: var(--ink-500); }
+.kanban-step.is-active { background: var(--red-600); border-color: var(--red-600); color: #fff; }
+.kanban-step.is-active .kanban-step-n { color: #fff; }
+.kanban-step-note { color: var(--ink-500); font-size: 13px; }
+
+.kanban { display: flex; gap: 16px; align-items: flex-start; overflow-x: auto; padding-bottom: 4px; }
+.kanban-col { flex: 1 1 0; min-width: 248px; background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r-lg); display: flex; flex-direction: column; max-height: 600px; }
+.kanban-col-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 14px 10px; }
+.kanban-col-body { display: flex; flex-direction: column; gap: 10px; padding: 0 12px 14px; overflow-y: auto; }
+.kanban-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px; box-shadow: var(--sh-sm); }
+.kanban-card.is-active { border-color: var(--amber-600); border-width: 2px; padding: 11px; }
+.kanban-card-title { font-weight: 600; color: var(--ink-900); margin: 0; font-size: 14px; }
+.kanban-card-meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.kanban-card-summary { margin: 8px 0 0; color: var(--ink-600); font-size: 13px; }
+.kanban-card-progress { margin-top: 8px; }
+.kanban-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.kanban-empty { padding: 2px 2px 6px; }
+
+/* Conversation → Knowledge section (M13.3.5) — the table that grows the
+   knowledge base from real usage, below the kanban board. */
+.convknow { margin-top: 32px; }
+.convknow-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.convknow-pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.convknow-pill { font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-500); }
+.convknow-pill-sep { color: var(--ink-300); font-size: 10px; }
+
 /* segmented control */
 .seg { display: inline-flex; background: var(--paper-2); border-radius: var(--r-sm); padding: 3px; gap: 2px; }
 .seg button { border: none; background: transparent; padding: 6px 14px; border-radius: 5px; font-size: 13px; font-weight: 600; color: var(--ink-500); }

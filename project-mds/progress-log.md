@@ -3781,3 +3781,33 @@ ui build, admin tsc + next lint, root lint:css (stylelint), root knip. (admin ha
 **Notes for next iteration:**
 - M13.3 (Knowledge approval kanban) is next: 4-column `.kanban`/`.kanban-col` (DRAFT/AI PROCESSING/EXPERT REVIEW/PUBLISHED) over `/knowledge` with status filters + a conversation→knowledge `.table` over `/knowledge-drafts`. `.kanban` is a reusable pattern (M13.7.3) — build it there.
 - `.dark-card` is now available for M13.6 user-question bubbles.
+
+---
+
+## M13.3 — Knowledge Approval kanban board
+**Date:** 2026-06-02
+**Ref:** PRD §M13.3 (Admin & Expert Portal UI Overhaul) / requirements/ui-reference-spec.md "Screen 2: Knowledge Approval"
+
+**What was done:**
+- Rebuilt `apps/admin/app/knowledge/page.tsx` from the flat review-queue `Table` into the approved Knowledge Approval screen, covering all of M13.3.1–M13.3.5 (the kanban replaces the table atomically, so the whole screen is the shippable unit):
+  - **M13.3.1** Page header: `.eyebrow` "Versioned · Expert-reviewed" + `.h1` "Knowledge approval" + right-aligned "+ New note" `.btn-ghost` → `/knowledge-drafts`.
+  - **M13.3.2** Status pipeline: numbered horizontal `.kanban-steps` indicator (1 Draft → 2 AI Processing → 3 Expert Review [active, crimson `.is-active`] → 4 Published) + trailing "→ Archived / Deprecated · every answer records which published version produced it" note.
+  - **M13.3.3** Kanban board: 4-column `.kanban`/`.kanban-col` (DRAFT/AI PROCESSING/EXPERT REVIEW/PUBLISHED), each column scrollable with a badge-toned count header. Cards from `/knowledge/documents?status=`×4 (`listDocuments`); accurate count badges from `/admin/analytics/knowledge-pipeline` (`getKnowledgePipeline`) since the list is `take:50`-bounded.
+  - **M13.3.4** Per-status `DocCard`: Draft (title + scope/lang/version meta + change summary), AI Processing ("parse → chunk → embed" + crimson `Bar` progress approximated from chunkCount), Expert Review (change summary + "Approve & publish" `.btn-primary` → `versionAction(...,"approve")` + "Diff" `.btn-ghost` → detail; first card amber-highlighted `.is-active`), Published (v{n} live green badge + approved date).
+  - **M13.3.5** Conversation → Knowledge `.convknow` section: `.eyebrow` + `.h2` + right-aligned breadcrumb pills + `.table` (Recurring question / Status / From chat / Lang / "Draft" `.btn-primary`) from `listDrafts` (`/knowledge-drafts`).
+- New ds.css block in `packages/ui/src/ds.css`: `.kanban-steps`/`.kanban-step`(`.is-active`)/`.kanban-step-n`/`.kanban-step-note`, `.kanban`/`.kanban-col`/`.kanban-col-head`/`.kanban-col-body`, `.kanban-card`(`.is-active`)/`-title`/`-meta`/`-summary`/`-progress`/`-actions`, `.kanban-empty`, `.convknow`/`-head`/`-pills`/`-pill`/`-pill-sep`. All ds.css tokens (`#fff` only, matching existing `.dark-card`/`.sla-time` convention). `.kanban`/`.kanban-col` are the reusable status-board primitive earmarked for M13.7.3.
+
+**Key decisions:**
+- Built the whole screen in one task (not per-subtask commits like M13.2's incremental dashboard cards) because the kanban *replaces* the existing table — there's no shippable half-built intermediate.
+- Used the M13.2.6 dedicated-endpoint precedent: column count badges come from the accurate `/admin/analytics/knowledge-pipeline` snapshot, while the displayed cards come from the (bounded) list endpoint. Counts and cards can legitimately differ (Published > 50).
+- Honest-data deviations (per the M13.2.x precedent — `KnowledgeDocumentDto` carries no field for these): file-type chips and expert-name omitted (scope/language stand in); Published "N answers cite this" omitted (not tracked per-document); AI-processing progress approximated from `chunkCount` (chunks embedded ⇒ further along — the only real progress signal); "Upload (MD / PDF / XLSX)" header action omitted (admin knowledge ingestion is seed/CLI per M1.1 — no browser-upload endpoint; "+ New note" → the conversation-to-knowledge draft pipeline is the real authoring path).
+- Did NOT extract a reusable `Kanban` React primitive — that's M13.7.3. The CSS classes are used inline here; M13.7.3 can wrap them.
+
+**Files changed:**
+- `apps/admin/app/knowledge/page.tsx` — full rewrite: kanban board + status pipeline + conversation→knowledge table.
+- `packages/ui/src/ds.css` — new `.kanban*`/`.kanban-step*`/`.convknow*` block.
+
+**Notes for next iteration:**
+- M13.4 (Plans & Entitlements matrix) is next: `.matrix-table` editable grid over `/admin/entitlements` (`EntitlementMatrixService`, `GET/PATCH /admin/entitlements`).
+- `.kanban`/`.kanban-col` are reusable for any status-pipeline board (M13.7.3 can formalize as a React primitive).
+- Admin still has no jest suite — verification is admin `tsc --noEmit` + `next lint` + stylelint + knip. Run `pnpm --filter @expertos/ui build` after ds.css changes (apps consume `dist/`).
