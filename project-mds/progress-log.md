@@ -4597,3 +4597,27 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 
 **Notes for next iteration:**
 - Unchanged from prior: M15.3.3/.4 host-validation (sandbox OOMs the live stack, §3.4.1); M13.5.3/.4/.5 + M13.7.4 (voice widgets — blocked on PM/schema); M11.4 / NT.3 / NT.4 (human sign-off gates). All remaining open items are either host-only or human-gated.
+
+---
+
+## UI polish: sources drawer "push, don't cover" on roomy viewports + harden lint:css against build artifacts
+**Date:** 2026-06-02
+**Ref:** Working-tree cleanup of an in-progress M12.5.4 refinement left uncommitted from a prior session; durable gate-hygiene fix surfaced while verifying it. No open manifest task — polish on completed M12.5.4 (priority tier g).
+
+**What & why:**
+- Found uncommitted-but-coherent work in the tree (`apps/web/app/chat/page.tsx` + `packages/ui/src/ds.css`): when the sources drawer opens on a ≥900px viewport (the 900–1280px band where the rail has collapsed, or classic/focus mode), the chat column now shrinks *beside* the panel instead of being overlaid — a right-edge gutter of `min(360px, 90vw)` (exact panel width) is reserved on `.chat-main`, and the backdrop goes `transparent`/`pointer-events:none` so the chat stays readable + interactive. Below 900px the modal slide-over is kept (no room to split). Toggled by `.chat-sources-open` on `.chat-layout` (set by the page when `drawerCitations !== null`). `ChatLayout` already spreads `className`, so no component change needed.
+- While verifying gates, `pnpm lint:css` failed with **524 false errors** — all under `apps/admin/tmp/admin-next/static/css/app/*.css` (Next.js build output; `.next` is symlinked there per the live-stack recipe, LEARNINGS #22). Root cause: the `lint:css` glob `apps/**/app/**/*.css` matches the build path because it contains a dir literally named `app` (`…/static/css/app/page.css`), and stylelint doesn't honor `.gitignore`. Invisible in CI (no `.next` exists) but hits any agent who runs the app locally — which the E2E recipe requires.
+
+**Fix:**
+- New root `.stylelintignore` excluding `**/node_modules/**`, `**/.next/**`, `**/tmp/**`, `**/dist/**`, `**/.turbo/**`, `**/coverage/**`. stylelint auto-reads it from cwd, so the `lint:css` script is unchanged. Confirmed only build artifacts were the cause first (re-ran stylelint with `--ignore-pattern` → exit 0).
+- `.gitignore` also ignores a bare `.next` (the symlink form, in addition to `.next/`).
+
+**Gates:** root `lint:css` exit 0 (now shielded) · web `tsc` 0 (confirms the `//`-between-JSX-attributes comment compiles) · web `next lint` 0 · ui jest 234 · web chat jest 10 · root knip 0. Repo total unchanged 1516 pass / 0 fail (no new tests — presentational CSS wiring, type-checked + covered by existing ChatLayout className passthrough tests). Commit f7ed6b6.
+
+**Anomaly flagged (not acted on):** `apps/admin/src/lib/i18n/dictionaries/dashboard.ts` appeared modified mid-session (EN+VI `eyebrow`: "Phase 1 · MVP · Last {days} days" → "Last {days} days") — a clean 2-spot semantic edit, NOT in the session's first `git status`, with no running process (`ps` empty) and no agent authorship. Left UNCOMMITTED and unreverted (didn't create it → surface, don't overwrite, per the harness principle + LEARNINGS #23 mount unreliability). Next agent / human should confirm whether the edit is intended before committing or reverting.
+
+**Docs:** LEARNINGS #25 (lint/format glob collides with build output; add an ignore file; diagnose by grouping failures by path prefix).
+
+**Notes for next iteration:**
+- Unchanged from prior: M15.3.3/.4 host-validation (sandbox OOMs the live stack, §3.4.1); M13.5.3/.4/.5 + M13.7.4 (voice widgets — blocked on PM/schema); M11.4 / NT.3 / NT.4 (human sign-off gates). All remaining open manifest items are host-only or human-gated.
+- Resolve the `dashboard.ts` drift above.

@@ -296,3 +296,15 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Tests that pass a clean, well-formed stream never catch this — the regression only appears with a malformed/blank frame interleaved. Add an explicit "empty/keep-alive frame mid-stream does not abort" case per driver, plus unit tests for the parse helper's null cases.
 
 **Rule:** When consuming SSE (or any newline-framed stream) from an external service, route every `JSON.parse` through one guarded helper that skips empty/sentinel/unparseable frames instead of throwing — a blank keep-alive frame must not abort the stream — and test it with a malformed frame interleaved, not just a clean payload.
+
+---
+
+## 25. The `lint:css` glob collides with Next.js build output — anyone who has run the app locally gets hundreds of false stylelint failures
+
+**Context:** Verifying gates before a UI commit, with the live E2E stack having been run locally (`apps/admin/.next` → a build dir under `apps/admin/tmp/`).
+
+- The root `lint:css` script globs `"apps/**/app/**/*.css"`. Next.js emits compiled stylesheets at paths like `apps/<app>/.next/static/css/app/page.css` (or, when `.next` is symlinked to dodge the OWC-mount dev-chunk corruption per LEARNINGS #22, at the symlink target e.g. `apps/admin/tmp/admin-next/static/css/app/page.css`). Because that build path literally contains a directory named `app`, the source glob `apps/**/app/**/*.css` matches it — and stylelint, which does **not** honor `.gitignore`, lints the minified build CSS → 500+ false `unit-disallowed-list`/`comment-whitespace-inside` errors that have nothing to do with your change.
+- The trap is invisible in CI / a fresh checkout (no `.next` exists yet), so the gate is reported "clean" by agents who never ran the app — but the live-stack E2E recipe (LEARNINGS #22) *requires* running the app, so the next agent who does so hits a wall of failures and may think they broke the design system.
+- Fix: add a repo-root `.stylelintignore` excluding build output (`**/.next/**`, `**/tmp/**`, `**/dist/**`, `**/.turbo/**`, `**/coverage/**`, `**/node_modules/**`). stylelint auto-reads `.stylelintignore` from cwd, so the existing `lint:css` script needs no change. To confirm only build artifacts are the cause before adding it, re-run stylelint with `--ignore-pattern "**/tmp/**" --ignore-pattern "**/.next/**" …` and verify exit 0.
+
+**Rule:** A lint/format glob that can match a directory name appearing in build output (`app`, `src`, `dist`) needs an ignore file for that build output — never assume "clean in CI" means clean for an agent who has run the app locally. Diagnose a wall of generated-file lint errors by grouping failures by path prefix; if they're all under `.next`/`tmp`/`dist`, it's the glob, not your code.
