@@ -4343,3 +4343,37 @@ Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:
 
 **Notes for next iteration:**
 - M15.2.3 (Dashboard tests) next: KPI cards over mocked `getRevenueReport`/`getFunnelAnalytics`/`getValidationAnalytics`, funnel bar proportions, low-confidence list (`getFailedQueries`), knowledge pipeline badges (`getKnowledgePipeline`), concierge SLA card (`getConciergeAnalytics`). The dashboard is `apps/admin/app/page.tsx` — render it directly (no AdminFrame wrap needed; it's a page body) via `renderWithProviders` with `role:"admin"`.
+
+---
+
+## M15.2.3 — Admin dashboard jest tests
+**Date:** 2026-06-02
+**Ref:** PRD §M15.2.3 (Test Coverage — Admin app jest suite)
+
+**What was done:**
+- Added `apps/admin/app/page.test.tsx` (+15 tests → admin suite 18 → 33; repo 1394 → 1409) over the dashboard landing page (`app/page.tsx`), through the real Auth + Locale providers (M15.2.1 harness):
+  - **KPI cards** — MRR + MoM delta (up trend; a down-trend case; the single-period omitted-delta case), active subscribers + "N live plans", consult conversions + "$X booked", activation rate "75.0%" + cohort delta; asserts the 4-up `.kpi-grid .stat` count.
+  - **Questions Answered** — total + grounded/low-conf/insufficient `share()` badges; empty-series note.
+  - **Consultation Funnel** — proportional `.bar` inner-`<i>` widths (Questions 100%, Recommend 25%, Booked 5%, Revenue tracks Booked 5%) + recommend→book/avg summary; 0%-funnel + em-dash average case.
+  - **Knowledge Pipeline** — 4 stage rows with the right badge tones (ink/info/amber/green) + counts, `archived` omitted, Review-queue link href.
+  - **Concierge SLA** — `.dark-card`, "21h 04m" avg time, "3 in queue" badge, Open-queue link; null-avg em-dash case.
+  - **Low-Confidence** — conf-circle tone (`conf-low` at 0.45), insufficient badge, reason, Draft-knowledge link; no-score em-dash row; empty state.
+  - **Range control** — default 30d fetch + refetch on 7d; **error path** — unmocked endpoints → error badge, no KPI grid.
+- Full-shaped DTO factories (`revenue`/`funnel`/`validation`/`questions`/`pipeline`/`concierge`/`failedQuery`) + a `mockDashboard()` that registers all seven endpoints, so the page's real client + render code runs unchanged.
+
+**Key decisions:**
+- **Wrapped every data-dependent assertion in `waitFor`** (LEARNINGS #19). The page double-loads on mount: the auth context memoizes its value (incl. `getIdToken`) on `[user, role, denied, loading]`, and `AdminFrame` renders the page *before* the `POST /me/admin-session` role resolves — when it resolves, `getIdToken`'s identity churns, the page's `load` `useCallback` changes, its effect re-fires, and each `load()` starts with a synchronous `setData(null)`. A sync `getBy*` right after an awaited `findBy*` raced that transient clear → intermittent "found then gone" failures (the flake set shifted run-to-run). `waitFor` retries the whole block against the settled state. Verified stable over 5 consecutive runs.
+- Folded trailing link-href assertions *into* the `waitFor` too (an outside-`waitFor` sync `getByRole` reintroduced the flake on ~1 in 3 runs).
+- Asserted the *raw* `err.message` ("Request failed (404)") for the error path — the page renders `err instanceof Error ? err.message : t("errorLoad")`, and `ApiError extends Error`, so the i18n fallback never fires for a real API error.
+- Corrected enum literals to the real shared types while building the fixtures: `ConsultationStatusValue` is `canceled` (one l), `ReviewVisibilityValue` is `visible`|`silent`, `ReviewTriggerModeValue` has no `off`.
+
+**Files changed:**
+- `apps/admin/app/page.test.tsx` — new (+15 tests).
+- `project-mds/LEARNINGS.MD` — added #19 (double-load flakiness → `waitFor`).
+- `project-mds/PRD.md` — M15.2.3 [ ] → [x].
+- `project-mds/progress-state.md` — M15 status + test counts (admin 33, repo 1409) + next tasks (M15.2.4+).
+
+**Gates:** admin `tsc` clean, `next lint` clean, `jest` 33/33 pass, root `knip` + `lint:css` clean. Test-file-only addition (no source/CSS/knip.json changes) → other workspaces unaffected.
+
+**Notes for next iteration:**
+- M15.2.4 (Knowledge kanban tests) next: `apps/admin/app/knowledge/` — column rendering per status, card actions (approve/request-changes via `versionAction`), conversation-to-knowledge table (`listDrafts`/`getFailedQueries`). Same double-load applies → `waitFor` (LEARNINGS #19).

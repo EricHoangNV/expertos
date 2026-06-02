@@ -222,3 +222,15 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Two adjacent harness gotchas from the same task: (a) test-only deps used **only** in jest-ignored files (`@testing-library/react` etc., since knip's `ignore` drops `**/*.test.tsx`) must go in knip's `ignoreDependencies` like `ts-jest`/`@types/jest` — but do **not** add ones knip already resolves via its jest plugin (`jest-environment-jsdom`), or knip fails with "Unused item in ignoreDependencies". (b) A render helper that pre-seeds `localStorage` for a deterministic locale sets the LocaleProvider's `hasLocalPref` flag, which **suppresses** the `GET /me` profile-seed path — seed localStorage only when a test explicitly pins the locale, else let the profile response drive it.
 
 **Rule:** Don't narrow jest `roots` to subdirectories if you rely on `<rootDir>/__mocks__` node-module manual mocks — scope with `testMatch`/`testPathIgnorePatterns` instead. Test-only deps confined to knip-ignored files belong in `ignoreDependencies` (but not ones the jest plugin already sees).
+
+---
+
+## 19. Admin/web data pages double-load on mount — assert through `waitFor`, never a sync `getBy*` after a single `findBy*`
+
+**Context:** M15.2.3 (admin dashboard jest tests) — assertions intermittently failed with "found `$15,999` then couldn't find `MRR`" across runs; the same `getBy*` passed or failed depending on timing.
+
+- The auth context memoizes its value (incl. `getIdToken`) on `[user, role, denied, loading]`. `AdminFrame` renders the page as soon as `loading===false && user && !denied` — **before** the `POST /me/admin-session` call resolves the role. So the page mounts with `getIdToken`-v1, fires its `load()` effect, then when the session resolves `role` flips → the memo recreates `getIdToken` (new identity) → the page's `load` `useCallback` changes → its effect re-runs. Each `load()` starts with a synchronous `setData(null)`, so there's a brief window where the just-rendered data is wiped and re-fetched.
+- A test that does `await screen.findByText(A)` (async, retries) immediately followed by `screen.getByText(B)` (sync, one-shot) is racy: `findByText(A)` resolves against the first load's data, then the second load's `setData(null)` lands before the sync `getByText(B)` runs → "element not found". The flake set shifts run-to-run.
+- Fix: wrap **all** positive, data-dependent assertions for a page like this in a single `await waitFor(() => { … })` block — `waitFor` retries the whole callback until it passes against the settled state, sailing past the transient clear. Don't leave a trailing sync `getByRole`/`getByText` after the `waitFor`; fold it in. Negative assertions (`queryBy… not present`) are safe outside because a clear can't make them false-fail.
+
+**Rule:** For React pages whose data can transiently clear (an effect re-fires because a context value identity churns), assert via `waitFor`/`findBy*` end-to-end — never a synchronous `getBy*`/container-query immediately after an awaited `findBy*`. This applies to every M15.2.x admin page test (and the web page tests) since they all mount inside the same auth-gate double-load.
