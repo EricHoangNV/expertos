@@ -2880,3 +2880,28 @@ Built the dark-rail conversation search input and wired it to the existing M3.3 
 **Notes for next iteration:**
 - M12.4 (messages): rebuild the message list as `.msg-user` (dark `--ink-900` bubble) / `.msg-assistant` (expert `.avatar` + name + AI RENDITION `.badge-ink` + source label + optional VERIFIED `.badge-green`). REUSE `AnswerView` (M4.2) for prose+citations, and refactor `AnswerFeedback`/`SaveAnswer` into a horizontal action bar; restyle `ConsultationPrompt`/insufficient/high-stakes cards. Avatar helpers + `.avatar.tone-*` carry over.
 - Reminder: rebuild ui to `dist/` (`tsc -p tsconfig.build.json` in packages/ui) before web typecheck whenever ui exports change — web resolves `@expertos/ui` from `dist/`.
+
+## M12.4.1 — User message bubble (`.msg-user`)
+**Date:** 2026-06-02
+**Ref:** PRD §"UI Reference Spec" (M12 Frontend UI Overhaul) / `requirements/ui-reference-spec.md` §3 Chat Messages Area
+
+**What was done:**
+- New `packages/ui/src/ChatUserMessage.tsx` — `.msg-user` flex row that hugs the right edge by default, containing a dark `.msg-user-bubble` (`--ink-900` bg, white text, `--r-lg`, max-width 70%, `white-space: pre-wrap` so the user's own Shift+Enter line breaks survive). `align="start"` → `.msg-user-start` left-aligns it for the focus direction.
+- ds.css: new "Chat messages (M12.4)" section after the avatar-tones block (`.msg-user` / `.msg-user.msg-user-start` / `.msg-user .msg-user-bubble`), token-only (`--ink-900`, `--r-lg`, `--s3`/`--s4`).
+- Exported `ChatUserMessage` + `ChatUserMessageProps`/`ChatUserMessageAlign` from `packages/ui/src/index.ts`.
+- Wired into `apps/web/app/chat/page.tsx`: the message map now branches — user turns render `<ChatUserMessage>`, assistant turns keep the existing `<Card>` (restyled by M12.4.2). Removed the old `<Badge tone="info">You</Badge>` + `<p>{m.content}</p>` user rendering.
+- +3 ui tests in `primitives.test.ts` (default right-align, `align="start"`, raw-text/newline preservation); ui at 100% coverage.
+
+**Key decisions:**
+- One sub-task per commit (matching the M12.3.x cadence). The intermediate state — styled user bubble next to old-Card assistant turns — is acceptable per the milestone's "each task independently shippable" note; M12.4.2 restyles the assistant side.
+- Kept alignment in CSS via an `align` prop (default `"end"`) rather than reading layout direction inside the component — the component stays presentational; the page can pass `align` per direction later.
+- `overflow-wrap: anywhere` on the bubble so long unbroken tokens (URLs/IDs) don't blow past the 70% cap.
+
+**Files changed:**
+- `packages/ui/src/ChatUserMessage.tsx` — new component.
+- `packages/ui/src/ds.css` — `.msg-user` block.
+- `packages/ui/src/index.ts` — exports.
+- `packages/ui/src/primitives.test.ts` — +3 tests.
+- `apps/web/app/chat/page.tsx` — message-map branch for user turns.
+
+**Gates:** ui tsc ✅ / jest 82 pass 100% cov ✅ / stylelint ✅ / eslint ✅; web tsc ✅ / next lint ✅; knip ✅. (ui `dist/` rebuilt via `tsc -p tsconfig.build.json` before web typecheck — web resolves `@expertos/ui` from dist.)

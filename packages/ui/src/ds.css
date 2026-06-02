@@ -494,3 +494,20 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
 .avatar.tone-info    { background: var(--info-600); color: #fff; }
 .avatar.tone-amber   { background: var(--amber-600); color: #fff; }
 .avatar.tone-ink     { background: var(--ink-600); color: #fff; }
+
+/* ============================================================
+   Chat messages (M12.4) — the scrollable transcript between the topbar and the
+   (future) input bar. The user bubble (M12.4.1) is a dark, white-text pill that
+   hugs the right edge by default; `.msg-user-start` left-aligns it (focus mode).
+   ============================================================ */
+.msg-user { display: flex; justify-content: flex-end; }
+.msg-user.msg-user-start { justify-content: flex-start; }
+.msg-user .msg-user-bubble {
+  max-width: 70%;
+  background: var(--ink-900); color: #fff;
+  border-radius: var(--r-lg);
+  padding: var(--s3) var(--s4);
+  margin: 0;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  line-height: 1.5;
+}

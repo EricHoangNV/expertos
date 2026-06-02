@@ -11,6 +11,7 @@ import { ChatSearch, type ChatSearchResultItem } from "./ChatSearch";
 import { ChatSidebar } from "./ChatSidebar";
 import { ChatVoicePicker, type ChatVoiceOption } from "./ChatVoicePicker";
 import { ChatUserIdentity } from "./ChatUserIdentity";
+import { ChatUserMessage } from "./ChatUserMessage";
 import { ChatTopbar } from "./ChatTopbar";
 import {
   AVATAR_TONES,
@@ -648,6 +649,29 @@ describe("ChatUserIdentity — header avatar + name + EN/VI language badge (M12.
   it("renders the language as a static `.badge` span when no toggle handler is given", () => {
     const el = ChatUserIdentity({ name: "Jo", language: "en" }) as ReactElement;
     expect(parts(el).lang.type).toBe("span");
+  });
+});
+
+describe("ChatUserMessage — user bubble (M12.4.1)", () => {
+  /** The single bubble child of the `.msg-user` row. */
+  const bubble = (el: ReactElement) => kids(el) as ReactElement;
+
+  it("renders the dark `.msg-user-bubble` right-aligned by default", () => {
+    const el = ChatUserMessage({ content: "How do I price my SaaS?" }) as ReactElement;
+    expect(cls(el)).toBe("msg-user");
+    const b = bubble(el);
+    expect(cls(b)).toBe("msg-user-bubble");
+    expect(kids(b)).toBe("How do I price my SaaS?");
+  });
+
+  it("left-aligns the bubble with `.msg-user-start` when align='start'", () => {
+    const el = ChatUserMessage({ content: "hi", align: "start" }) as ReactElement;
+    expect(cls(el)).toBe("msg-user msg-user-start");
+  });
+
+  it("preserves the raw text (newlines kept by the CSS, not stripped here)", () => {
+    const el = ChatUserMessage({ content: "line one\nline two" }) as ReactElement;
+    expect(kids(bubble(el))).toBe("line one\nline two");
   });
 });
 

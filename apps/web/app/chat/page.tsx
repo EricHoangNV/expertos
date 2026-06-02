@@ -15,6 +15,7 @@ import {
   ChatUsageMeter,
   ChatUserIdentity,
   type ChatLanguage,
+  ChatUserMessage,
   ChatVoicePicker,
   DEFAULT_LAYOUT_DIRECTION,
   Field,
@@ -825,19 +826,14 @@ export default function ChatPage() {
       </ChatTopbar>
       <main className="card card-pad chat-content">
         <div>
-          {messages.map((m, i) => (
+          {messages.map((m, i) =>
+            m.role === "user" ? (
+              <ChatUserMessage key={i} content={m.content} />
+            ) : (
             <Card key={i} className="card-pad">
-              <Badge tone={m.role === "user" ? "info" : "green"}>
-                {m.role === "user" ? "You" : "Assistant"}
-              </Badge>
-              {m.role === "assistant" && m.expertName && (
-                <Badge tone="amber">{renditionLabel(m.expertName)}</Badge>
-              )}
-              {m.role === "assistant" ? (
-                <AssistantAnswer message={m} />
-              ) : (
-                <p>{m.content}</p>
-              )}
+              <Badge tone="green">Assistant</Badge>
+              {m.expertName && <Badge tone="amber">{renditionLabel(m.expertName)}</Badge>}
+              <AssistantAnswer message={m} />
               {m.role === "assistant" && m.done && m.degraded && (
                 <Badge tone="info">
                   Fair-use mode — answered with a lighter model while you’re over this period’s soft
@@ -866,7 +862,8 @@ export default function ChatPage() {
                 </>
               )}
             </Card>
-          ))}
+            ),
+          )}
         </div>
 
         {error && <Badge tone="red">{error}</Badge>}

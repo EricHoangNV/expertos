@@ -36,6 +36,8 @@ export { ChatVoicePicker } from "./ChatVoicePicker";
 export type { ChatVoicePickerProps, ChatVoiceOption } from "./ChatVoicePicker";
 export { ChatUserIdentity } from "./ChatUserIdentity";
 export type { ChatUserIdentityProps, ChatLanguage } from "./ChatUserIdentity";
+export { ChatUserMessage } from "./ChatUserMessage";
+export type { ChatUserMessageProps, ChatUserMessageAlign } from "./ChatUserMessage";
 export {
   ChatConversationList,
   AVATAR_TONES,
