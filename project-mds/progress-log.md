@@ -2696,3 +2696,48 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - `packages/ui/src/index.ts` — export `ChatSidebar` + props.
 - `packages/ui/src/primitives.test.ts` — +4 tests.
 - `apps/web/app/chat/page.tsx` — `startNewConversation` + sidebar wiring.
+
+---
+
+## M12.2.2 — Conversation search input (2026-06-02)
+
+Built the dark-rail conversation search input and wired it to the existing M3.3 full-text search API, then made search results actionable by loading the chosen conversation back into the chat.
+
+- `packages/ui/src/ChatSearch.tsx` — new presentational, fully-controlled component (no hooks, matching the pure-element test style):
+  - A `.chat-search-field` with a leading inline magnifier SVG (`.ic`) + the ds.css `.input` (`type="search"`, `.chat-search-input`, placeholder "Search all messages…", `aria-label`), restyled for the dark rail.
+  - A results region that appears only once the query is non-empty: `.chat-search-empty` muted note ("Searching…" while in-flight, "No matching conversations." when settled-empty) or a list of `.chat-search-item` buttons (title + guillemet-snippet), with the open conversation highlighted (`.active`).
+  - Props: `query` / `onQueryChange` (controlled), `results` (caller-provided `ChatSearchResultItem[]`), `searching`, `onSelect(id)`, `activeId`. Snippet is plain guillemet-wrapped text (directive §1 — safe to render).
+- `packages/ui/src/ds.css` — new `.chat-side .chat-search*` block: dark `.input` variant (`rgba(255,255,255,.06)` bg, light placeholder, crimson focus ring), scrollable `.chat-search-results`, `.chat-search-item` (reuses the `.navitem` hover/active idiom: `rgba(255,255,255,.06)` hover, `--red-600` active), truncated `.chat-search-title`, 2-line-clamped mono `.chat-search-snippet`.
+- `apps/web/app/chat/page.tsx`:
+  - `searchQuery` / `searchResults` / `searching` state; a debounced effect (250ms, ≥2 chars, latest-wins via an `active` flag) calls `searchConversations` (M3.3) and maps hits → `ChatSearchResultItem` (null title → "Untitled conversation").
+  - New `openConversation(id)` callback: `getConversation` (`GET /conversations/:id`) → replays the transcript into the `UiMessage[]` list (carries `citations`, sets `messageId` on assistant turns, re-hydrates `highStakes` so the NT.4 disclaimer survives), restores the conversations
+
+---
+
+## M12.2.2 — Conversation search input (2026-06-02)
+
+Built the dark-rail conversation search input and wired it to the existing M3.3 full-text search API, then made search results actionable by loading the chosen conversation back into the chat.
+
+- `packages/ui/src/ChatSearch.tsx` — new presentational, fully-controlled component (no hooks, matching the pure-element test style):
+  - A `.chat-search-field` with a leading inline magnifier SVG (`.ic`) + the ds.css `.input` (`type="search"`, `.chat-search-input`, placeholder "Search all messages…", `aria-label`), restyled for the dark rail.
+  - A results region that appears only once the query is non-empty: `.chat-search-empty` muted note ("Searching…" while in-flight, "No matching conversations." when settled-empty) or a list of `.chat-search-item` buttons (title + guillemet-snippet), with the open conversation highlighted (`.active`).
+  - Props: `query` / `onQueryChange` (controlled), `results` (caller-provided `ChatSearchResultItem[]`), `searching`, `onSelect(id)`, `activeId`. Snippet is plain guillemet-wrapped text (directive §1 — safe to render).
+- `packages/ui/src/ds.css` — new `.chat-side .chat-search*` block: dark `.input` variant (`rgba(255,255,255,.06)` bg, light placeholder, crimson focus ring), scrollable `.chat-search-results`, `.chat-search-item` (reuses the `.navitem` hover/active idiom: `rgba(255,255,255,.06)` hover, `--red-600` active), truncated `.chat-search-title`, 2-line-clamped mono `.chat-search-snippet`.
+- `apps/web/app/chat/page.tsx`:
+  - `searchQuery` / `searchResults` / `searching` state; a debounced effect (250ms, ≥2 chars, latest-wins via an `active` flag) calls `searchConversations` (M3.3) and maps hits → `ChatSearchResultItem` (null title → "Untitled conversation").
+  - New `openConversation(id)` callback: `getConversation` (`GET /conversations/:id`) → replays the transcript into the `UiMessage[]` list (carries `citations`, sets `messageId` on assistant turns, re-hydrates `highStakes` so the NT.4 disclaimer survives), restores the conversation's expert voice, clears the search.
+  - `ChatSearch` mounted as `ChatSidebar` children (the M12.2.1 body slot).
+- Tests: `primitives.test.ts` +5 (empty-query field + dark input placeholder; onChange→onQueryChange; searching note; no-matches note; hit buttons with title/snippet + active highlight + null-snippet omission + onSelect id) — ui 42 → 47; `ChatSearch.tsx` 100% coverage. Rebuilt `packages/ui/dist`.
+
+**Key decisions:**
+- Selecting a result loads the conversation now (not deferred to M12.2.3): a search input with no actionable result is a dead-end, and `openConversation` is the same transcript-replay M12.2.3's RECENT list will reuse — so it is infrastructure, not scope-creep.
+- Debounce + ≥2-char floor + latest-wins guard keep the API quiet and prevent a stale response clobbering a newer query; failures are best-effort (empty results, no error banner) since search is non-critical.
+- Component stays presentational/hookless (the ChatSidebar/ChatLayout idiom) — all data wiring (debounce, fetch, transcript mapping) lives in the chat page.
+- Inlined the magnifier SVG (rather than a sub-component) so the icon body is covered by the element-tree tests and keeps `ChatSearch.tsx` at 100% — the ≥90% coverage gate would otherwise flag the un-invoked component function.
+
+**Files changed:**
+- `packages/ui/src/ChatSearch.tsx` — new search-input component.
+- `packages/ui/src/ds.css` — `.chat-search*` dark-rail styling.
+- `packages/ui/src/index.ts` — export `ChatSearch` + `ChatSearchProps` / `ChatSearchResultItem`.
+- `packages/ui/src/primitives.test.ts` — +5 tests.
+- `apps/web/app/chat/page.tsx` — debounced search state + `openConversation` + sidebar wiring.

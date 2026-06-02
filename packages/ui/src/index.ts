@@ -26,6 +26,8 @@ export { ChatLayout } from "./ChatLayout";
 export type { ChatLayoutProps } from "./ChatLayout";
 export { ChatSidebar } from "./ChatSidebar";
 export type { ChatSidebarProps } from "./ChatSidebar";
+export { ChatSearch } from "./ChatSearch";
+export type { ChatSearchProps, ChatSearchResultItem } from "./ChatSearch";
 export {
   LAYOUT_DIRECTIONS,
   DEFAULT_LAYOUT_DIRECTION,

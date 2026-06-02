@@ -2,6 +2,7 @@
 
 ## Current State
 - Completed:
+  - M12.2.2: `ChatSearch` (`packages/ui/src/ChatSearch.tsx`) — dark-rail conversation search input (`.input` + magnifier, "Search all messages…") wired to M3.3 full-text search; debounced (≥2 chars) in `/chat`, results render under the field, selecting one loads that conversation's transcript
   - M12.2.1: `ChatSidebar` shell (`packages/ui/src/ChatSidebar.tsx`) — dark `.side` rail in the chat grid: ExpertOS wordmark + optional collapse + full-width "+ New conversation"; body/footer slots for M12.2.2–4; wired into `/chat` (clears active chat)
   - M12.1.3: Layout-direction switcher state (`packages/ui/src/layout.ts` — `LayoutDirection` classic/studio/focus + `layoutPanes`/`isLayoutDirection`/`LAYOUT_DIRECTION_INFO`); `ChatLayout` `direction` prop drops panes per direction + ds.css `.chat-layout-{classic,focus}` grid reflow; chat page owns the state (Tweaks control + localStorage is M12.7.2)
   - M12.1.2: `ChatLayout` component (`packages/ui/src/ChatLayout.tsx`) wrapping sidebar/main/rail over the M12.1.1 grid; integrated into `/chat` replacing the single-card layout (scrollable `.chat-content` main column)
@@ -31,10 +32,10 @@
   - M2 (voice): LLM provider abstraction, answer-prompt assembly, voice-profile CRUD, fidelity eval
   - M1 (knowledge): ingestion pipeline, hybrid retrieval (RRF), VI quality + NFC normalization
   - P0 (foundation): monorepo, Postgres+pgvector+RLS, Firebase Auth+RBAC, build/deploy, observability, design system
-- Tests: 1050 pass / 0 fail / 0 skip (shared 179, ui 42, db 9, ai 161, api 659)
+- Tests: 1055 pass / 0 fail / 0 skip (shared 179, ui 47, db 9, ai 161, api 659)
 - Build: `pnpm build` builds all 7 workspaces (turbo-orchestrated — see SIGILL note below; build via turbo also affected in this sandbox). Admin standalone build flakily zeroes `.next/server/pages-manifest.json` — only matters for `next start`.
 - Gates: typecheck ✅, test ✅ (coverage gate ≥90% met), lint ✅ (incl. stylelint), deadcode (knip) ✅. NOTE: `turbo` arm64 binary SIGILLs in this sandbox — run gates per-workspace (`tsc --noEmit`, `next lint`, `jest`) directly; `pnpm`-level turbo aggregation fails. (LEARNINGS #2/#13)
 - Next tasks (priority order):
-  1. **M12 (Frontend UI Overhaul)** — M12.1 shell + M12.2.1 sidebar shell done. Next: M12.2.2 conversation search input (wire M3.3 search API), M12.2.3 conversation list (history API + expert avatars + relative time), M12.2.4 usage meter footer (`/me/entitlements`). Then M12.3 topbar, M12.4 messages, M12.5 sources rail, M12.6 input bar, M12.7 Tweaks panel. Read `requirements/ui-reference-spec.md` first.
+  1. **M12 (Frontend UI Overhaul)** — M12.1 shell + M12.2.1 sidebar + M12.2.2 search done. Next: M12.2.3 conversation list (history API + expert avatars + relative time; reuse `openConversation` from the chat page), M12.2.4 usage meter footer (`/me/entitlements`). Then M12.3 topbar, M12.4 messages, M12.5 sources rail, M12.6 input bar, M12.7 Tweaks panel. Read `requirements/ui-reference-spec.md` first.
   2. **M13 (Admin Portal UI Overhaul)** — sidebar/dashboard/kanban/matrix/voice/concierge rebuilds.
   3. **M11.1 fixme legs** / **NT human gates** — await external surfaces / PM sign-off.

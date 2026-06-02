@@ -7,6 +7,7 @@ import { Chip } from "./Chip";
 import { Cite } from "./Cite";
 import { Content, Shell, Topbar } from "./Shell";
 import { ChatLayout } from "./ChatLayout";
+import { ChatSearch, type ChatSearchResultItem } from "./ChatSearch";
 import { ChatSidebar } from "./ChatSidebar";
 import {
   DEFAULT_LAYOUT_DIRECTION,
@@ -347,6 +348,108 @@ describe("ChatSidebar — dark rail shell (M12.2.1)", () => {
   it("merges a caller className onto the rail", () => {
     const el = ChatSidebar({ onNewConversation: noop, className: "z" }) as ReactElement;
     expect(cls(el)).toBe("side chat-side z");
+  });
+});
+
+describe("ChatSearch — conversation search input (M12.2.2)", () => {
+  const noop = () => {};
+  const hit = (over: Partial<ChatSearchResultItem> = {}): ChatSearchResultItem => ({
+    id: "c1",
+    title: "Franchise unit economics",
+    snippet: "the «break-even» point is…",
+    ...over,
+  });
+
+  /** The controlled `.input` element inside the search field. */
+  const inputOf = (el: ReactElement): ReactElement => {
+    const [field] = kids(el) as ReactElement[];
+    return (kids(field) as ReactElement[])[1];
+  };
+
+  it("renders the dark search field with no results region for an empty query", () => {
+    const el = ChatSearch({
+      query: "",
+      onQueryChange: noop,
+      results: [],
+      onSelect: noop,
+    }) as ReactElement;
+    expect(cls(el)).toBe("chat-search");
+    const [field, resultsRegion] = kids(el) as unknown[];
+    expect(cls(field as ReactElement)).toBe("chat-search-field");
+    const input = inputOf(el);
+    expect(cls(input)).toBe("chat-search-input");
+    expect((input.props as { placeholder?: unknown }).placeholder).toBe("Search all messages…");
+    expect((input.props as { value?: unknown }).value).toBe("");
+    // Results region is suppressed until the user types.
+    expect(resultsRegion).toBeFalsy();
+  });
+
+  it("wires the input onChange to onQueryChange", () => {
+    const seen: string[] = [];
+    const input = inputOf(
+      ChatSearch({
+        query: "fr",
+        onQueryChange: (q) => seen.push(q),
+        results: [],
+        onSelect: noop,
+      }) as ReactElement,
+    );
+    const onChange = (input.props as { onChange?: (e: unknown) => void }).onChange!;
+    onChange({ target: { value: "fra" } });
+    expect(seen).toEqual(["fra"]);
+  });
+
+  it("shows a searching note while a request is in flight with no results yet", () => {
+    const el = ChatSearch({
+      query: "fra",
+      onQueryChange: noop,
+      results: [],
+      searching: true,
+      onSelect: noop,
+    }) as ReactElement;
+    const [, region] = kids(el) as ReactElement[];
+    expect(cls(region)).toBe("chat-search-results");
+    const empty = kids(region) as ReactElement;
+    expect(cls(empty)).toBe("chat-search-empty muted");
+    expect(kids(empty)).toBe("Searching…");
+  });
+
+  it("shows a no-matches note for a settled query with no hits", () => {
+    const el = ChatSearch({
+      query: "zzz",
+      onQueryChange: noop,
+      results: [],
+      searching: false,
+      onSelect: noop,
+    }) as ReactElement;
+    const [, region] = kids(el) as ReactElement[];
+    expect(kids(kids(region) as ReactElement)).toBe("No matching conversations.");
+  });
+
+  it("renders each hit as a button with title + snippet, highlighting the active one", () => {
+    const onSelect = jest.fn();
+    const el = ChatSearch({
+      query: "fr",
+      onQueryChange: noop,
+      results: [hit(), hit({ id: "c2", title: "Pricing", snippet: null })],
+      onSelect,
+      activeId: "c2",
+    }) as ReactElement;
+    const [, region] = kids(el) as ReactElement[];
+    const [first, second] = kids(region) as ReactElement[];
+    // Inactive hit: title + snippet, no active modifier.
+    expect(cls(first)).toBe("chat-search-item");
+    const [title, snippet] = kids(first) as ReactElement[];
+    expect(cls(title as ReactElement)).toBe("chat-search-title");
+    expect(kids(title as ReactElement)).toBe("Franchise unit economics");
+    expect(cls(snippet as ReactElement)).toBe("chat-search-snippet");
+    // Active hit gets the modifier; a null snippet is omitted.
+    expect(cls(second)).toBe("chat-search-item active");
+    const secondKids = kids(second) as unknown[];
+    expect(secondKids[1]).toBeFalsy();
+    // onSelect fires with the conversation id.
+    (first.props as { onClick: () => void }).onClick();
+    expect(onSelect).toHaveBeenCalledWith("c1");
   });
 });
 

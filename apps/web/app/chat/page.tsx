@@ -6,6 +6,8 @@ import {
   Button,
   Card,
   ChatLayout,
+  ChatSearch,
+  type ChatSearchResultItem,
   ChatSidebar,
   DEFAULT_LAYOUT_DIRECTION,
   Field,
@@ -31,7 +33,11 @@ import {
   submitFeedback,
   type ExpertVoice,
 } from "../../src/lib/chat-client";
-import { createSavedAnswer } from "../../src/lib/history-client";
+import {
+  createSavedAnswer,
+  getConversation,
+  searchConversations,
+} from "../../src/lib/history-client";
 import { uploadFile, UPLOAD_ACCEPT } from "../../src/lib/upload-client";
 
 interface UiMessage {
@@ -411,6 +417,12 @@ export default function ChatPage() {
   // panel (M12.7.2) will toggle it + persist to localStorage. Studio = default
   // three-pane; classic/focus drop panes (handled by ChatLayout + ds.css).
   const [direction] = useState<LayoutDirection>(DEFAULT_LAYOUT_DIRECTION);
+  // Conversation search (M12.2.2) — full-text search across the user's chats
+  // (M3.3). The sidebar input is debounced into `searchQuery`; results render
+  // under the field and selecting one loads that conversation into the chat.
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ChatSearchResultItem[]>([]);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -430,6 +442,46 @@ export default function ChatPage() {
     };
   }, [user, getIdToken]);
 
+  // Debounced full-text search (M12.2.2 → M3.3). The query is trimmed and only
+  // searched at ≥2 chars; an empty/short query clears the results. The latest
+  // request wins (a stale in-flight response is dropped via the `active` flag).
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      setSearching(false);
+      return undefined;
+    }
+    let active = true;
+    setSearching(true);
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const token = await getIdToken();
+          if (!token || !active) return;
+          const hits = await searchConversations(token, q, { limit: 20, offset: 0 });
+          if (!active) return;
+          setSearchResults(
+            hits.map((h) => ({
+              id: h.conversation.id,
+              title: h.conversation.title ?? "Untitled conversation",
+              snippet: h.snippet,
+            })),
+          );
+        } catch {
+          // Search is best-effort — a failed request just leaves no results.
+          if (active) setSearchResults([]);
+        } finally {
+          if (active) setSearching(false);
+        }
+      })();
+    }, 250);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, getIdToken]);
+
   // "+ New conversation" (M12.2.1) — clears the active chat so the next message
   // starts a fresh conversation. The conversation list (M12.2.3) will let the
   // user switch back to a prior chat.
@@ -440,6 +492,41 @@ export default function ChatPage() {
     setDraft("");
     setError(null);
   }, [busy]);
+
+  // Open a conversation from search (M12.2.2) — fetch its transcript and replay
+  // it into the message list so the user can continue it. Live-only fields
+  // (recommendation/feedback affordances) re-appear as new turns are sent.
+  const openConversation = useCallback(
+    async (id: string) => {
+      if (busy) return;
+      setError(null);
+      try {
+        const token = await getIdToken();
+        if (!token) {
+          setError("Please sign in to open a conversation.");
+          return;
+        }
+        const detail = await getConversation(token, id);
+        setMessages(
+          detail.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            citations: m.citations,
+            done: true,
+            messageId: m.role === "assistant" ? m.id : undefined,
+            highStakes: m.highStakes ?? false,
+          })),
+        );
+        setConversationId(detail.id);
+        setExpertId(detail.expertId ?? "");
+        setDraft("");
+        setSearchQuery("");
+      } catch {
+        setError("Couldn't open that conversation — please try again.");
+      }
+    },
+    [busy, getIdToken],
+  );
 
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -518,7 +605,18 @@ export default function ChatPage() {
   return (
     <ChatLayout
       direction={direction}
-      sidebar={<ChatSidebar onNewConversation={startNewConversation} />}
+      sidebar={
+        <ChatSidebar onNewConversation={startNewConversation}>
+          <ChatSearch
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            results={searchResults}
+            searching={searching}
+            onSelect={(id) => void openConversation(id)}
+            activeId={conversationId}
+          />
+        </ChatSidebar>
+      }
     >
       <main className="card card-pad chat-content">
         <h1>Chat</h1>
