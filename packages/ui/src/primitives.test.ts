@@ -18,6 +18,7 @@ import { ChatConsultationCard } from "./ChatConsultationCard";
 import { ChatStateNotice } from "./ChatStateNotice";
 import { SourcesRail } from "./SourcesRail";
 import { SourcesRailHeader } from "./SourcesRailHeader";
+import { SourceCard } from "./SourceCard";
 import { AnswerProse } from "./AnswerProse";
 import { ChatTopbar } from "./ChatTopbar";
 import {
@@ -1458,5 +1459,102 @@ describe("SourcesRailHeader — SOURCES label + count + trust badge (M12.5.2)", 
     const badge = parts(el)[1];
     const badgeKids = (kids(badge) as unknown[]).filter(Boolean);
     expect(badgeKids).toContain("Every passage verified");
+  });
+});
+
+describe("SourceCard — numbered, colour-coded rail citation card (M12.5.3)", () => {
+  /** Non-falsy children of the card (the head + optional provenance + excerpt). */
+  const parts = (el: ReactElement): ReactElement[] =>
+    (kids(el) as unknown[]).filter((c): c is ReactElement => Boolean(c));
+  /** Non-falsy children of the `.source-card-head` row. */
+  const headParts = (el: ReactElement): ReactElement[] =>
+    (kids(parts(el)[0]) as unknown[]).filter((c): c is ReactElement => Boolean(c));
+
+  it("renders a static `.source-card` div with the numbered marker, title, provenance, excerpt", () => {
+    const el = SourceCard({
+      ordinal: 1,
+      kind: "knowledge",
+      title: "Published knowledge",
+      provenance: "doc-version-abc",
+      excerpt: "Payback windows are typically 18 months.",
+    }) as ReactElement;
+    expect(el.type).toBe("div");
+    expect(cls(el)).toBe("source-card");
+    const [marker, title] = headParts(el);
+    // The marker is a Cite sub-element (rendered later) — assert on its props:
+    // crimson knowledge variant, resolved, carrying the ordinal as its label.
+    expect(marker.type).toBe(Cite);
+    expect(marker.props).toMatchObject({ label: 1, variant: "knowledge", resolved: true });
+    expect(cls(title)).toBe("source-card-title");
+    expect(kids(title)).toBe("Published knowledge");
+    const [, prov, quote] = parts(el);
+    expect(cls(prov)).toBe("source-prov");
+    expect(kids(prov)).toBe("doc-version-abc");
+    expect(cls(quote)).toBe("source-quote");
+    expect(kids(quote)).toBe("Payback windows are typically 18 months.");
+  });
+
+  it("renders an upload card with the info-blue marker (knowledge vs upload never mixed)", () => {
+    const el = SourceCard({ ordinal: 2, kind: "upload", title: "budget.xlsx" }) as ReactElement;
+    expect(cls(el)).toBe("source-card upload");
+    const marker = headParts(el)[0];
+    expect(marker.type).toBe(Cite);
+    expect(marker.props).toMatchObject({ variant: "upload" });
+  });
+
+  it("renders the version badge with a kind-matched tone (red knowledge / info upload)", () => {
+    const know = SourceCard({ ordinal: 1, kind: "knowledge", title: "x", version: "V4" }) as ReactElement;
+    const knowBadge = headParts(know).find((c) => c.type === Badge);
+    expect((knowBadge as ReactElement).props).toMatchObject({ tone: "red", children: "V4" });
+
+    const up = SourceCard({ ordinal: 1, kind: "upload", title: "x", version: "TEMP" }) as ReactElement;
+    const upBadge = headParts(up).find((c) => c.type === Badge);
+    expect((upBadge as ReactElement).props).toMatchObject({ tone: "info", children: "TEMP" });
+  });
+
+  it("shows the rounded mono match percentage only when a finite number is given", () => {
+    const off = SourceCard({ ordinal: 1, kind: "knowledge", title: "x" }) as ReactElement;
+    expect(headParts(off).some((c) => /source-card-match/.test(String(cls(c))))).toBe(false);
+
+    const on = SourceCard({ ordinal: 1, kind: "knowledge", title: "x", matchPercent: 87.6 }) as ReactElement;
+    const match = headParts(on).find((c) => /source-card-match/.test(String(cls(c))));
+    expect(cls(match as ReactElement)).toBe("source-card-match mono muted");
+    expect((kids(match as ReactElement) as unknown[]).join("")).toBe("88% match");
+  });
+
+  it("omits the provenance and excerpt rows when absent", () => {
+    const el = SourceCard({ ordinal: 1, kind: "knowledge", title: "x" }) as ReactElement;
+    // Only the head row survives the falsy filter.
+    expect(parts(el)).toHaveLength(1);
+    expect(cls(parts(el)[0])).toBe("source-card-head");
+  });
+
+  it("becomes a focusable button (click-to-passage) when onSelect is given, and reports active", () => {
+    const seen: number[] = [];
+    const el = SourceCard({
+      ordinal: 3,
+      kind: "knowledge",
+      title: "x",
+      active: true,
+      onSelect: (o) => seen.push(o),
+    }) as ReactElement;
+    expect(el.type).toBe("button");
+    expect(cls(el)).toBe("source-card active");
+    const props = el.props as { onClick: () => void; "aria-pressed": boolean; type: string };
+    expect(props.type).toBe("button");
+    expect(props["aria-pressed"]).toBe(true);
+    props.onClick();
+    expect(seen).toEqual([3]);
+  });
+
+  it("uses the info-blue active highlight for an active upload card", () => {
+    const el = SourceCard({
+      ordinal: 1,
+      kind: "upload",
+      title: "x",
+      active: true,
+      onSelect: () => {},
+    }) as ReactElement;
+    expect(cls(el)).toBe("source-card upload active");
   });
 });

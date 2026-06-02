@@ -3098,3 +3098,32 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 - M12.5.3 (source cards) is next: lift the `.source` card markup out of `AnswerView`'s sources drawer (numbered, match %, crimson/blue doc icon, title + version badge, `.source-prov` mono location, `.source-quote` left-bordered excerpt) and mount as `SourcesRail` `children`; feed from the same latest-answer citations the header counts. `.source` already exists in ds.css.
 - `railCitationCount` only feeds the header today; M12.5.3 will want the citation *array* of the latest answer (and likely a click-to-passage hook reusing `AnswerView`'s `onCite`). Consider lifting a `latestAnswerCitations` memo alongside the count.
 - Rebuild `packages/ui` after editing — apps consume `dist/`. `turbo` SIGILLs in this sandbox — run gates per-workspace directly.
+
+## M12.5.3 — Source cards (sources rail)
+**Date:** 2026-06-02
+**Ref:** PRD §"M12 — Frontend UI Overhaul" / `requirements/ui-reference-spec.md` §"4. Sources Rail (Right Panel)"
+
+**What was done:**
+- New `packages/ui/src/SourceCard.tsx` `SourceCard` — a presentational numbered, colour-coded rail citation card: a `.cite`/`.cite.upload` marker icon (crimson knowledge / info-blue upload) carrying the ordinal, a bold `.source-card-title`, an optional kind-toned version `.badge` (red knowledge / info upload), a right-aligned mono `.source-card-match` percentage (rendered only for a finite `matchPercent`), the mono `.source-prov` provenance line, and a `.source-quote` excerpt with a left accent border matching the kind. Optional `onSelect` promotes the card to a focusable click-to-passage `<button>` (`aria-pressed={active}`); otherwise a static `<div>`.
+- ds.css `.source-card*` block (after `.trust-badge`): card surface + active highlight (crimson for knowledge, info-blue for the `.source-card.upload.active` variant), head row layout, ellipsised title, right-aligned match, mono provenance, kind-accented quote border. Knowledge vs upload accents kept strictly distinct (Design System rule).
+- Exported `SourceCard`/`SourceCardProps` from `packages/ui/src/index.ts`.
+- Wired into `apps/web/app/chat/page.tsx`: renamed the `railCitationCount` memo → `railCitations` (the latest assistant turn's full citation array), feeding both the header count (`railCitations.length`) and the rail body. Added `sourceCardTitle`/`sourceCardProvenance` helpers that split an upload's `sourceLabel` (`file · location`) into title + provenance and use `documentVersionId` as the provenance for knowledge citations. The rail's `SourcesRail` now renders one `SourceCard` per citation (or `undefined` children → empty state).
+- +7 ui tests in `primitives.test.ts` (100% SourceCard coverage): static div structure, upload marker distinction, kind-toned version badge, finite-only rounded match %, omitted prov/excerpt rows, click-to-passage button + active, info-blue active upload highlight.
+
+**Key decisions:**
+- `matchPercent` and `version` are optional props the chat page does NOT pass yet — `ChatCitationDto` carries no retrieval score or document version. Built them for spec-completeness (the mockup shows both) and future wiring; tested in isolation. This keeps the component spec-complete without inventing data.
+- The marker reuses the existing `Cite` primitive (resolved) so the crimson/upload colour treatment and render-after-resolve guarantee stay in one place rather than re-implementing the chip.
+- Children built as a keyed `ReactNode[]` (not a fragment) so the falsy-filtered tree matches the existing function-invocation test style (no DOM renderer).
+- Active-highlight colour follows the card kind (crimson knowledge / info upload) rather than a single crimson, preserving the upload distinction even in the selected state.
+
+**Files changed:**
+- `packages/ui/src/SourceCard.tsx` — new component
+- `packages/ui/src/ds.css` — new `.source-card*` style block
+- `packages/ui/src/index.ts` — export `SourceCard`/`SourceCardProps`
+- `packages/ui/src/primitives.test.ts` — +7 SourceCard tests + import
+- `apps/web/app/chat/page.tsx` — `railCitations` memo, `sourceCardTitle`/`sourceCardProvenance` helpers, `SourceCard` mapping in the rail, `SourceCard` import
+
+**Notes for next iteration:**
+- M12.5.4 (sources drawer fallback) is next: when the rail is dropped (classic/focus mode or < 1280px), the same `SourceCard`s should open as a slide-over drawer. The cards are now a reusable primitive — reuse them there. `AnswerView` already has an inline `sourcesOpen`-toggled drawer (M12.4.4) that could host them.
+- `SourceCard.onSelect` (click-to-passage) is unwired in the rail today — the rail isn't yet cross-linked to the inline `[n]` markers. When wiring, mirror `AnswerView.focusSource`/`onCite` to share the active-ordinal state between inline markers and rail cards.
+- Rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing — apps consume `dist/`. `turbo` SIGILLs in this sandbox — run gates per-workspace directly (`pnpm --filter <pkg> ...`).

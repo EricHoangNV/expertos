@@ -26,6 +26,7 @@ import {
   Input,
   type LayoutDirection,
   Select,
+  SourceCard,
   SourcesRail,
   SourcesRailHeader,
   Textarea,
@@ -105,6 +106,35 @@ function answerSourceLabel(citations: ChatCitationDto[]): string | undefined {
   if (hasKnowledge && hasUpload) return "grounded in published knowledge + your upload";
   if (hasUpload) return "grounded in your upload";
   return "grounded in published knowledge";
+}
+
+/**
+ * The bold title for a source card (M12.5.3): an upload shows its file name (the part of the
+ * `sourceLabel` before the ` · ` location separator), a knowledge citation shows a generic label
+ * (the `document_version_id` is the provenance line, not the title).
+ */
+function sourceCardTitle(citation: ChatCitationDto): string {
+  if (citation.kind === "upload") {
+    const label = citation.sourceLabel ?? "Uploaded file";
+    const [file] = label.split(" · ");
+    return file || label;
+  }
+  return "Published knowledge";
+}
+
+/**
+ * The mono provenance line for a source card (M12.5.3): an upload shows its location (the part of
+ * the `sourceLabel` after the ` · ` separator, e.g. the sheet/cell range), a knowledge citation
+ * shows its `document_version_id` so the passage is traceable.
+ */
+function sourceCardProvenance(citation: ChatCitationDto): string | undefined {
+  if (citation.kind === "upload") {
+    const label = citation.sourceLabel;
+    if (!label) return undefined;
+    const sep = label.indexOf(" · ");
+    return sep >= 0 ? label.slice(sep + 3) : undefined;
+  }
+  return citation.documentVersionId;
 }
 
 /** Replaces the last message in the list via `fn` (immutably). */
@@ -576,15 +606,15 @@ export default function ChatPage() {
     [entitlements],
   );
 
-  // Resolved-citation count for the latest assistant answer — feeds the sources-rail
-  // header (M12.5.2). Render-after-resolve: only the latest answer's citations count,
-  // and `SourcesRailHeader` itself hides the count/trust badge until it is > 0.
-  const railCitationCount = useMemo(() => {
+  // Resolved citations for the latest assistant answer — feed both the sources-rail
+  // header count (M12.5.2) and the source cards (M12.5.3). Render-after-resolve: only
+  // the latest answer's citations show; the header/cards stay empty until they resolve.
+  const railCitations = useMemo<ChatCitationDto[]>(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
-      if (m.role === "assistant") return m.citations.length;
+      if (m.role === "assistant") return m.citations;
     }
-    return 0;
+    return [];
   }, [messages]);
 
   // The RECENT rows (M12.2.3): map summaries to list items, resolving the expert
@@ -830,7 +860,22 @@ export default function ChatPage() {
   return (
     <ChatLayout
       direction={direction}
-      rail={<SourcesRail header={<SourcesRailHeader count={railCitationCount} />} />}
+      rail={
+        <SourcesRail header={<SourcesRailHeader count={railCitations.length} />}>
+          {railCitations.length > 0
+            ? railCitations.map((citation) => (
+                <SourceCard
+                  key={citation.ordinal}
+                  ordinal={citation.ordinal}
+                  kind={citation.kind}
+                  title={sourceCardTitle(citation)}
+                  provenance={sourceCardProvenance(citation)}
+                  excerpt={citation.quote}
+                />
+              ))
+            : undefined}
+        </SourcesRail>
+      }
       sidebar={
         <ChatSidebar
           onNewConversation={startNewConversation}

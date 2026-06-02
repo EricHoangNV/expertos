@@ -422,6 +422,33 @@ kbd { font-family: var(--font-mono); font-size: 11px; background: var(--paper-2)
 }
 .trust-badge svg { flex: none; }
 
+/* Source cards (M12.5.3) — numbered, colour-coded citation cards in the rail body.
+   Knowledge = crimson accent, upload = info-blue (never mixed, per Design System). */
+.source-card {
+  display: flex; flex-direction: column; gap: var(--s2);
+  padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface); scroll-margin-top: var(--s4); text-align: left; width: 100%;
+  transition: border-color .14s, background .14s, box-shadow .14s;
+}
+button.source-card { cursor: pointer; font: inherit; color: inherit; }
+.source-card.active { border-color: var(--red-300); background: var(--red-50); box-shadow: var(--sh-focus); }
+.source-card.upload.active { border-color: var(--info-600); background: var(--info-50); }
+button.source-card:focus-visible { outline: none; box-shadow: var(--sh-focus); }
+.source-card .source-card-head { display: flex; align-items: center; gap: var(--s2); }
+.source-card .source-card-title {
+  flex: 1; min-width: 0; font-weight: 600; font-size: 13px; color: var(--ink-900);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.source-card .source-card-match { flex: none; margin-left: auto; font-size: 11px; }
+.source-card .source-prov {
+  font-family: var(--font-mono); font-size: 11px; color: var(--ink-400); word-break: break-all;
+}
+.source-card .source-quote {
+  font-size: 13px; color: var(--ink-700);
+  border-left: 2px solid var(--red-300); padding-left: var(--s2);
+}
+.source-card.upload .source-quote { border-left-color: var(--info-600); }
+
 /* ============================================================
    Chat sidebar (consumer web) — M12.2
    Reuses the dark `.side` rail + `.brand` header inside the `.chat-layout`
