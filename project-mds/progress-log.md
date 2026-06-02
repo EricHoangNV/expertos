@@ -3758,3 +3758,26 @@ ui build, admin tsc + next lint, root lint:css (stylelint), root knip. (admin ha
 
 **Notes for next iteration:**
 - M13.2.7 (Concierge SLA dark card) is the last dashboard card. Wire to `getConciergeAnalytics` — `sla.avgResponseMinutes` → "Nh Nm" large display, open-queue badge = `byStatus.requested + byStatus.in_review`. Build the reusable `.dark-card` (`--ink-900` bg / white text, M13.7.2) here since this is its first use.
+
+---
+
+## M13.2.7 — Dashboard Concierge SLA card + reusable `.dark-card` (2026-06-02)
+
+**Task:** Final admin dashboard card (M13.2.7): a dark-card Concierge SLA panel — "CONCIERGE SLA" label + open-queue count badge, large avg time-to-answer display, "target 24h" subtitle, "Open queue →" button — wired to `/admin/analytics/concierge`. Also the first use of the reusable `.dark-card` primitive (M13.7.2).
+
+**What I built:**
+- **`packages/ui/src/ds.css`** — new reusable `.dark-card` block (M13.7.2): `--ink-900` bg, white text, `--r-lg` radius, `--sh-sm`; dark-context overrides for nested `.label` (→`--ink-400`) and `.muted` (→`--ink-400`), mirroring the `.side` ink-rail palette. New `.sla-*` block: `.sla-head` (label/badge row), `.sla-time` (`--font-display` 40px white display), `.sla-sub`.
+- **`apps/admin/app/page.tsx`** — `ConciergeSlaCard` component: open-queue count = `byStatus.requested + byStatus.in_review` → "N in queue" `.badge-amber`; `durationDisplay(sla.avgResponseMinutes)` → "21h 04m" ("—" when no requests answered / non-finite, NaN-guarded, minutes zero-padded); "avg time-to-answer · target 24h" subtitle (24h = M9.1 default SLA, stated as plain copy rather than re-fetching `review_configs`); "Open queue →" plain `.btn` (light surface, contrasts on the dark card — spec allowed `.btn-dark` *or* `.btn`, and `.btn-dark` would be invisible on `--ink-900`) → `/concierge-reviews`. Added `getConciergeAnalytics` to the dashboard `Promise.all` (over the same 7d/30d/QTD `days` window) + `concierge` to `DashboardData`; rendered between the pipeline and low-confidence cards.
+
+**Decisions:**
+- Reused the existing `Card` primitive with `className="dark-card sla-card"` (composition, no new React component) — consistent with the other dashboard cards (`qa-card`/`funnel-card`/`pipeline-card`).
+- Open-queue button is a light `.btn` for contrast; documented why `.btn-dark` was rejected.
+- SLA target left as copy ("target 24h") — the DTO carries no target; re-fetching the concierge config for one subtitle string wasn't worth a second request.
+
+**Tests:** 1229 pass / 0 fail / 0 skip (unchanged — admin has no jest suite; ds.css has no unit tests; ui jest 217 still green). Gates green: ui build + jest, admin `tsc --noEmit` + `next lint`, root `lint:css` (stylelint), root `knip`. No hardcoded hex/px in app code (only `#fff`/px live in ds.css, the token source-of-truth).
+
+**Milestone:** M13.2 (Dashboard) COMPLETE — all of M13.2.1–M13.2.7 done.
+
+**Notes for next iteration:**
+- M13.3 (Knowledge approval kanban) is next: 4-column `.kanban`/`.kanban-col` (DRAFT/AI PROCESSING/EXPERT REVIEW/PUBLISHED) over `/knowledge` with status filters + a conversation→knowledge `.table` over `/knowledge-drafts`. `.kanban` is a reusable pattern (M13.7.3) — build it there.
+- `.dark-card` is now available for M13.6 user-question bubbles.

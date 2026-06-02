@@ -367,6 +367,21 @@ button { font-family: inherit; cursor: pointer; }
 .pipeline-row:first-child { border-top: none; padding-top: 4px; }
 .pipeline-count { font-size: 18px; font-weight: 700; color: var(--ink-900); }
 
+/* Dark card (M13.7.2) — reusable `--ink-900` surface with white text, used by the
+   Concierge SLA card and any other inverted panel. Mirrors `.card` geometry but
+   swaps the light surface for the ink rail palette (see `.side`). */
+.dark-card { background: var(--ink-900); color: #fff; border: 1px solid var(--ink-900); border-radius: var(--r-lg); box-shadow: var(--sh-sm); }
+.dark-card .label { color: var(--ink-400); }
+.dark-card .muted { color: var(--ink-400); }
+
+/* Concierge SLA card (M13.2.7) — dark card: "CONCIERGE SLA" label + open-queue
+   badge over a large avg time-to-answer display, a target subtitle, and an
+   "Open queue →" action. Wired to `/admin/analytics/concierge`. */
+.sla-card { margin-bottom: 24px; }
+.sla-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.sla-time { font-family: var(--font-display); font-size: 40px; font-weight: 700; color: #fff; margin: 14px 0 4px; line-height: 1.1; }
+.sla-sub { margin: 0 0 18px; }
+
 /* segmented control */
 .seg { display: inline-flex; background: var(--paper-2); border-radius: var(--r-sm); padding: 3px; gap: 2px; }
 .seg button { border: none; background: transparent; padding: 6px 14px; border-radius: 5px; font-size: 13px; font-weight: 600; color: var(--ink-500); }

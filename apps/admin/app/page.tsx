@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge, Bar, Card, Stat, StackedBar, cx, relativeTime } from "@expertos/ui";
 import type {
+  ConciergeAnalyticsDto,
   FailedQueryDto,
   FunnelAnalyticsDto,
   KnowledgePipelineDto,
@@ -15,6 +16,7 @@ import type {
 import { AdminFrame } from "../src/components/AdminFrame";
 import { useAuth } from "../src/lib/auth-context";
 import {
+  getConciergeAnalytics,
   getFailedQueries,
   getFunnelAnalytics,
   getKnowledgePipeline,
@@ -111,6 +113,18 @@ function mrrDelta(report: RevenueReportDto): { text: string; trend: "up" | "down
 /** How many flagged/low-confidence queries the dashboard preview card shows. */
 const LOWCONF_PREVIEW = 6;
 
+/**
+ * Mean time-to-answer (minutes) as a compact "21h 04m" display, "—" when no requests have been
+ * answered yet (`avgResponseMinutes === null`). Minutes are zero-padded; sub-hour times read "0h NNm".
+ */
+function durationDisplay(minutes: number | null): string {
+  if (minutes == null || !Number.isFinite(minutes)) return "—";
+  const total = Math.max(0, Math.round(minutes));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
 interface DashboardData {
   revenue: RevenueReportDto;
   funnel: FunnelAnalyticsDto;
@@ -118,6 +132,7 @@ interface DashboardData {
   questions: QuestionsAnalyticsDto;
   pipeline: KnowledgePipelineDto;
   failedQueries: FailedQueryDto[];
+  concierge: ConciergeAnalyticsDto;
 }
 
 /**
@@ -259,6 +274,31 @@ function KnowledgePipelineCard({ data }: { data: KnowledgePipelineDto }) {
   );
 }
 
+/**
+ * Concierge SLA card (M13.2.7): a dark card ({@link ../../packages/ui `.dark-card`}, M13.7.2) showing
+ * the mean time-to-answer for the concierge review queue against the team's 24h target, with the count
+ * of still-open requests and an "Open queue →" link to the reviewer queue. Wired to
+ * {@link getConciergeAnalytics} (`/admin/analytics/concierge`). The 24h target is the M9.1 default SLA;
+ * the dashboard states it as plain copy rather than re-fetching `review_configs`.
+ */
+function ConciergeSlaCard({ data }: { data: ConciergeAnalyticsDto }) {
+  const openQueue = data.byStatus.requested + data.byStatus.in_review;
+
+  return (
+    <Card pad className="dark-card sla-card">
+      <div className="sla-head">
+        <div className="label">Concierge SLA</div>
+        <Badge tone="amber">{count(openQueue)} in queue</Badge>
+      </div>
+      <div className="sla-time">{durationDisplay(data.sla.avgResponseMinutes)}</div>
+      <p className="sla-sub muted">avg time-to-answer · target 24h</p>
+      <Link href="/concierge-reviews" className="btn btn-sm">
+        Open queue →
+      </Link>
+    </Card>
+  );
+}
+
 /** Confidence-circle tone on a red→amber scale (lower confidence reads redder). */
 function confTone(confidence: number): "conf-low" | "conf-mid" {
   return confidence < 0.6 ? "conf-low" : "conf-mid";
@@ -345,15 +385,17 @@ export default function AdminHomePage() {
         setError("Please sign in to continue.");
         return;
       }
-      const [revenue, funnel, validation, questions, pipeline, failedQueries] = await Promise.all([
-        getRevenueReport(token, 3),
-        getFunnelAnalytics(token, days),
-        getValidationAnalytics(token, days),
-        getQuestionsAnalytics(token, days),
-        getKnowledgePipeline(token),
-        getFailedQueries(token, { limit: LOWCONF_PREVIEW }),
-      ]);
-      setData({ revenue, funnel, validation, questions, pipeline, failedQueries });
+      const [revenue, funnel, validation, questions, pipeline, failedQueries, concierge] =
+        await Promise.all([
+          getRevenueReport(token, 3),
+          getFunnelAnalytics(token, days),
+          getValidationAnalytics(token, days),
+          getQuestionsAnalytics(token, days),
+          getKnowledgePipeline(token),
+          getFailedQueries(token, { limit: LOWCONF_PREVIEW }),
+          getConciergeAnalytics(token, days),
+        ]);
+      setData({ revenue, funnel, validation, questions, pipeline, failedQueries, concierge });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard.");
     }
@@ -429,6 +471,8 @@ export default function AdminHomePage() {
       {data != null && <FunnelCard data={data.funnel} />}
 
       {data != null && <KnowledgePipelineCard data={data.pipeline} />}
+
+      {data != null && <ConciergeSlaCard data={data.concierge} />}
 
       {data != null && <LowConfidenceCard rows={data.failedQueries} />}
     </AdminFrame>
