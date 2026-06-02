@@ -17,9 +17,9 @@ test.describe("consumer chat", () => {
   test("ask a question, get an answer, and save it", async ({ page }) => {
     await ask(page, "What does the expert recommend for getting started?");
 
-    // The finished assistant turn exposes feedback + save affordances.
-    await expect(page.getByText("Was this helpful?").last()).toBeVisible();
+    // The finished assistant turn exposes the action bar (M12.4.4) with feedback + save.
     await expect(page.getByRole("button", { name: "Helpful" }).last()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save", exact: true }).last()).toBeVisible();
 
     await saveLastAnswer(page);
     // Exact: a loose "Saved" also matches the upload-mode option "Persistent (saved to …)".
@@ -59,7 +59,7 @@ test.describe("consumer chat", () => {
     // satisfies the contract — `.first()` keeps the combined locator single-element (both can
     // be present at once, which would otherwise trip strict mode).
     const limited = page.getByText("Limited knowledge").last();
-    const completed = page.getByText("Was this helpful?").last();
+    const completed = page.getByRole("button", { name: "Helpful" }).last();
     await expect(limited.or(completed).first()).toBeVisible();
   });
 });

@@ -2964,3 +2964,38 @@ Built the dark-rail conversation search input and wired it to the existing M3.3 
 - M12.4.4 (action bar): refactor `AnswerFeedback` + `SaveAnswer` + a new "View sources (N)" toggle into a horizontal `.btn-ghost` row beneath the answer.
 - M12.5 (sources rail): the `.sources` drawer still lives inside `AnswerView` — lift it into the `.sources-rail` right pane; the prose is now cleanly separable (`AnswerProse`). Coordinate the `verified`/source-label signals (already derived in `apps/web/app/chat/page.tsx` `answerSourceLabel`).
 - Reminder: rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing it — apps import from `dist/`, so typecheck fails against stale build output otherwise.
+
+## M12.4.4 — Answer action bar (ChatAnswerActions)
+**Date:** 2026-06-02
+**Ref:** PRD §"UI Reference Spec" (M12.4.4) / `requirements/ui-reference-spec.md` (Assistant message → Action bar)
+
+**What was done:**
+- New presentational ds.css primitive `packages/ui/src/ChatAnswerActions.tsx` — a single `.msg-actions` block with a horizontal `.msg-actions-bar` row laying out:
+  - ghost "View sources (N)" toggle — render-after-resolve (rendered only when `sourceCount > 0` and a handler is supplied); `aria-expanded`/`aria-pressed` reflect the open state.
+  - ghost Save control — flips to a static `.badge-green` "Saved" once bookmarked.
+  - Yes/No feedback buttons (`.btn-subtle`; active verdict promoted to primary [Yes] / dark [No]); helpful/not-helpful intent carried on `aria-label` (text labels, not emoji, per M11.5 anti-slop).
+  - follow-up content (feedback reason field, save/feedback errors) as `children` on a row below the bar.
+- ds.css: added the `.msg-actions` / `.msg-actions-bar` block (flex column + wrapping row, ds.css tokens only) under the M12.4.2 assistant-turn block.
+- `apps/web/app/chat/page.tsx`: merged the former separate `AnswerFeedback` + `SaveAnswer` page components into one stateful `AnswerActions` that owns save + verdict + reason state and renders `ChatAnswerActions`. New page-local `AssistantTurn` component owns the per-message `sourcesOpen` toggle state, shared by the prose drawer (`AnswerView`) and the action bar; replaced the inline assistant-branch JSX in the message map with `<AssistantTurn message={m} />`.
+- `apps/web/src/components/answer-view.tsx`: `AnswerView` gained an optional controlled `sourcesOpen` prop — when provided the inline `.sources` drawer shows only while open (chat, driven by the toggle); when omitted the always-show-once-resolved default is preserved (history view).
+- `packages/ui/src/index.ts`: exported `ChatAnswerActions` + `ChatAnswerActionsProps`.
+- Tests: +10 in `packages/ui/src/primitives.test.ts` (ChatAnswerActions describe) — bar structure, conditional rendering of each control (with/without handler, sources count gate), verdict promotion, busy-disable, children passthrough. `ChatAnswerActions.tsx` 100% stmts/branch/funcs/lines.
+
+**Key decisions:**
+- Kept the component presentational (no hooks) like every other M12 primitive; the page owns auth + network state and threads it in via callbacks/props. This let the two formerly-separate stateful components collapse into one bar without coupling the ui package to the API client.
+- "View sources" now toggles the inline sources drawer (default closed) rather than the drawer always showing — faithful to the mockup (sources move to the rail/drawer; the action bar is the affordance). History view keeps the always-show default by omitting `sourcesOpen`, so no regression there. The full `.sources-rail` is M12.5; this toggle is the M12.5.4 drawer-fallback seam.
+- Feedback flow preserved exactly: clicking Yes/No submits immediately (no reason), then the reason field appears and "Send reason" re-submits the same verdict with the reason (idempotent upsert).
+
+**Files changed:**
+- `packages/ui/src/ChatAnswerActions.tsx` — new presentational action-bar primitive
+- `packages/ui/src/index.ts` — export
+- `packages/ui/src/ds.css` — `.msg-actions` / `.msg-actions-bar`
+- `packages/ui/src/primitives.test.ts` — +10 tests
+- `apps/web/app/chat/page.tsx` — merged `AnswerActions`, new `AssistantTurn`, removed old `AnswerFeedback`/`SaveAnswer`, simplified message map
+- `apps/web/src/components/answer-view.tsx` — optional `sourcesOpen` controlled prop
+
+**Gates:** ui typecheck/lint/test (106 pass, 100% coverage on new file) ✅; web typecheck/lint ✅; stylelint ✅; knip ✅. Rebuilt `packages/ui` `dist/` so the web typecheck resolves the new export.
+
+**Notes for next iteration:**
+- M12.5 (sources rail): the sources drawer in `AnswerView` is already decoupled from prose (`AnswerProse`) and now gated by `sourcesOpen`. To build the rail, lift the `.sources` list rendering out of `AnswerView` into the `.sources-rail` pane (ChatLayout `rail` slot) for studio mode, and reuse the `sourcesOpen` toggle for the classic/focus drawer fallback (M12.5.4).
+- M12.4.5/.6: `ConsultationPrompt` and `HighStakesNotice` + the inline insufficient/degraded cards still live in `apps/web/app/chat/page.tsx` (now inside `AssistantTurn`) — those are the restyle targets.

@@ -528,3 +528,12 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
 }
 .msg-assistant .msg-assistant-verified { margin-left: auto; }
 .msg-assistant .msg-assistant-body { display: flex; flex-direction: column; gap: var(--s3); }
+
+/* Answer action bar (M12.4.4) — a horizontal row of ghost/subtle controls under a
+   completed answer: the "View sources (N)" toggle, Save, and the 👍/👎 feedback
+   buttons, with optional follow-up content (the feedback reason field, an error
+   note) on a row below. */
+.msg-actions { display: flex; flex-direction: column; gap: var(--s2); }
+.msg-actions .msg-actions-bar {
+  display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+}

@@ -13,6 +13,12 @@ interface AnswerViewProps {
    * mid-stream; the history detail view always passes `true` (a persisted answer is final).
    */
   interactive: boolean;
+  /**
+   * Controls the inline sources drawer visibility (M12.4.4). When provided, the drawer is shown only
+   * while `true` — driven by the action-bar "View sources (N)" toggle. When omitted (history view),
+   * the drawer always shows once resolved, preserving the M4.2 default.
+   */
+  sourcesOpen?: boolean;
 }
 
 /**
@@ -22,7 +28,7 @@ interface AnswerViewProps {
  * scrolls to the matching source row (click-to-passage). Shared by the live chat turn and the
  * history transcript so the two never drift.
  */
-export function AnswerView({ content, citations, interactive }: AnswerViewProps) {
+export function AnswerView({ content, citations, interactive, sourcesOpen }: AnswerViewProps) {
   const [activeOrdinal, setActiveOrdinal] = useState<number | null>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
 
@@ -31,7 +37,9 @@ export function AnswerView({ content, citations, interactive }: AnswerViewProps)
     rowRefs.current.get(ordinal)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, []);
 
-  const resolved = interactive && citations.length > 0;
+  // Show the drawer once citations resolved (M4.2), but honor the action-bar toggle when the chat
+  // page controls it (M12.4.4): `sourcesOpen === undefined` keeps the always-show history default.
+  const resolved = interactive && citations.length > 0 && sourcesOpen !== false;
 
   return (
     <>

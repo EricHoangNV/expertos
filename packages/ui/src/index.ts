@@ -42,6 +42,8 @@ export { ChatUserMessage } from "./ChatUserMessage";
 export type { ChatUserMessageProps, ChatUserMessageAlign } from "./ChatUserMessage";
 export { ChatAssistantMessage } from "./ChatAssistantMessage";
 export type { ChatAssistantMessageProps } from "./ChatAssistantMessage";
+export { ChatAnswerActions } from "./ChatAnswerActions";
+export type { ChatAnswerActionsProps } from "./ChatAnswerActions";
 export {
   ChatConversationList,
   AVATAR_TONES,

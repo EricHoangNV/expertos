@@ -5,6 +5,7 @@ import {
   Badge,
   Button,
   Card,
+  ChatAnswerActions,
   ChatAssistantMessage,
   ChatConversationList,
   type ChatConversationItem,
@@ -185,95 +186,12 @@ function ConsultationPrompt({ recommendation }: { recommendation: ConsultationRe
 }
 
 /**
- * 👍/👎 feedback on a finished assistant answer (M3.4). The verdict is an idempotent upsert keyed
- * on the answer, so the user can flip 👍↔👎 or add/revise a reason; submitting reuses the same
- * endpoint. The reason field appears once a verdict is chosen — optional, length-bounded to mirror
- * the API's 500-char limit (directive §1.1). Ownership is enforced server-side by RLS.
- */
-function AnswerFeedback({ messageId }: { messageId: string }) {
-  const { getIdToken } = useAuth();
-  const [verdict, setVerdict] = useState<boolean | null>(null);
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const send = useCallback(
-    async (helpful: boolean, withReason: boolean) => {
-      setBusy(true);
-      setError(null);
-      try {
-        const token = await getIdToken();
-        if (!token) {
-          setError("Please sign in to leave feedback.");
-          return;
-        }
-        const trimmed = reason.trim();
-        await submitFeedback(messageId, helpful, token, withReason && trimmed ? trimmed : undefined);
-        setVerdict(helpful);
-      } catch {
-        setError("Couldn't save your feedback — please try again.");
-      } finally {
-        setBusy(false);
-      }
-    },
-    [getIdToken, messageId, reason],
-  );
-
-  return (
-    <div className="row gap2 wrap">
-      <span className="label">Was this helpful?</span>
-      <Button
-        variant={verdict === true ? "primary" : "subtle"}
-        size="sm"
-        onClick={() => void send(true, true)}
-        disabled={busy}
-        aria-pressed={verdict === true}
-        aria-label="Helpful"
-      >
-        Yes
-      </Button>
-      <Button
-        variant={verdict === false ? "dark" : "subtle"}
-        size="sm"
-        onClick={() => void send(false, true)}
-        disabled={busy}
-        aria-pressed={verdict === false}
-        aria-label="Not helpful"
-      >
-        No
-      </Button>
-      {verdict !== null && (
-        <>
-          <Input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            disabled={busy}
-            maxLength={500}
-            placeholder="Add a reason (optional)"
-            aria-label="Feedback reason"
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void send(verdict, true)}
-            disabled={busy || !reason.trim()}
-          >
-            Send reason
-          </Button>
-          <span className="muted">Thanks for your feedback.</span>
-        </>
-      )}
-      {error && <Badge tone="red">{error}</Badge>}
-    </div>
-  );
-}
-
-/**
  * One assistant turn in the live chat: delegates to the shared {@link AnswerView} (M4.2 sources
  * drawer + render-after-resolve) once any prose has arrived, showing a streaming placeholder until
- * then. Markers stay non-interactive mid-stream (`interactive={message.done}`).
+ * then. Markers stay non-interactive mid-stream (`interactive={message.done}`); the inline sources
+ * drawer is driven by the action-bar "View sources" toggle (`sourcesOpen`, M12.4.4).
  */
-function AssistantAnswer({ message }: { message: UiMessage }) {
+function AssistantAnswer({ message, sourcesOpen }: { message: UiMessage; sourcesOpen: boolean }) {
   if (!message.content) {
     return <p>{message.done ? "" : "…"}</p>;
   }
@@ -282,47 +200,166 @@ function AssistantAnswer({ message }: { message: UiMessage }) {
       content={message.content}
       citations={message.citations}
       interactive={message.done}
+      sourcesOpen={sourcesOpen}
     />
   );
 }
 
 /**
- * Bookmark a finished assistant answer (M3.2). Sends only the `messageId`; the owning conversation
- * is derived + ownership re-checked server-side. A 409 (already saved) is surfaced as a benign
- * "Saved" state rather than an error, so the toggle is idempotent from the user's view.
+ * The action bar under a finished answer (M12.4.4): the shared {@link ChatAnswerActions} bar laying
+ * out the "View sources (N)" toggle (M12.5 drawer/rail), Save (M3.2), and 👍/👎 feedback (M3.4) in
+ * one horizontal row, with the feedback reason field + errors below. Merges the former separate Save
+ * + feedback components so they read as a single bar.
+ *
+ * Save sends only the `messageId` (the conversation is derived + ownership re-checked server-side);
+ * a 409 surfaces as a benign "Saved" state, so it's idempotent from the user's view. The verdict is
+ * an idempotent upsert keyed on the answer — the user can flip 👍↔👎 or add/revise a reason via the
+ * same endpoint; the reason field appears once a verdict is chosen (optional, length-bounded to the
+ * API's 500-char limit, directive §1.1). Ownership is enforced server-side by RLS.
  */
-function SaveAnswer({ messageId }: { messageId: string }) {
+function AnswerActions({
+  messageId,
+  sourceCount,
+  sourcesOpen,
+  onToggleSources,
+}: {
+  messageId: string;
+  sourceCount: number;
+  sourcesOpen: boolean;
+  onToggleSources: () => void;
+}) {
   const { getIdToken } = useAuth();
   const [saved, setSaved] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [verdict, setVerdict] = useState<boolean | null>(null);
+  const [reason, setReason] = useState("");
+  const [fbBusy, setFbBusy] = useState(false);
+  const [fbError, setFbError] = useState<string | null>(null);
 
   const save = useCallback(async () => {
-    setBusy(true);
-    setError(null);
+    setSaveBusy(true);
+    setSaveError(null);
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to save answers.");
+        setSaveError("Please sign in to save answers.");
         return;
       }
       await createSavedAnswer(token, messageId);
       setSaved(true);
     } catch {
-      setError("Couldn't save — please try again.");
+      setSaveError("Couldn't save — please try again.");
     } finally {
-      setBusy(false);
+      setSaveBusy(false);
     }
   }, [getIdToken, messageId]);
 
-  if (saved) return <Badge tone="green">Saved</Badge>;
+  const sendFeedback = useCallback(
+    async (helpful: boolean, withReason: boolean) => {
+      setFbBusy(true);
+      setFbError(null);
+      try {
+        const token = await getIdToken();
+        if (!token) {
+          setFbError("Please sign in to leave feedback.");
+          return;
+        }
+        const trimmed = reason.trim();
+        await submitFeedback(messageId, helpful, token, withReason && trimmed ? trimmed : undefined);
+        setVerdict(helpful);
+      } catch {
+        setFbError("Couldn't save your feedback — please try again.");
+      } finally {
+        setFbBusy(false);
+      }
+    },
+    [getIdToken, messageId, reason],
+  );
+
   return (
-    <>
-      <Button variant="subtle" size="sm" onClick={() => void save()} disabled={busy}>
-        Save answer
-      </Button>
-      {error && <Badge tone="red">{error}</Badge>}
-    </>
+    <ChatAnswerActions
+      sourceCount={sourceCount}
+      sourcesOpen={sourcesOpen}
+      onToggleSources={onToggleSources}
+      saved={saved}
+      saveBusy={saveBusy}
+      onSave={() => void save()}
+      verdict={verdict}
+      feedbackBusy={fbBusy}
+      onFeedback={(helpful) => void sendFeedback(helpful, false)}
+    >
+      {verdict !== null && (
+        <div className="row gap2 wrap">
+          <Input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            disabled={fbBusy}
+            maxLength={500}
+            placeholder="Add a reason (optional)"
+            aria-label="Feedback reason"
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void sendFeedback(verdict, true)}
+            disabled={fbBusy || !reason.trim()}
+          >
+            Send reason
+          </Button>
+          <span className="muted">Thanks for your feedback.</span>
+        </div>
+      )}
+      {saveError && <Badge tone="red">{saveError}</Badge>}
+      {fbError && <Badge tone="red">{fbError}</Badge>}
+    </ChatAnswerActions>
+  );
+}
+
+/**
+ * One assistant message in the transcript (M12.4.2 + M12.4.4): the {@link ChatAssistantMessage}
+ * header over the answer body — prose + citations, the degraded / insufficient / high-stakes /
+ * recommendation state cards, and the {@link AnswerActions} bar once the answer is finished. Owns the
+ * per-message `sourcesOpen` toggle state shared by the prose drawer (M12.4.3) and the bar (M12.4.4).
+ */
+function AssistantTurn({ message }: { message: UiMessage }) {
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+
+  return (
+    <ChatAssistantMessage
+      expertName={message.expertName}
+      aiRendition={Boolean(message.expertName)}
+      sourceLabel={message.done ? answerSourceLabel(message.citations) : undefined}
+      verified={message.done && message.citations.length > 0 && !message.insufficientKnowledge}
+    >
+      <AssistantAnswer message={message} sourcesOpen={sourcesOpen} />
+      {message.done && message.degraded && (
+        <Badge tone="info">
+          Fair-use mode — answered with a lighter model while you’re over this period’s soft limit.
+        </Badge>
+      )}
+      {message.done && message.insufficientKnowledge && (
+        <Card className="card-pad">
+          <Badge tone="amber">Limited knowledge</Badge>
+          <p>
+            I couldn’t find enough in the expert’s knowledge base to answer this confidently. Try
+            rephrasing your question, or book a consultation for a direct answer.
+          </p>
+        </Card>
+      )}
+      {message.done && message.highStakes && <HighStakesNotice />}
+      {message.done && message.recommendation && (
+        <ConsultationPrompt recommendation={message.recommendation} />
+      )}
+      {message.done && message.messageId && (
+        <AnswerActions
+          messageId={message.messageId}
+          sourceCount={message.citations.length}
+          sourcesOpen={sourcesOpen}
+          onToggleSources={() => setSourcesOpen((open) => !open)}
+        />
+      )}
+    </ChatAssistantMessage>
   );
 }
 
@@ -844,44 +881,9 @@ export default function ChatPage() {
             m.role === "user" ? (
               <ChatUserMessage key={i} content={m.content} />
             ) : (
-            <Card key={i} className="card-pad">
-              <ChatAssistantMessage
-                expertName={m.expertName}
-                aiRendition={Boolean(m.expertName)}
-                sourceLabel={m.done ? answerSourceLabel(m.citations) : undefined}
-                verified={m.done && m.citations.length > 0 && !m.insufficientKnowledge}
-              >
-                <AssistantAnswer message={m} />
-                {m.done && m.degraded && (
-                  <Badge tone="info">
-                    Fair-use mode — answered with a lighter model while you’re over this period’s soft
-                    limit.
-                  </Badge>
-                )}
-                {m.done && m.insufficientKnowledge && (
-                  <Card className="card-pad">
-                    <Badge tone="amber">Limited knowledge</Badge>
-                    <p>
-                      I couldn’t find enough in the expert’s knowledge base to answer this
-                      confidently. Try rephrasing your question, or book a consultation for a direct
-                      answer.
-                    </p>
-                  </Card>
-                )}
-                {m.done && m.highStakes && <HighStakesNotice />}
-                {m.done && m.recommendation && (
-                  <ConsultationPrompt recommendation={m.recommendation} />
-                )}
-                {m.done && m.messageId && (
-                  <>
-                    <AnswerFeedback messageId={m.messageId} />
-                    <div className="row gap2 wrap">
-                      <SaveAnswer messageId={m.messageId} />
-                    </div>
-                  </>
-                )}
-              </ChatAssistantMessage>
-            </Card>
+              <Card key={i} className="card-pad">
+                <AssistantTurn message={m} />
+              </Card>
             ),
           )}
         </div>

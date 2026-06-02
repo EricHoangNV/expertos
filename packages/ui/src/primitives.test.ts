@@ -13,6 +13,7 @@ import { ChatVoicePicker, type ChatVoiceOption } from "./ChatVoicePicker";
 import { ChatUserIdentity } from "./ChatUserIdentity";
 import { ChatUserMessage } from "./ChatUserMessage";
 import { ChatAssistantMessage } from "./ChatAssistantMessage";
+import { ChatAnswerActions } from "./ChatAnswerActions";
 import { AnswerProse } from "./AnswerProse";
 import { ChatTopbar } from "./ChatTopbar";
 import {
@@ -1100,5 +1101,119 @@ describe("layout direction — switcher state (M12.1.3)", () => {
     expect(isLayoutDirection("wide")).toBe(false);
     expect(isLayoutDirection(null)).toBe(false);
     expect(isLayoutDirection(2)).toBe(false);
+  });
+});
+
+describe("ChatAnswerActions — answer action bar (M12.4.4)", () => {
+  const noop = () => {};
+  /** The `.msg-actions-bar` row (first child of `.msg-actions`). */
+  const bar = (el: ReactElement): ReactElement => (kids(el) as unknown[])[0] as ReactElement;
+  /** The three conditional slots of the bar: [view-sources, save, feedback-fragment]. */
+  const barKids = (el: ReactElement): unknown[] => kids(bar(el)) as unknown[];
+
+  it("wraps a `.msg-actions-bar` row inside `.msg-actions`, with follow-up content below", () => {
+    const el = ChatAnswerActions({ children: "reason field" }) as ReactElement;
+    expect(cls(el)).toBe("msg-actions");
+    const [row, below] = kids(el) as unknown[];
+    expect(cls(row as ReactElement)).toBe("msg-actions-bar");
+    expect(below).toBe("reason field");
+  });
+
+  it("renders the ghost 'View sources (N)' toggle only with resolved sources + a handler", () => {
+    const onToggleSources = jest.fn();
+    const el = ChatAnswerActions({
+      sourceCount: 3,
+      sourcesOpen: true,
+      onToggleSources,
+    }) as ReactElement;
+    const view = barKids(el)[0] as ReactElement;
+    expect(view.type).toBe(Button);
+    expect((view.props as { variant?: unknown }).variant).toBe("ghost");
+    expect((view.props as { "aria-expanded"?: unknown })["aria-expanded"]).toBe(true);
+    expect((view.props as { "aria-pressed"?: unknown })["aria-pressed"]).toBe(true);
+    (view.props as { onClick: () => void }).onClick();
+    expect(onToggleSources).toHaveBeenCalledTimes(1);
+  });
+
+  it("defaults the toggle to not-open (aria-expanded false) when sourcesOpen is omitted", () => {
+    const el = ChatAnswerActions({ sourceCount: 1, onToggleSources: noop }) as ReactElement;
+    const view = barKids(el)[0] as ReactElement;
+    expect((view.props as { "aria-expanded"?: unknown })["aria-expanded"]).toBe(false);
+  });
+
+  it("omits the View-sources toggle with no resolved sources or no handler", () => {
+    expect(
+      barKids(ChatAnswerActions({ sourceCount: 0, onToggleSources: noop }) as ReactElement)[0],
+    ).toBeFalsy();
+    expect(barKids(ChatAnswerActions({ sourceCount: 3 }) as ReactElement)[0]).toBeFalsy();
+  });
+
+  it("renders a ghost Save button that flips to a static 'Saved' badge once bookmarked", () => {
+    const onSave = jest.fn();
+    const save = barKids(ChatAnswerActions({ onSave }) as ReactElement)[1] as ReactElement;
+    expect(save.type).toBe(Button);
+    expect((save.props as { variant?: unknown }).variant).toBe("ghost");
+    expect(kids(save)).toBe("Save");
+    (save.props as { onClick: () => void }).onClick();
+    expect(onSave).toHaveBeenCalledTimes(1);
+
+    const saved = barKids(
+      ChatAnswerActions({ onSave, saved: true }) as ReactElement,
+    )[1] as ReactElement;
+    expect(saved.type).toBe("span");
+    expect(cls(saved)).toBe("badge badge-green");
+    expect(kids(saved)).toBe("Saved");
+  });
+
+  it("omits the Save control without a handler", () => {
+    expect(barKids(ChatAnswerActions({}) as ReactElement)[1]).toBeFalsy();
+  });
+
+  it("renders Yes/No feedback buttons, promoting the helpful verdict, with intent aria-labels", () => {
+    const onFeedback = jest.fn();
+    const frag = barKids(
+      ChatAnswerActions({ onFeedback, verdict: true }) as ReactElement,
+    )[2] as ReactElement;
+    const [yes, no] = kids(frag) as ReactElement[];
+    expect((yes.props as { variant?: unknown }).variant).toBe("primary");
+    expect((yes.props as { "aria-label"?: unknown })["aria-label"]).toBe("Helpful");
+    expect((yes.props as { "aria-pressed"?: unknown })["aria-pressed"]).toBe(true);
+    expect(kids(yes)).toBe("Yes");
+    expect((no.props as { variant?: unknown }).variant).toBe("subtle");
+    expect((no.props as { "aria-label"?: unknown })["aria-label"]).toBe("Not helpful");
+    expect(kids(no)).toBe("No");
+    (yes.props as { onClick: () => void }).onClick();
+    expect(onFeedback).toHaveBeenCalledWith(true);
+    (no.props as { onClick: () => void }).onClick();
+    expect(onFeedback).toHaveBeenCalledWith(false);
+  });
+
+  it("promotes the not-helpful verdict to dark and leaves Yes subtle", () => {
+    const frag = barKids(
+      ChatAnswerActions({ onFeedback: noop, verdict: false }) as ReactElement,
+    )[2] as ReactElement;
+    const [yes, no] = kids(frag) as ReactElement[];
+    expect((yes.props as { variant?: unknown }).variant).toBe("subtle");
+    expect((no.props as { variant?: unknown }).variant).toBe("dark");
+  });
+
+  it("omits the feedback buttons without a handler", () => {
+    expect(barKids(ChatAnswerActions({}) as ReactElement)[2]).toBeFalsy();
+  });
+
+  it("disables Save + feedback (both subtle by default) while their requests are in flight", () => {
+    const el = ChatAnswerActions({
+      onSave: noop,
+      onFeedback: noop,
+      saveBusy: true,
+      feedbackBusy: true,
+    }) as ReactElement;
+    expect((barKids(el)[1] as ReactElement).props as { disabled?: unknown }).toMatchObject({
+      disabled: true,
+    });
+    const [yes, no] = kids(barKids(el)[2] as ReactElement) as ReactElement[];
+    expect((yes.props as { variant?: unknown }).variant).toBe("subtle");
+    expect((yes.props as { disabled?: unknown }).disabled).toBe(true);
+    expect((no.props as { disabled?: unknown }).disabled).toBe(true);
   });
 });
