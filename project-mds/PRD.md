@@ -106,6 +106,15 @@
 - [ ] NT.5 Plan pricing & fair-use limits finalized with PM, stated in plain language at purchase — DEFERRED (post-launch)
 - [ ] NT.6 Payment/billing terms (refunds, cancellation, proration) approved + reflected in Stripe config + UI copy — DEFERRED (post-launch)
 
+#### M13 — UI Internationalization (i18n) — EN + VI
+> The language toggle (M12.3.3) currently only switches the AI response language. This milestone makes the entire UI bilingual — all user-facing labels, placeholders, buttons, and messages switch when the user toggles EN/VI.
+
+- [ ] M13.1 i18n framework: add `next-intl` or a lightweight `t()` helper with EN/VI JSON dictionaries; wire the language toggle (M12.3.3) to switch the active locale and persist in localStorage + user profile
+- [ ] M13.2 Translate web app: all static UI strings in `/chat`, `/history`, `/account` pages — sidebar labels, buttons, placeholders, empty states, error messages, tooltips, usage meter, plan names
+- [ ] M13.3 Translate admin portal: all static UI strings in admin pages — navigation, table headers, form labels, status badges, action buttons
+- [ ] M13.4 Translate system-generated content: high-stakes disclaimer (NT.4), concierge disclosure tooltip (OD#5), insufficient-knowledge message, consultation CTA copy
+- [ ] M13.5 RTL-safe + locale-aware formatting: dates, numbers, currency display respect the active locale (Vietnamese date format, VND currency where applicable)
+
 #### M12 — Frontend UI Overhaul — COMPLETE (§"UI Reference Spec" in `requirements/ui-reference-spec.md`)
 
 > All backend APIs exist (M1–M11 complete). This milestone rebuilds the web frontend to match the approved UI mockup. Each task is independently shippable. Reference: `requirements/ui-reference-spec.md`.

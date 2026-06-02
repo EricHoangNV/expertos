@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Card, Stat, StackedBar, cx } from "@expertos/ui";
+import { Badge, Bar, Card, Stat, StackedBar, cx } from "@expertos/ui";
 import type {
   FunnelAnalyticsDto,
   QuestionsAnalyticsDto,
@@ -69,6 +69,12 @@ function pct(fraction: number): string {
 function share(part: number, whole: number): string {
   if (whole <= 0) return "0%";
   return `${Math.round((part / whole) * 100)}%`;
+}
+
+/** A part/whole conversion rate as a one-decimal percentage ("—" when the base is empty). */
+function ratePct(part: number, whole: number): string {
+  if (whole <= 0) return "—";
+  return `${((part / whole) * 100).toFixed(1)}%`;
 }
 
 /** Integer cents as a whole-dollar USD amount (KPI display — no cents shown). */
@@ -162,6 +168,47 @@ function QuestionsCard({ data }: { data: QuestionsAnalyticsDto }) {
       ) : (
         <p className="muted qa-empty">No answers in this window yet.</p>
       )}
+    </Card>
+  );
+}
+
+/**
+ * Consultation Funnel card (M13.2.4): the question → recommendation → booking → revenue chain as
+ * horizontal proportional `.bar` rows plus a recommend→book conversion + average-booking summary.
+ * Each count row's fill is its share of the funnel top (conversations); the revenue row tracks the
+ * booked row's width (revenue is produced by the booked consultations). All counts cover the window.
+ */
+function FunnelCard({ data }: { data: FunnelAnalyticsDto }) {
+  const { conversations, recommendations, byResponse, bookedRevenueCents } = data;
+  const booked = byResponse.book;
+  const fill = (part: number): number => (conversations > 0 ? (part / conversations) * 100 : 0);
+
+  const rows: { label: string; value: string; fill: number }[] = [
+    { label: "Questions", value: count(conversations), fill: 100 },
+    { label: "Recommend", value: count(recommendations), fill: fill(recommendations) },
+    { label: "Booked", value: count(booked), fill: fill(booked) },
+    { label: "Revenue", value: usd(bookedRevenueCents), fill: fill(booked) },
+  ];
+
+  const avgBooking = booked > 0 ? usd(bookedRevenueCents / booked) : "—";
+
+  return (
+    <Card pad className="funnel-card">
+      <div className="label">Consultation funnel · attribution</div>
+      <div className="funnel-rows">
+        {rows.map((r) => (
+          <div key={r.label}>
+            <div className="funnel-row-head">
+              <span className="funnel-row-label">{r.label}</span>
+              <span className="funnel-row-value">{r.value}</span>
+            </div>
+            <Bar value={r.fill} aria-label={`${r.label}: ${r.value}`} />
+          </div>
+        ))}
+      </div>
+      <p className="muted funnel-summary">
+        {ratePct(booked, recommendations)} recommend→book. Each booking averages {avgBooking}.
+      </p>
     </Card>
   );
 }
@@ -261,6 +308,8 @@ export default function AdminHomePage() {
       )}
 
       {data != null && <QuestionsCard data={data.questions} />}
+
+      {data != null && <FunnelCard data={data.funnel} />}
     </AdminFrame>
   );
 }

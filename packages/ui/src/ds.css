@@ -329,6 +329,18 @@ button { font-family: inherit; cursor: pointer; }
 .qa-chart .qa-col > i.seg-insufficient { background: var(--line-2); }
 .qa-empty { margin-top: 14px; }
 
+/* Consultation funnel card (M13.2.4) — Questions → Recommend → Booked → Revenue
+   as horizontal proportional `.bar` rows (ink fill to read as the dark funnel,
+   distinct from the crimson quota meter) + a recommend→book / avg-booking summary line. */
+.funnel-card { margin-bottom: 24px; }
+.funnel-rows { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.funnel-row-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.funnel-row-label { font-size: 13px; font-weight: 600; color: var(--ink-700); }
+.funnel-row-value { font-family: var(--font-mono); font-size: 13px; color: var(--ink-900); }
+.funnel-card .bar { height: 10px; }
+.funnel-card .bar > i { background: var(--ink-900); }
+.funnel-summary { margin-top: 16px; }
+
 /* segmented control */
 .seg { display: inline-flex; background: var(--paper-2); border-radius: var(--r-sm); padding: 3px; gap: 2px; }
 .seg button { border: none; background: transparent; padding: 6px 14px; border-radius: 5px; font-size: 13px; font-weight: 600; color: var(--ink-500); }
