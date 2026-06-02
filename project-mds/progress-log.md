@@ -3422,3 +3422,37 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 
 **Notes for next iteration:**
 - M12.8 is complete. Remaining M12 work is the M12.9 polish/responsive group: M12.9.1 mobile slide-over sidebar (<900px) + hidden sources rail + full-width input bar; M12.9.2 ds.css conformance sweep; M12.9.3 dark-sidebar render check; M12.9.4 loading/empty states (skeleton conversation list, empty-chat state, streaming spinner). `useMediaQuery` (`apps/web/src/lib/use-media-query.ts`) already exists for the <900px breakpoint.
+
+---
+
+## M12.9.1 — Mobile responsive: sidebar slide-over overlay (< 900px / focus)
+**Date:** 2026-06-02
+**Ref:** PRD §"M12.9 Polish & responsive" / requirements/ui-reference-spec.md (Responsive Behavior: "< 900px Single pane, sidebar as overlay")
+
+**What was done:**
+- New `packages/ui/src/ChatSidebarDrawer.tsx` — left-anchored slide-over presentation of the conversation sidebar, mirroring the M12.5.4 `SourcesDrawer` pattern (dimmed full-screen backdrop + a left-edge panel that slides in; dismiss on backdrop click / Escape-on-panel; pure function, no document listener). It hosts the same `ChatSidebar` content as the grid pane via `children`, so the overlay and the grid sidebar never diverge.
+- New `packages/ui/src/ChatMenuButton.tsx` — the topbar hamburger (`.btn-subtle .btn-icon .chat-menu-btn`, aria-label "Open navigation") that opens the overlay; shown only while the sidebar is an overlay.
+- `ChatTopbar` gained an optional `leading` slot (`.chat-topbar-leading`) rendered before the title, so the menu button sits at the header's left edge.
+- ds.css: `.chat-sidebar-drawer-backdrop` (left-anchored, reuses the `sources-drawer-fade` backdrop keyframe) + `.chat-sidebar-drawer` panel + new `chat-sidebar-drawer-in` left slide-in keyframe + `.chat-sidebar-drawer .side { position: static; height: 100% }` (the grid `.side` is `position: sticky`); `.chat-topbar-leading` + `.chat-menu-btn`.
+- Wired into `apps/web/app/chat/page.tsx`: `wideSidebar = useMediaQuery("(min-width: 900px)")`; `sidebarInGrid = layoutPanes(direction).sidebar && wideSidebar`. The topbar `leading` carries the menu button only when `!sidebarInGrid`; `ChatSidebarDrawer open={sidebarDrawerOpen && !sidebarInGrid}`. An effect closes the overlay when the sidebar returns to the grid (widened viewport / left focus mode); `startNewConversation` + `openConversation` dismiss it. The sidebar body/footer were extracted into shared `sidebarBody`/`sidebarFooter` so the grid pane and the overlay render identical content.
+- "Sources rail hidden" + "input bar full-width" sub-requirements were already satisfied (rail collapses < 1280px → drawer, M12.5.4; the input bar lives in `.chat-main` which is the only grid column < 900px, M12.6).
+- Tests: +11 ui tests (6 `ChatSidebarDrawer`, 4 `ChatMenuButton`, 1 `ChatTopbar` leading slot); updated the 6 existing `ChatTopbar` positional-children destructures for the new leading child. ui 196→207, 100% coverage held. Total 1204→1215.
+
+**Key decisions:**
+- Mirrored the established `SourcesDrawer` overlay pattern rather than inventing a new mechanism — same backdrop/Escape/controlled-open contract, same "render the persistent pane content unchanged" approach. Keeps one mental model for both rail and sidebar fallbacks.
+- Kept the grid `sidebar` prop always passed to `ChatLayout` (CSS `display:none` hides it < 900px; `layoutPanes(focus)` drops it). This means the hidden grid sidebar + the open overlay both exist in the DOM when narrow — the exact same duplication the rail/SourcesDrawer pair already accepts, chosen for consistency over a conditional that would flash the sidebar in on desktop hydration.
+- The overlay's in-panel close is `ChatSidebar`'s own collapse (X) affordance (wired to dismiss the drawer), so no redundant close button — unlike `SourcesDrawer`, whose `SourcesRail` has no close of its own.
+
+**Files changed:**
+- `packages/ui/src/ChatSidebarDrawer.tsx` — new slide-over overlay component.
+- `packages/ui/src/ChatMenuButton.tsx` — new topbar hamburger.
+- `packages/ui/src/ChatTopbar.tsx` — added the `leading` slot.
+- `packages/ui/src/ds.css` — `.chat-sidebar-drawer*` block + keyframe; `.chat-topbar-leading`/`.chat-menu-btn`.
+- `packages/ui/src/index.ts` — export the two new components + their prop types.
+- `packages/ui/src/primitives.test.ts` — +11 tests; updated existing ChatTopbar child-index destructures.
+- `apps/web/app/chat/page.tsx` — media query + `sidebarInGrid`, overlay state/effect, shared sidebar body/footer, menu button + drawer wiring.
+
+**Gates:** ui jest 207 pass / 100% coverage; `tsc --noEmit` clean for ui + web (after rebuilding `packages/ui` dist); `next lint` clean; `stylelint` clean; `knip` clean. (Ran per-workspace — `turbo` SIGILLs in this sandbox.)
+
+**Notes for next iteration:**
+- M12.9.1 done. Remaining M12.9: M12.9.2 ds.css conformance sweep (grep new CSS/TSX for hardcoded hex/px off the ds.css scale; confirm upload=info-blue vs knowledge=crimson); M12.9.3 dark-sidebar render check; M12.9.4 loading/empty states (skeleton conversation list, "Start a new conversation" empty chat, streaming spinner under the assistant avatar).
