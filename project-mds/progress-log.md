@@ -2741,3 +2741,31 @@ Built the dark-rail conversation search input and wired it to the existing M3.3 
 - `packages/ui/src/index.ts` — export `ChatSearch` + `ChatSearchProps` / `ChatSearchResultItem`.
 - `packages/ui/src/primitives.test.ts` — +5 tests.
 - `apps/web/app/chat/page.tsx` — debounced search state + `openConversation` + sidebar wiring.
+
+## M12.2.3 — Sidebar conversation list (RECENT)
+**Date:** 2026-06-02
+**Ref:** PRD §M12.2.3 (Task Manifest) / `requirements/ui-reference-spec.md` §1 Sidebar
+
+**What was done:**
+- New presentational `ChatConversationList` (`packages/ui/src/ChatConversationList.tsx`): a "RECENT" `.navgroup` label over `.navitem` `.chat-convo` button rows — each with an expert-colored `.avatar` (initials), a truncated title, a relative timestamp, and an optional unread dot; the active conversation reuses `.navitem.active`. Empty state softens to "Loading…" while the first page loads.
+- Exported pure helpers (reusable by M12.3 header + M12.4 messages): `avatarInitials(name)` (≤2 uppercase initials, splits on space/hyphen, "?" fallback), `avatarTone(seed)` (deterministic hash → one of `AVATAR_TONES`), `relativeTime(iso, now?)` (Now / Nm ago / Nh ago / Yesterday / weekday / Last week / short date; `now` injectable for deterministic tests; NaN-guarded per directive §3.5).
+- ds.css: `.chat-side .chat-convos*` rows + `.avatar.tone-{crimson,green,info,amber,ink}` general avatar tones (tokens only).
+- Wired into `/chat` (`apps/web/app/chat/page.tsx`): `listConversations` (M3.2) loaded on mount + refreshed after each completed turn; `useMemo` maps summaries → items, resolving the expert display name from the loaded voices and sorting most-recent-first; reuses the existing `openConversation` for row selection; the list is hidden while a search query (≥2 chars) is active so it doesn't duplicate the search results.
+
+**Key decisions:**
+- Presentational component + data wiring in the page, matching the M12.2.1/2.2 split (`ChatSidebar`/`ChatSearch`).
+- `unread` is supported in the component but left unset by the page — the consumer web has no unread signal in `ConversationSummaryDto`; wiring omits what the API doesn't provide rather than faking it.
+- Helpers exported via `index.ts` (not just the module) so knip doesn't flag them — knip ignores test files, so a test-only export would read as dead. They're also genuinely forward-useful for the header/messages avatars.
+- Avatar tones use existing brand tokens (`--red-600`/`--ok-600`/`--info-600`/`--amber-600`/`--ink-600`) so the no-hardcoded-color rule holds; `#fff` text follows the existing ds.css convention.
+
+**Files changed:**
+- `packages/ui/src/ChatConversationList.tsx` — new component + helpers.
+- `packages/ui/src/index.ts` — export `ChatConversationList` + helpers/types.
+- `packages/ui/src/ds.css` — `.chat-convos*` + `.avatar.tone-*`.
+- `packages/ui/src/primitives.test.ts` — +9 tests (helpers + component; 100% coverage held).
+- `apps/web/app/chat/page.tsx` — history-list state/loader/memo + sidebar mount + post-turn refresh.
+
+**Notes for next iteration:**
+- M12.2.4 (usage meter footer) is next: mount into the `ChatSidebar` `footer` slot, wire `/me/entitlements` (M6.1), reuse the `UsageMeter` primitive; crimson `.bar` fill + plan `.label` badge + crimson "Upgrade" link.
+- Reuse `avatarInitials`/`avatarTone` + `.avatar.tone-*` for the M12.3 user/expert identity and M12.4 assistant message avatars.
+- ui rebuilt to `dist/` (the web app consumes the built package); remember `pnpm --filter @expertos/ui build` before the web typecheck sees new exports.

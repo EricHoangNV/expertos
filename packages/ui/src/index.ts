@@ -29,6 +29,18 @@ export type { ChatSidebarProps } from "./ChatSidebar";
 export { ChatSearch } from "./ChatSearch";
 export type { ChatSearchProps, ChatSearchResultItem } from "./ChatSearch";
 export {
+  ChatConversationList,
+  AVATAR_TONES,
+  avatarInitials,
+  avatarTone,
+  relativeTime,
+} from "./ChatConversationList";
+export type {
+  ChatConversationListProps,
+  ChatConversationItem,
+  AvatarTone,
+} from "./ChatConversationList";
+export {
   LAYOUT_DIRECTIONS,
   DEFAULT_LAYOUT_DIRECTION,
   LAYOUT_DIRECTION_INFO,

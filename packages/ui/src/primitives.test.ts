@@ -10,6 +10,14 @@ import { ChatLayout } from "./ChatLayout";
 import { ChatSearch, type ChatSearchResultItem } from "./ChatSearch";
 import { ChatSidebar } from "./ChatSidebar";
 import {
+  AVATAR_TONES,
+  avatarInitials,
+  avatarTone,
+  ChatConversationList,
+  type ChatConversationItem,
+  relativeTime,
+} from "./ChatConversationList";
+import {
   DEFAULT_LAYOUT_DIRECTION,
   isLayoutDirection,
   LAYOUT_DIRECTION_INFO,
@@ -448,6 +456,128 @@ describe("ChatSearch — conversation search input (M12.2.2)", () => {
     const secondKids = kids(second) as unknown[];
     expect(secondKids[1]).toBeFalsy();
     // onSelect fires with the conversation id.
+    (first.props as { onClick: () => void }).onClick();
+    expect(onSelect).toHaveBeenCalledWith("c1");
+  });
+});
+
+describe("ChatConversationList — RECENT history list (M12.2.3)", () => {
+  const noop = () => {};
+  const item = (over: Partial<ChatConversationItem> = {}): ChatConversationItem => ({
+    id: "c1",
+    title: "Franchise unit economics",
+    expertName: "James Pierce",
+    updatedAt: "2026-06-02T10:00:00.000Z",
+    ...over,
+  });
+
+  describe("avatarInitials", () => {
+    it("takes up to two uppercase initials, splitting on spaces and hyphens", () => {
+      expect(avatarInitials("James Pierce")).toBe("JP");
+      expect(avatarInitials("John-Ngo")).toBe("JN");
+      expect(avatarInitials("anh nguyen tran")).toBe("AN");
+      expect(avatarInitials("Cher")).toBe("C");
+    });
+
+    it("falls back to '?' for a missing or blank name", () => {
+      expect(avatarInitials(null)).toBe("?");
+      expect(avatarInitials(undefined)).toBe("?");
+      expect(avatarInitials("   ")).toBe("?");
+    });
+  });
+
+  describe("avatarTone", () => {
+    it("is deterministic and always one of the palette tones", () => {
+      for (const seed of ["James Pierce", "Anh Nguyen", "x", ""]) {
+        const tone = avatarTone(seed);
+        expect(avatarTone(seed)).toBe(tone);
+        expect(AVATAR_TONES).toContain(tone);
+      }
+    });
+  });
+
+  describe("relativeTime", () => {
+    const now = Date.parse("2026-06-02T12:00:00.000Z");
+    const ago = (ms: number) => new Date(now - ms).toISOString();
+    const MIN = 60_000;
+    const HR = 60 * MIN;
+    const DAY = 24 * HR;
+
+    it("renders each bucket from 'Now' through an absolute date", () => {
+      expect(relativeTime(ago(30_000), now)).toBe("Now");
+      expect(relativeTime(ago(5 * MIN), now)).toBe("5m ago");
+      expect(relativeTime(ago(3 * HR), now)).toBe("3h ago");
+      expect(relativeTime(ago(DAY + HR), now)).toBe("Yesterday");
+      // 3 days back → a weekday short name (locale-formatted, never empty).
+      expect(relativeTime(ago(3 * DAY), now)).toBe(
+        new Date(now - 3 * DAY).toLocaleDateString(undefined, { weekday: "short" }),
+      );
+      expect(relativeTime(ago(9 * DAY), now)).toBe("Last week");
+      expect(relativeTime(ago(40 * DAY), now)).toBe(
+        new Date(now - 40 * DAY).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      );
+    });
+
+    it("guards an unparseable timestamp with an empty string", () => {
+      expect(relativeTime("not-a-date", now)).toBe("");
+    });
+  });
+
+  it("renders the RECENT navgroup label over the rows", () => {
+    const el = ChatConversationList({ items: [item()], onSelect: noop }) as ReactElement;
+    expect(cls(el)).toBe("chat-convos");
+    const [group] = kids(el) as ReactElement[];
+    expect(cls(group)).toBe("navgroup");
+    expect(kids(group)).toBe("Recent");
+  });
+
+  it("shows the loading vs settled empty note when there are no conversations", () => {
+    const loadingEl = ChatConversationList({ items: [], onSelect: noop, loading: true }) as ReactElement;
+    const [, loadingNote] = kids(loadingEl) as ReactElement[];
+    expect(cls(loadingNote)).toBe("chat-convos-empty muted");
+    expect(kids(loadingNote)).toBe("Loading…");
+
+    const settledEl = ChatConversationList({ items: [], onSelect: noop }) as ReactElement;
+    const [, settledNote] = kids(settledEl) as ReactElement[];
+    expect(kids(settledNote)).toBe("No conversations yet.");
+  });
+
+  it("renders an avatar (toned initials), title, and relative time per row; active is highlighted", () => {
+    const el = ChatConversationList({
+      items: [item(), item({ id: "c2", title: "Pricing", expertName: null })],
+      activeId: "c2",
+      onSelect: noop,
+    }) as ReactElement;
+    const [, rows] = kids(el) as [unknown, ReactElement[]];
+    const [first, second] = rows;
+
+    // Row 1: expert-toned avatar with initials.
+    expect(cls(first)).toBe("navitem chat-convo");
+    const [avatar, main] = kids(first) as ReactElement[];
+    expect(cls(avatar)).toBe(`avatar chat-convo-avatar tone-${avatarTone("James Pierce")}`);
+    expect(kids(avatar)).toBe("JP");
+    const [title, time] = kids(main as ReactElement) as ReactElement[];
+    expect(cls(title)).toBe("chat-convo-title");
+    expect(kids(title)).toBe("Franchise unit economics");
+    expect(cls(time)).toBe("chat-convo-time");
+
+    // Row 2: neutral (no expert) avatar drops the tone class; active gets the modifier.
+    expect(cls(second)).toBe("navitem chat-convo active");
+    const [avatar2] = kids(second) as ReactElement[];
+    expect(cls(avatar2)).toBe("avatar chat-convo-avatar");
+    expect(kids(avatar2)).toBe("?");
+  });
+
+  it("fires onSelect with the conversation id and shows the unread dot only when set", () => {
+    const onSelect = jest.fn();
+    const el = ChatConversationList({
+      items: [item({ unread: true }), item({ id: "c2", unread: false })],
+      onSelect,
+    }) as ReactElement;
+    const [, rows] = kids(el) as [unknown, ReactElement[]];
+    const [first, second] = rows;
+    expect(cls((kids(first) as unknown[])[2] as ReactElement)).toBe("chat-convo-dot");
+    expect((kids(second) as unknown[])[2]).toBeFalsy();
     (first.props as { onClick: () => void }).onClick();
     expect(onSelect).toHaveBeenCalledWith("c1");
   });

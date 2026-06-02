@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Badge,
   Button,
   Card,
+  ChatConversationList,
+  type ChatConversationItem,
   ChatLayout,
   ChatSearch,
   type ChatSearchResultItem,
@@ -19,6 +21,7 @@ import {
 import type {
   ChatCitationDto,
   ConsultationRecommendationDto,
+  ConversationSummaryDto,
   UploadedFileDto,
   UploadMode,
 } from "@expertos/shared";
@@ -36,6 +39,7 @@ import {
 import {
   createSavedAnswer,
   getConversation,
+  listConversations,
   searchConversations,
 } from "../../src/lib/history-client";
 import { uploadFile, UPLOAD_ACCEPT } from "../../src/lib/upload-client";
@@ -423,6 +427,11 @@ export default function ChatPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<ChatSearchResultItem[]>([]);
   const [searching, setSearching] = useState(false);
+  // Conversation history list (M12.2.3) — the sidebar "RECENT" list (M3.2).
+  // Loaded on mount and refreshed after each completed turn so a new chat (and
+  // the most-recent-first reordering) appears without a manual reload.
+  const [conversations, setConversations] = useState<ConversationSummaryDto[]>([]);
+  const [loadingConversations, setLoadingConversations] = useState(true);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -441,6 +450,44 @@ export default function ChatPage() {
       active = false;
     };
   }, [user, getIdToken]);
+
+  // Load the conversation history list (M12.2.3 → M3.2), most-recent-first.
+  // Best-effort: a failure just leaves the list empty (the sidebar still works).
+  const loadConversations = useCallback(async () => {
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const list = await listConversations(token, { limit: 30, offset: 0 });
+      setConversations(list);
+    } catch {
+      // The RECENT list is non-critical — swallow and keep whatever we had.
+    } finally {
+      setLoadingConversations(false);
+    }
+  }, [getIdToken]);
+
+  useEffect(() => {
+    if (!user) return;
+    void loadConversations();
+  }, [user, loadConversations]);
+
+  // The RECENT rows (M12.2.3): map summaries to list items, resolving the expert
+  // display name from the loaded voices for the avatar, and sorting most-recent
+  // first (the API already does, but lexicographic ISO sort is a cheap guard).
+  const conversationItems: ChatConversationItem[] = useMemo(
+    () =>
+      [...conversations]
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .map((c) => ({
+          id: c.id,
+          title: c.title ?? "Untitled conversation",
+          expertName: c.expertId
+            ? (experts.find((e) => e.expertId === c.expertId)?.displayName ?? null)
+            : null,
+          updatedAt: c.updatedAt,
+        })),
+    [conversations, experts],
+  );
 
   // Debounced full-text search (M12.2.2 → M3.3). The query is trimmed and only
   // searched at ≥2 chars; an empty/short query clears the results. The latest
@@ -583,13 +630,16 @@ export default function ChatPage() {
           }
         },
       );
+      // Refresh the RECENT list (M12.2.3) so a brand-new conversation appears and
+      // the ordering reflects this turn's activity.
+      void loadConversations();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Chat failed.");
       setMessages((prev) => updateLast(prev, (m) => ({ ...m, done: true })));
     } finally {
       setBusy(false);
     }
-  }, [draft, busy, getIdToken, experts, expertId, conversationId]);
+  }, [draft, busy, getIdToken, experts, expertId, conversationId, loadConversations]);
 
   if (!user) {
     return (
@@ -615,6 +665,14 @@ export default function ChatPage() {
             onSelect={(id) => void openConversation(id)}
             activeId={conversationId}
           />
+          {searchQuery.trim().length < 2 && (
+            <ChatConversationList
+              items={conversationItems}
+              activeId={conversationId}
+              onSelect={(id) => void openConversation(id)}
+              loading={loadingConversations}
+            />
+          )}
         </ChatSidebar>
       }
     >
