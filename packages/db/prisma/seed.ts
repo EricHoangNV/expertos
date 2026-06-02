@@ -2,13 +2,15 @@
  * Idempotent seed: the GLOBAL tenant, the launch plans + prices, the entitlement
  * catalog, and the plan×feature matrix (PRD §"Paywall, Entitlements & Feature Gating").
  *
- * Runs as the schema owner (bypasses RLS). The `ask_question` quota cells are now CALIBRATED
+ * Connects as `app_user` (NOT the schema owner), so RLS still applies; the global catalog tables
+ * seeded here carry no tenant_id, but the FORCE-RLS `allowed_emails` bootstrap (below) must run
+ * under an explicit admin RLS context. The `ask_question` quota cells are now CALIBRATED
  * against the Open Decision #4 unit-economics model (M6.5) — see the MATRIX comment and the
  * worked margin analysis in PRD §"Open Decisions" #4. All cells remain admin-tunable without a
  * deploy (M8.3); this seed only sets the launch defaults. Re-running is safe (upsert by natural key).
  */
 import { PrismaClient } from "../generated/client";
-import { GLOBAL_TENANT_ID } from "../src/rls";
+import { applyRlsContext, GLOBAL_TENANT_ID } from "../src/rls";
 
 const prisma = new PrismaClient();
 
@@ -226,11 +228,18 @@ async function main() {
   // Bootstrap the admin-portal whitelist (M14). Seed the first admin email so the access gate
   // doesn't lock everyone out on first deploy (PRD-access-control §9). Idempotent: upsert by the
   // natural key keeps the role at `admin` even if the row already exists.
+  //
+  // `allowed_emails` is FORCE ROW LEVEL SECURITY, and the seed connects as `app_user` (not the
+  // schema owner), so the upsert must run inside an interactive transaction under the admin RLS
+  // context — otherwise the tenant_isolation policy's WITH CHECK rejects the INSERT (42501).
   const BOOTSTRAP_ADMIN_EMAIL = "eric.nguyen.vn@gmail.com";
-  await prisma.allowedEmail.upsert({
-    where: { tenantId_email: { tenantId: GLOBAL_TENANT_ID, email: BOOTSTRAP_ADMIN_EMAIL } },
-    update: { role: "admin" },
-    create: { tenantId: GLOBAL_TENANT_ID, email: BOOTSTRAP_ADMIN_EMAIL, role: "admin" },
+  await prisma.$transaction(async (tx) => {
+    await applyRlsContext(tx, { tenantId: GLOBAL_TENANT_ID, isAdmin: true });
+    await tx.allowedEmail.upsert({
+      where: { tenantId_email: { tenantId: GLOBAL_TENANT_ID, email: BOOTSTRAP_ADMIN_EMAIL } },
+      update: { role: "admin" },
+      create: { tenantId: GLOBAL_TENANT_ID, email: BOOTSTRAP_ADMIN_EMAIL, role: "admin" },
+    });
   });
 
   const [tenants, features, plans, entitlements] = await Promise.all([
