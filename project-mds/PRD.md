@@ -283,7 +283,8 @@ Next.js Admin Portal ─┤→ NestJS API (Cloud Run, scale-to-zero)
 ```
 
 **"No full infra Day 1" approach (cost grows with usage):**
-- **Cloud Run scale-to-zero** for API, admin, and ingestion jobs — pay only on traffic.
+- **Local dev runs without Docker or Cloud Run** — `pnpm dev` + Cloud SQL Proxy against the GCP-hosted Postgres is the full dev stack. No container builds needed during development.
+- **Cloud Run scale-to-zero** for staging/production API, admin, and ingestion jobs — pay only on traffic.
 - **pgvector inside the existing Postgres** for MVP (no separate vector DB); the retrieval layer is abstracted behind a `VectorStore` interface so swapping to Vertex AI Vector Search / Qdrant later is a driver change, not a rewrite.
 - **Redis is optional at launch** — start with Postgres-backed counters + in-process LRU cache; introduce Memorystore when rate-limit/cache volume justifies it.
 - **LLM/embedding providers behind one interface** so model choice is config-tunable for cost (cheap model for high-volume/fair-use-degraded users, premium model for normal usage). **Per-plan, per-capability provider routing** — see §"AI Provider Configuration."
@@ -654,7 +655,7 @@ These are not code; they are legal / brand / policy gates that must be cleared b
 
 ## Verification (end-to-end)
 
-1. **Local dev:** `pnpm dev` runs web + admin + api against Dockerized Postgres+pgvector; seed script loads 2 sample experts, ~50 voice examples each, and sample published knowledge.
+1. **Local dev:** `pnpm dev` runs web + admin + api locally against Cloud SQL Postgres+pgvector via Cloud SQL Proxy (no Docker/Cloud Run needed). Seed script loads 2 sample experts, ~50 voice examples each, and sample published knowledge. **Dev environment setup:** `cloud-sql-proxy <connection_name> --port 5433` + `DATABASE_URL=postgresql://app_user:<pw>@localhost:5433/expertos pnpm dev`. Cloud Run and container images are only needed for staging/production deployment — not during development.
 2. **Automated (run locally in Phase 1; wired into CI in Phase 2):** `pnpm test` (unit — **95%+ gate on critical modules, ~75% global**, enforced per-path in Jest config) + `pnpm test:integration` (Testcontainers) + `pnpm test:e2e` (Playwright path matrix) all green before each manual deploy.
 3. **RAG eval:** run the golden-set harness — assert every citation resolves to a real chunk, low-confidence path fires on weak retrieval, voice-on≈voice-off accuracy per expert.
 4. **Live dogfood:** use gstack `/qa` + `/browse` to walk the full user path (signup → ask → cited streamed answer → upload spreadsheet → numeric grounded answer → quota wall → upgrade → consultation booking) and the admin path (upload → publish → appears; unpublish → disappears).

@@ -1,4 +1,4 @@
-# ExpertOS infrastructure (Terraform) — P0.4 minimal, scale-to-zero.
+# ExpertOS infrastructure (OpenTofu) — P0.4 minimal, scale-to-zero.
 # Cloud Run (min instances = 0) for api/web/admin, Artifact Registry for images,
 # a small Cloud SQL Postgres (+pgvector), a GCS uploads bucket, Secret Manager,
 # and a least-privilege runtime service account. Everything that can scale to

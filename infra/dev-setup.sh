@@ -35,16 +35,30 @@ echo "[1/7] Setting GCP project..."
 gcloud config set project "$PROJECT_ID"
 
 # ── Step 2: Terraform apply ──────────────────────────────────────────────────
-echo "[2/7] Running terraform init + apply..."
-terraform -chdir="$INFRA_DIR" init
-terraform -chdir="$INFRA_DIR" apply \
+echo "[2/7] Running tofu init + apply..."
+tofu -chdir="$INFRA_DIR" init
+# Cloud Run will fail on first run (no images yet) — that's expected.
+# Apply with -target to create everything except Cloud Run first.
+tofu -chdir="$INFRA_DIR" apply \
   -var "project_id=$PROJECT_ID" \
   -var "region=$REGION" \
   -var "db_tier=db-f1-micro" \
+  -target=google_project_service.services \
+  -target=google_artifact_registry_repository.repo \
+  -target=google_sql_database_instance.postgres \
+  -target=google_sql_database.app \
+  -target=google_storage_bucket.uploads \
+  -target=google_secret_manager_secret.app \
+  -target=google_service_account.runtime \
+  -target=google_project_iam_member.runtime_sql \
+  -target=google_project_iam_member.runtime_secrets \
+  -target=google_storage_bucket_iam_member.runtime_uploads \
   -auto-approve
 
-SQL_CONNECTION=$(terraform -chdir="$INFRA_DIR" output -raw sql_connection_name)
-UPLOADS_BUCKET=$(terraform -chdir="$INFRA_DIR" output -raw uploads_bucket)
+SQL_CONNECTION=$(tofu -chdir="$INFRA_DIR" output -raw sql_connection_name 2>/dev/null || \
+  tofu -chdir="$INFRA_DIR" state show google_sql_database_instance.postgres | grep connection_name | awk -F'"' '{print $2}')
+UPLOADS_BUCKET=$(tofu -chdir="$INFRA_DIR" output -raw uploads_bucket 2>/dev/null || \
+  echo "${PROJECT_ID}-expertos-uploads")
 
 echo ""
 echo "  Cloud SQL connection: $SQL_CONNECTION"
@@ -128,16 +142,14 @@ echo "  GCP Project:      $PROJECT_ID"
 echo "  Region:           $REGION"
 echo "  SQL Connection:   $SQL_CONNECTION"
 echo "  Uploads Bucket:   $UPLOADS_BUCKET"
-echo "  API URL:          $(terraform -chdir="$INFRA_DIR" output -raw api_url)"
-echo "  Web URL:          $(terraform -chdir="$INFRA_DIR" output -raw web_url)"
-echo "  Admin URL:        $(terraform -chdir="$INFRA_DIR" output -raw admin_url)"
-echo "  Registry:         $(terraform -chdir="$INFRA_DIR" output -raw registry)"
+echo "  Registry:         ${REGION}-docker.pkg.dev/${PROJECT_ID}/expertos"
 echo ""
 echo "  Next steps:"
 echo "  1. Add remaining secrets (Firebase, AI keys, Stripe) — see commands above"
 echo "  2. Run Cloud SQL Proxy + Prisma migrations — see commands above"
-echo "  3. Build & deploy:  PROJECT_ID=$PROJECT_ID pnpm deploy"
-echo "  4. Smoke test:      curl \"\$(terraform -chdir=infra output -raw api_url)/health\""
+echo "  3. Build & push images:  PROJECT_ID=$PROJECT_ID pnpm deploy"
+echo "  4. Create Cloud Run services:  tofu -chdir=infra apply -var project_id=$PROJECT_ID -var region=$REGION"
+echo "  5. Smoke test:  curl \"\$(tofu -chdir=infra output -raw api_url)/health\""
 echo ""
 echo "  Local .env for development against this Cloud SQL (via proxy on :5433):"
 echo "  DATABASE_URL=postgresql://app_user:${DB_PASSWORD}@localhost:5433/expertos"

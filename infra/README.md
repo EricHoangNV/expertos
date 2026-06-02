@@ -1,6 +1,6 @@
 # infra/ — manual build & deploy (Phase 1)
 
-Terraform for ExpertOS on GCP. **Scale-to-zero everything** (Phase 1 cost target):
+OpenTofu for ExpertOS on GCP. **Scale-to-zero everything** (Phase 1 cost target):
 Cloud Run services run at `min_instance_count = 0`; Cloud SQL uses the smallest
 tier (it has no true scale-to-zero). Phase 1 is **manual** build & deploy — the
 CI/CD pipeline is deferred to Phase 2 (PRD §"Phased Delivery Roadmap").
@@ -24,22 +24,22 @@ CI/CD pipeline is deferred to Phase 2 (PRD §"Phased Delivery Roadmap").
 ./infra/dev-setup.sh <gcp-project-id> [region]
 ```
 
-This automates steps 1–2 below: Terraform apply, pgvector, app_user, DATABASE_URL
+This automates steps 1–2 below: OpenTofu apply, pgvector, app_user, DATABASE_URL
 secret, Docker auth. You'll still need to add Firebase/AI/Stripe secrets manually
 (the script prints the exact commands).
 
 ## 1. Provision infrastructure
 
 ```bash
-terraform -chdir=infra init
-terraform -chdir=infra apply -var project_id=<gcp-project>
+tofu -chdir=infra init
+tofu -chdir=infra apply -var project_id=<gcp-project>
 ```
 
-`terraform apply` references the container images, so on a brand-new project
+`tofu apply` references the container images, so on a brand-new project
 either build & push images first (step 3) or apply, then deploy — the Cloud Run
 revisions go healthy once images exist.
 
-## 2. Out-of-band setup (kept out of Terraform state)
+## 2. Out-of-band setup (kept out of OpenTofu state)
 
 ```bash
 # pgvector extension on the app database
@@ -56,7 +56,7 @@ printf '%s' '<client-email>' | gcloud secrets versions add FIREBASE_CLIENT_EMAIL
 printf '%s' '<private-key>'  | gcloud secrets versions add FIREBASE_PRIVATE_KEY  --data-file=-
 ```
 
-`<connection_name>` is the `sql_connection_name` Terraform output.
+`<connection_name>` is the `sql_connection_name` OpenTofu output.
 
 ## 3. Build & deploy (manual)
 
@@ -74,8 +74,8 @@ PROJECT_ID=<gcp-project> pnpm deploy
 
 Each script (`infra/deploy.sh <app>`) builds `apps/<app>/Dockerfile` with the repo
 root as context (pnpm workspace), pushes to Artifact Registry, then
-`gcloud run deploy --image` updates the Terraform-managed service (scaling,
-secrets, and the Cloud SQL connector stay as Terraform set them). Override
+`gcloud run deploy --image` updates the OpenTofu-managed service (scaling,
+secrets, and the Cloud SQL connector stay as OpenTofu set them). Override
 `REGION` / `REPO` / `TAG` via env vars.
 
 NEXT_PUBLIC_* values for `web`/`admin` are baked at build time — pass them as
@@ -109,5 +109,5 @@ Override `EXPERTOS_TEST_PG_PORT` / `EXPERTOS_TEST_PG_IMAGE` etc. if 5432 is take
 ## 5. Smoke test
 
 ```bash
-curl "$(terraform -chdir=infra output -raw api_url)/health"
+curl "$(tofu -chdir=infra output -raw api_url)/health"
 ```
