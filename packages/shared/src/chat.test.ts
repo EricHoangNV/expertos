@@ -6,7 +6,27 @@ import {
   savedAnswerCreateSchema,
   savedAnswerListQuerySchema,
   answerFeedbackSubmitSchema,
+  HIGH_STAKES_DISCLAIMER,
+  HIGH_STAKES_DISCLAIMERS,
 } from "./chat";
+import { LANGUAGES } from "./ingestion";
+
+describe("HIGH_STAKES_DISCLAIMERS (M13.4)", () => {
+  it("provides a non-empty disclaimer for every supported locale", () => {
+    for (const locale of LANGUAGES) {
+      expect(typeof HIGH_STAKES_DISCLAIMERS[locale]).toBe("string");
+      expect(HIGH_STAKES_DISCLAIMERS[locale].length).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps the EN alias pointing at the canonical English entry (no drift)", () => {
+    expect(HIGH_STAKES_DISCLAIMER).toBe(HIGH_STAKES_DISCLAIMERS.en);
+  });
+
+  it("localizes the copy — EN and VI differ", () => {
+    expect(HIGH_STAKES_DISCLAIMERS.en).not.toBe(HIGH_STAKES_DISCLAIMERS.vi);
+  });
+});
 
 describe("chatRequestSchema", () => {
   it("applies defaults and trims/normalizes the question", () => {

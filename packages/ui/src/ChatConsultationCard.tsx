@@ -18,8 +18,12 @@ export interface ChatConsultationCardProps {
   onBook?: () => void;
   /** Record the "maybe later" dismissal. */
   onMaybeLater?: () => void;
+  /** Label for the "maybe later" action. Defaults to "Maybe later"; the page passes the localized copy (M13.4). */
+  maybeLaterLabel?: string;
   /** Record the "ask another question" dismissal. */
   onAskAnother?: () => void;
+  /** Label for the "ask another question" action. Defaults to "Ask another question"; the page passes the localized copy (M13.4). */
+  askAnotherLabel?: string;
   /** Disables all three actions while a choice is being recorded. */
   busy?: boolean;
   /** Follow-up content under the actions (e.g. an error note). */
@@ -40,7 +44,9 @@ export function ChatConsultationCard({
   bookLabel = "Book a consultation",
   onBook,
   onMaybeLater,
+  maybeLaterLabel = "Maybe later",
   onAskAnother,
+  askAnotherLabel = "Ask another question",
   busy = false,
   children,
 }: ChatConsultationCardProps) {
@@ -79,12 +85,12 @@ export function ChatConsultationCard({
         )}
         {onMaybeLater && (
           <Button variant="ghost" onClick={onMaybeLater} disabled={busy}>
-            Maybe later
+            {maybeLaterLabel}
           </Button>
         )}
         {onAskAnother && (
           <Button variant="ghost" onClick={onAskAnother} disabled={busy}>
-            Ask another question
+            {askAnotherLabel}
           </Button>
         )}
       </div>

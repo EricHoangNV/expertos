@@ -57,14 +57,28 @@ export interface ChatMessageDto {
 }
 
 /**
- * High-stakes-topic disclaimer (NT.4, PRD §"Non-Technical Requirements"). Shown verbatim under any
- * answer the deterministic high-stakes detector flagged. Single-sourced here so the legal wording is
- * identical on the live chat and the history read path, and so it can never drift from the
- * system-prompt rule that scopes the answer to educational context. The actionable "book a
- * consultation" CTA is surfaced separately by the M7 funnel (the topic trigger fires on high-stakes).
+ * High-stakes-topic disclaimer (NT.4, PRD §"Non-Technical Requirements"), per UI locale (M13.4).
+ *
+ * This is legal system content, so — unlike the app-chrome strings, which live in each app's i18n
+ * dictionary — every translation is single-sourced here next to the English. That keeps the wording
+ * identical on the live chat and the history read path, lets the NT.4 legal sign-off review both
+ * languages in one place, and ensures the localized copy can never drift from the system-prompt rule
+ * that scopes the answer to educational context. The actionable "book a consultation" CTA is surfaced
+ * separately by the M7 funnel (the topic trigger fires on high-stakes too).
+ *
+ * Both translations are DRAFTS awaiting the NT.4 PM/legal sign-off (the milestone's human gate).
  */
-export const HIGH_STAKES_DISCLAIMER =
-  "This response is AI-generated for informational purposes only and does not constitute professional financial, legal, medical, or tax advice. For decisions with significant financial, legal, or health consequences, consider booking a consultation for guidance tailored to your situation.";
+export const HIGH_STAKES_DISCLAIMERS: Record<LanguageValue, string> = {
+  en: "This response is AI-generated for informational purposes only and does not constitute professional financial, legal, medical, or tax advice. For decisions with significant financial, legal, or health consequences, consider booking a consultation for guidance tailored to your situation.",
+  vi: "Phản hồi này do AI tạo ra và chỉ nhằm mục đích cung cấp thông tin, không phải là tư vấn chuyên môn về tài chính, pháp lý, y tế hoặc thuế. Đối với các quyết định có hậu quả đáng kể về tài chính, pháp lý hoặc sức khỏe, hãy cân nhắc đặt lịch tư vấn để được hướng dẫn phù hợp với tình huống của bạn.",
+};
+
+/**
+ * The English high-stakes disclaimer (NT.4). Retained as the canonical alias for the EN entry of
+ * {@link HIGH_STAKES_DISCLAIMERS} so existing callers and the legal record keep a stable reference;
+ * the localized rendering uses `HIGH_STAKES_DISCLAIMERS[locale]`.
+ */
+export const HIGH_STAKES_DISCLAIMER = HIGH_STAKES_DISCLAIMERS.en;
 
 /**
  * A resolved citation for a finished answer. Aligns with the `@expertos/ai` prompt builder's

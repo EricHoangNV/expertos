@@ -1391,6 +1391,21 @@ describe("ChatConsultationCard — consultation recommendation card (M12.4.5)", 
     expect(ask).toBeFalsy();
   });
 
+  it("renders localized heading + maybe-later + ask-another labels when supplied (M13.4)", () => {
+    const el = ChatConsultationCard({
+      heading: "Đáng để có một buổi làm việc",
+      onMaybeLater: noop,
+      maybeLaterLabel: "Để sau",
+      onAskAnother: noop,
+      askAnotherLabel: "Hỏi câu khác",
+    }) as ReactElement;
+    const title = (kids(parts(el)[0] as ReactElement) as unknown[])[1] as ReactElement;
+    expect(kids(title)).toBe("Đáng để có một buổi làm việc");
+    const [, maybe, ask] = actionKids(el) as ReactElement[];
+    expect(kids(maybe)).toBe("Để sau");
+    expect(kids(ask)).toBe("Hỏi câu khác");
+  });
+
   it("disables all actions while busy", () => {
     const el = ChatConsultationCard({
       onBook: noop,

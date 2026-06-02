@@ -8,9 +8,9 @@ import type {
   ConversationSummaryDto,
   SavedAnswerDto,
 } from "@expertos/shared";
-import { HIGH_STAKES_DISCLAIMER } from "@expertos/shared";
+import { HIGH_STAKES_DISCLAIMERS } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
-import { useT } from "../../src/lib/i18n";
+import { useLocale, useT } from "../../src/lib/i18n";
 import { AnswerView } from "../../src/components/answer-view";
 import {
   createSavedAnswer,
@@ -47,6 +47,7 @@ function ConversationDetail({
 }) {
   const { getIdToken } = useAuth();
   const t = useT("history");
+  const { locale } = useLocale();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(detail.title ?? "");
   const [busy, setBusy] = useState(false);
@@ -148,7 +149,7 @@ function ConversationDetail({
                 {m.highStakes ? (
                   <Card className="card-pad">
                     <Badge tone="amber">{t("important")}</Badge>
-                    <p className="muted">{HIGH_STAKES_DISCLAIMER}</p>
+                    <p className="muted">{HIGH_STAKES_DISCLAIMERS[locale]}</p>
                   </Card>
                 ) : null}
                 {savedIds.has(m.id) ? (

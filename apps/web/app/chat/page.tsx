@@ -36,6 +36,7 @@ import {
   isDensity,
   isLayoutDirection,
   type LayoutDirection,
+  type Locale,
   layoutPanes,
   Select,
   SourceCard,
@@ -55,7 +56,7 @@ import type {
   UploadedFileDto,
   UploadMode,
 } from "@expertos/shared";
-import { HIGH_STAKES_DISCLAIMER } from "@expertos/shared";
+import { HIGH_STAKES_DISCLAIMERS } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
 import { useLocale, useT } from "../../src/lib/i18n";
 import { AnswerView } from "../../src/components/answer-view";
@@ -109,14 +110,15 @@ interface UiMessage {
 /**
  * The high-stakes disclaimer (NT.4, PRD §"Non-Technical Requirements"): a non-dismissible legal
  * notice shown under any answer the detector flagged (financial / legal / medical / tax). The copy
- * is single-sourced in `@expertos/shared` so it can never drift from the system-prompt rule that
- * scoped the answer to educational context; the actionable "book a consultation" CTA arrives
- * separately as the M7 {@link ConsultationPrompt} (the topic trigger fires on high-stakes too).
+ * for both languages is single-sourced in `@expertos/shared` ({@link HIGH_STAKES_DISCLAIMERS}, keyed
+ * by the active {@link Locale}, M13.4) so the legal wording can never drift from the system-prompt
+ * rule that scoped the answer to educational context; the actionable "book a consultation" CTA
+ * arrives separately as the M7 {@link ConsultationPrompt} (the topic trigger fires on high-stakes too).
  */
-function HighStakesNotice({ t }: { t: Translator }) {
+function HighStakesNotice({ t, locale }: { t: Translator; locale: Locale }) {
   return (
     <ChatStateNotice tone="amber" label={t("importantLabel")}>
-      {HIGH_STAKES_DISCLAIMER}
+      {HIGH_STAKES_DISCLAIMERS[locale]}
     </ChatStateNotice>
   );
 }
@@ -256,8 +258,11 @@ function ConsultationPrompt({
       : t("bookGeneric");
   return (
     <ChatConsultationCard
+      heading={t("consultHeading")}
       description={recommendation.reason}
       bookLabel={bookLabel}
+      maybeLaterLabel={t("consultMaybeLater")}
+      askAnotherLabel={t("consultAskAnother")}
       busy={busy}
       onBook={() => void respond("book")}
       onMaybeLater={() => void respond("maybe_later")}
@@ -424,6 +429,7 @@ function AssistantTurn({
   showVerifiedBadge?: boolean;
 }) {
   const t = useT("chat");
+  const { locale } = useLocale();
   const [sourcesOpen, setSourcesOpen] = useState(false);
   // When the drawer is the sources surface, the inline list stays closed and the
   // action-bar toggle opens the page-level drawer with this answer's citations.
@@ -453,7 +459,7 @@ function AssistantTurn({
           {t("insufficientBody")}
         </ChatStateNotice>
       )}
-      {message.done && message.highStakes && <HighStakesNotice t={t} />}
+      {message.done && message.highStakes && <HighStakesNotice t={t} locale={locale} />}
       {message.done && message.recommendation && (
         <ConsultationPrompt recommendation={message.recommendation} expertName={message.expertName} />
       )}

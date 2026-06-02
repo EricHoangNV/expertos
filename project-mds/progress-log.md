@@ -4003,3 +4003,29 @@ ui build, admin tsc + next lint, root lint:css (stylelint), root knip. (admin ha
 **Gates:** web `tsc --noEmit` + `next lint --max-warnings 0` clean; root `lint:css` + `knip` clean; `@expertos/ui` jest 226 (i18n core 100%) green. No new tests (apps/web has no jest suite, like apps/admin); translations are type-checked via `satisfies Messages` + the page tsc. Test total unchanged at 1263.
 
 **Notes for next iteration:** M13.3 = add an i18n provider + EN/VI dictionaries to `apps/admin` (reuse the `@expertos/ui` core; admin copy differs from consumer copy so it needs its own catalog). M13.4 = translate the system-content strings noted above. M13.5 = locale-aware date/number/currency.
+
+---
+
+## M13.4 — i18n: system-generated content (high-stakes disclaimer + consultation CTA)
+**Date:** 2026-06-02
+**Ref:** PRD Task Manifest M13.4 ("Translate system-generated content"); §"Non-Technical Requirements" NT.4; OD#5
+
+**What:** Localized the remaining system-generated user-facing strings. Two of the four bullet items were already translated in M13.2 (insufficient-knowledge `insufficientLabel`/`insufficientBody`; concierge disclosure tooltip `reviewedTooltip`/`reviewedRefined`), so this task completed the two that weren't:
+
+1. **High-stakes disclaimer (NT.4)** — was rendered verbatim from the single English constant `HIGH_STAKES_DISCLAIMER`. Replaced with `HIGH_STAKES_DISCLAIMERS: Record<LanguageValue, string>` (EN+VI) in `packages/shared/src/chat.ts`. Architectural choice: legal/system content stays single-sourced in `@expertos/shared` (not the app i18n dictionary) so the NT.4 legal sign-off reviews **both** languages in one place and the localized copy can never drift from the educational-scope system-prompt rule. `HIGH_STAKES_DISCLAIMER` kept as the canonical EN alias (`= HIGH_STAKES_DISCLAIMERS.en`) so existing callers/tests/the legal record keep a stable reference. The chat `HighStakesNotice` and the history detail view now render `HIGH_STAKES_DISCLAIMERS[locale]` via the active `Locale` (`useLocale`).
+2. **Consultation CTA copy** — `ChatConsultationCard` (`packages/ui`) had hardcoded English "This looks worth a working session" / "Maybe later" / "Ask another question". Added `maybeLaterLabel`/`askAnotherLabel` props (EN defaults preserved — presentational component stays locale-agnostic); the web `ConsultationPrompt` now passes localized `heading`/`maybeLaterLabel`/`askAnotherLabel` from 3 new `chat` dictionary keys (`consultHeading`/`consultMaybeLater`/`consultAskAnother`, EN+VI).
+
+The M7 funnel rule `reason` is dynamic admin-configured DB text — correctly out of scope (not statically translatable).
+
+**Files:**
+- `packages/shared/src/chat.ts` — `HIGH_STAKES_DISCLAIMERS` map + EN alias; `packages/shared/src/index.ts` export
+- `packages/ui/src/ChatConsultationCard.tsx` — `maybeLaterLabel`/`askAnotherLabel` props
+- `apps/web/app/chat/page.tsx` — `HighStakesNotice` takes `locale`; `ConsultationPrompt` passes localized labels
+- `apps/web/app/history/page.tsx` — disclaimer via `useLocale` + `HIGH_STAKES_DISCLAIMERS[locale]`
+- `apps/web/src/lib/i18n/dictionaries.ts` — +3 chat keys EN+VI (chat 52→55; lockstep-verified)
+
+**Tests:** shared 187→190 (`HIGH_STAKES_DISCLAIMERS` per-locale presence / EN-alias-no-drift / EN≠VI); ui 226→227 (`ChatConsultationCard` localized heading + maybe-later + ask-another labels). web has no jest suite — page wiring is covered by `tsc` + the `satisfies Messages` lockstep. Test total 1263→1267.
+
+**Gates:** `@expertos/shared` build + jest 190 green; `@expertos/ui` build + jest 227 green; web `tsc --noEmit` + `next lint --max-warnings 0` clean; shared/ui eslint clean; root `lint:css` + `knip` clean (cleared `apps/*/.next` first). Dictionary EN/VI lockstep re-verified (chat 55 / history 42 / account 16). API unaffected — no backend code references the disclaimer or the consultation card (both are client-render only); the shared change is purely additive (new export, const value identical).
+
+**Notes for next iteration:** Remaining M13 i18n = M13.3 (admin portal — needs its own provider + EN/VI dictionaries on the `@expertos/ui` core) and M13.5 (locale-aware date/number/currency: `apps/web/app/account` `formatPrice` + history `when()` still use the system locale; VI date + VND).
