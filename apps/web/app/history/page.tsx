@@ -10,6 +10,7 @@ import type {
 } from "@expertos/shared";
 import { HIGH_STAKES_DISCLAIMER } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
+import { useT } from "../../src/lib/i18n";
 import { AnswerView } from "../../src/components/answer-view";
 import {
   createSavedAnswer,
@@ -29,9 +30,9 @@ function when(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
-/** A conversation's title, falling back to a placeholder for the rare untitled (pre-auto-title) row. */
-function titleOf(c: { title: string | null }): string {
-  return c.title ?? "Untitled conversation";
+/** A conversation's title, falling back to a (localized) placeholder for the rare untitled row. */
+function titleOf(c: { title: string | null }, untitled: string): string {
+  return c.title ?? untitled;
 }
 
 /** The full transcript of a selected conversation, with inline-edit rename + per-answer bookmark. */
@@ -45,6 +46,7 @@ function ConversationDetail({
   onRenamed: (updated: ConversationSummaryDto) => void;
 }) {
   const { getIdToken } = useAuth();
+  const t = useT("history");
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(detail.title ?? "");
   const [busy, setBusy] = useState(false);
@@ -59,18 +61,18 @@ function ConversationDetail({
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in.");
+        setError(t("signIn"));
         return;
       }
       const updated = await renameConversation(token, detail.id, trimmed);
       onRenamed(updated);
       setEditing(false);
     } catch {
-      setError("Couldn't rename — please try again.");
+      setError(t("renameError"));
     } finally {
       setBusy(false);
     }
-  }, [getIdToken, detail.id, title, onRenamed]);
+  }, [getIdToken, detail.id, title, onRenamed, t]);
 
   const save = useCallback(
     async (messageId: string) => {
@@ -78,23 +80,23 @@ function ConversationDetail({
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to save answers.");
+          setError(t("saveSignIn"));
           return;
         }
         await createSavedAnswer(token, messageId);
         setSavedIds((prev) => new Set(prev).add(messageId));
       } catch {
-        setError("Couldn't save that answer — please try again.");
+        setError(t("saveAnswerError"));
       }
     },
-    [getIdToken],
+    [getIdToken, t],
   );
 
   return (
     <>
       <div className="row gap2 wrap">
         <Button variant="ghost" size="sm" onClick={onBack}>
-          ← Back
+          {t("back")}
         </Button>
         {editing ? (
           <>
@@ -103,7 +105,7 @@ function ConversationDetail({
               onChange={(e) => setTitle(e.target.value)}
               disabled={busy}
               maxLength={100}
-              aria-label="Conversation title"
+              aria-label={t("titleAria")}
             />
             <Button
               variant="primary"
@@ -111,50 +113,50 @@ function ConversationDetail({
               onClick={() => void submitRename()}
               disabled={busy || !title.trim()}
             >
-              Save
+              {t("save")}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setEditing(false)} disabled={busy}>
-              Cancel
+              {t("cancel")}
             </Button>
           </>
         ) : (
           <>
-            <h2>{titleOf(detail)}</h2>
+            <h2>{titleOf(detail, t("untitled"))}</h2>
             <Button variant="subtle" size="sm" onClick={() => setEditing(true)}>
-              Rename
+              {t("rename")}
             </Button>
           </>
         )}
       </div>
-      <span className="muted">Last activity {when(detail.updatedAt)}</span>
+      <span className="muted">{t("lastActivity", { when: when(detail.updatedAt) })}</span>
       {error && <Badge tone="red">{error}</Badge>}
 
       <div>
         {detail.messages.map((m) => (
           <Card key={m.id} className="card-pad">
             <Badge tone={m.role === "user" ? "info" : "green"}>
-              {m.role === "user" ? "You" : "Assistant"}
+              {m.role === "user" ? t("roleYou") : t("roleAssistant")}
             </Badge>
             {m.role === "assistant" ? (
               <>
                 {m.refinedFromMessageId ? (
-                  <Badge tone="info" title="This response includes AI-reviewed/edited content">
-                    Reviewed &amp; refined by our team
+                  <Badge tone="info" title={t("reviewedTooltip")}>
+                    {t("reviewedRefined")}
                   </Badge>
                 ) : null}
                 <AnswerView content={m.content} citations={m.citations} interactive />
                 {m.highStakes ? (
                   <Card className="card-pad">
-                    <Badge tone="amber">Important</Badge>
+                    <Badge tone="amber">{t("important")}</Badge>
                     <p className="muted">{HIGH_STAKES_DISCLAIMER}</p>
                   </Card>
                 ) : null}
                 {savedIds.has(m.id) ? (
-                  <Badge tone="green">Saved</Badge>
+                  <Badge tone="green">{t("saved")}</Badge>
                 ) : (
                   <div className="row gap2 wrap">
                     <Button variant="subtle" size="sm" onClick={() => void save(m.id)}>
-                      Save answer
+                      {t("saveAnswer")}
                     </Button>
                   </div>
                 )}
@@ -172,6 +174,7 @@ function ConversationDetail({
 /** The bookmarked-answers panel: list + remove, with a jump into the owning conversation. */
 function SavedAnswers({ onOpen }: { onOpen: (conversationId: string) => void }) {
   const { getIdToken } = useAuth();
+  const t = useT("history");
   const [items, setItems] = useState<SavedAnswerDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -184,11 +187,11 @@ function SavedAnswers({ onOpen }: { onOpen: (conversationId: string) => void }) 
       if (!token) return;
       setItems(await listSavedAnswers(token, { limit: PAGE, offset: 0 }));
     } catch {
-      setError("Couldn't load saved answers.");
+      setError(t("savedLoadError"));
     } finally {
       setLoading(false);
     }
-  }, [getIdToken]);
+  }, [getIdToken, t]);
 
   useEffect(() => {
     void load();
@@ -202,29 +205,29 @@ function SavedAnswers({ onOpen }: { onOpen: (conversationId: string) => void }) 
         await removeSavedAnswer(token, id);
         setItems((prev) => prev.filter((i) => i.id !== id));
       } catch {
-        setError("Couldn't remove that bookmark.");
+        setError(t("removeError"));
       }
     },
-    [getIdToken],
+    [getIdToken, t],
   );
 
   return (
     <Card className="card-pad">
-      <span className="label">Saved answers</span>
-      {loading && <Badge tone="info">Loading…</Badge>}
+      <span className="label">{t("savedAnswers")}</span>
+      {loading && <Badge tone="info">{t("loading")}</Badge>}
       {error && <Badge tone="red">{error}</Badge>}
       {!loading && items.length === 0 && (
-        <p className="muted">No saved answers yet. Bookmark an answer to keep it here.</p>
+        <p className="muted">{t("noSaved")}</p>
       )}
       {items.map((item) => (
         <div key={item.id} className="row gap2 wrap">
           <Button variant="ghost" size="sm" onClick={() => onOpen(item.conversationId)}>
-            Open conversation
+            {t("openConversation")}
           </Button>
           {item.note && <span className="muted">{item.note}</span>}
           <span className="muted">{when(item.createdAt)}</span>
           <Button variant="subtle" size="sm" onClick={() => void remove(item.id)}>
-            Remove
+            {t("remove")}
           </Button>
         </div>
       ))}
@@ -234,6 +237,7 @@ function SavedAnswers({ onOpen }: { onOpen: (conversationId: string) => void }) 
 
 export default function HistoryPage() {
   const { user, getIdToken } = useAuth();
+  const t = useT("history");
   const [conversations, setConversations] = useState<ConversationSummaryDto[]>([]);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -253,7 +257,7 @@ export default function HistoryPage() {
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to view your history.");
+          setError(t("listSignIn"));
           return;
         }
         const page = await listConversations(token, { limit: PAGE, offset: nextOffset });
@@ -261,12 +265,12 @@ export default function HistoryPage() {
         setOffset(nextOffset + page.length);
         setHasMore(page.length === PAGE);
       } catch {
-        setError("Couldn't load your conversations — please try again.");
+        setError(t("loadError"));
       } finally {
         setLoading(false);
       }
     },
-    [getIdToken],
+    [getIdToken, t],
   );
 
   useEffect(() => {
@@ -288,16 +292,16 @@ export default function HistoryPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to search.");
+        setError(t("searchSignIn"));
         return;
       }
       setResults(await searchConversations(token, q, { limit: PAGE, offset: 0 }));
     } catch {
-      setError("Search failed — please try again.");
+      setError(t("searchFailed"));
     } finally {
       setSearching(false);
     }
-  }, [getIdToken, query]);
+  }, [getIdToken, query, t]);
 
   const open = useCallback(
     async (id: string) => {
@@ -305,15 +309,15 @@ export default function HistoryPage() {
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in.");
+          setError(t("signIn"));
           return;
         }
         setDetail(await getConversation(token, id));
       } catch {
-        setError("Couldn't open that conversation — please try again.");
+        setError(t("openError"));
       }
     },
-    [getIdToken],
+    [getIdToken, t],
   );
 
   const onRenamed = useCallback((updated: ConversationSummaryDto) => {
@@ -324,8 +328,8 @@ export default function HistoryPage() {
   if (!user) {
     return (
       <main className="card card-pad">
-        <h1>History</h1>
-        <Badge tone="info">Please sign in on the home page to view your history.</Badge>
+        <h1>{t("heading")}</h1>
+        <Badge tone="info">{t("signInPrompt")}</Badge>
       </main>
     );
   }
@@ -333,7 +337,7 @@ export default function HistoryPage() {
   if (detail) {
     return (
       <main className="card card-pad">
-        <h1>History</h1>
+        <h1>{t("heading")}</h1>
         <ConversationDetail detail={detail} onBack={() => setDetail(null)} onRenamed={onRenamed} />
       </main>
     );
@@ -341,9 +345,9 @@ export default function HistoryPage() {
 
   return (
     <main className="card card-pad">
-      <h1>History</h1>
+      <h1>{t("heading")}</h1>
 
-      <Field label="Search your conversations" htmlFor="q">
+      <Field label={t("searchLabel")} htmlFor="q">
         <div className="row gap2 wrap">
           <Input
             id="q"
@@ -353,10 +357,10 @@ export default function HistoryPage() {
               if (e.key === "Enter") void runSearch();
             }}
             maxLength={200}
-            placeholder="Search titles and messages…"
+            placeholder={t("searchPlaceholder")}
           />
           <Button variant="primary" onClick={() => void runSearch()} disabled={searching}>
-            {searching ? "Searching…" : "Search"}
+            {searching ? t("searching") : t("search")}
           </Button>
           {results !== null && (
             <Button
@@ -366,7 +370,7 @@ export default function HistoryPage() {
                 setResults(null);
               }}
             >
-              Clear
+              {t("clear")}
             </Button>
           )}
         </div>
@@ -376,12 +380,12 @@ export default function HistoryPage() {
 
       {results !== null ? (
         <Card className="card-pad">
-          <span className="label">Search results</span>
-          {results.length === 0 && <p className="muted">No conversations matched.</p>}
+          <span className="label">{t("searchResults")}</span>
+          {results.length === 0 && <p className="muted">{t("noMatch")}</p>}
           {results.map((r) => (
             <div key={r.conversation.id} className="col gap1">
               <Button variant="ghost" size="sm" onClick={() => void open(r.conversation.id)}>
-                {titleOf(r.conversation)}
+                {titleOf(r.conversation, t("untitled"))}
               </Button>
               {r.snippet && <span className="source-quote">{r.snippet}</span>}
             </div>
@@ -389,22 +393,22 @@ export default function HistoryPage() {
         </Card>
       ) : (
         <Card className="card-pad">
-          <span className="label">Recent conversations</span>
-          {loading && conversations.length === 0 && <Badge tone="info">Loading…</Badge>}
+          <span className="label">{t("recentConversations")}</span>
+          {loading && conversations.length === 0 && <Badge tone="info">{t("loading")}</Badge>}
           {!loading && conversations.length === 0 && (
-            <p className="muted">No conversations yet. Start one from the Chat page.</p>
+            <p className="muted">{t("noConversations")}</p>
           )}
           {conversations.map((c) => (
             <div key={c.id} className="row gap2 wrap">
               <Button variant="ghost" size="sm" onClick={() => void open(c.id)}>
-                {titleOf(c)}
+                {titleOf(c, t("untitled"))}
               </Button>
               <span className="muted">{when(c.updatedAt)}</span>
             </div>
           ))}
           {hasMore && (
             <Button variant="subtle" onClick={() => void loadPage(offset)} disabled={loading}>
-              {loading ? "Loading…" : "Load more"}
+              {loading ? t("loading") : t("loadMore")}
             </Button>
           )}
         </Card>

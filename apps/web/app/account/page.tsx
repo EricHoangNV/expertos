@@ -9,6 +9,7 @@ import type {
   PlanPriceDto,
 } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
+import { useT } from "../../src/lib/i18n";
 import {
   fetchEntitlements,
   fetchUpgradePlans,
@@ -27,13 +28,14 @@ function formatPrice({ amountCents, currency, interval }: PlanPriceDto): string 
 
 /** One metered feature rendered as a quota meter (M6.3 transparent usage indicator). */
 function MeteredFeature({ feature }: { feature: EntitlementView }) {
+  const t = useT("account");
   // A disabled metered feature isn't available on this plan at all — show that, not a 0/0 meter.
   if (!feature.enabled) {
     return (
       <div className="meter">
         <div className="meter-head">
           <span className="label">{feature.name}</span>
-          <Badge tone="ink">Not included</Badge>
+          <Badge tone="ink">{t("notIncluded")}</Badge>
         </div>
       </div>
     );
@@ -50,12 +52,13 @@ function MeteredFeature({ feature }: { feature: EntitlementView }) {
 
 /** One boolean feature rendered as an included / not-included badge. */
 function BooleanFeature({ feature }: { feature: EntitlementView }) {
+  const t = useT("account");
   return (
     <div className="meter">
       <div className="meter-head">
         <span className="label">{feature.name}</span>
         <Badge tone={feature.enabled ? "green" : "ink"}>
-          {feature.enabled ? "Included" : "Not included"}
+          {feature.enabled ? t("included") : t("notIncluded")}
         </Badge>
       </div>
     </div>
@@ -64,6 +67,7 @@ function BooleanFeature({ feature }: { feature: EntitlementView }) {
 
 export default function AccountPage() {
   const { user, getIdToken } = useAuth();
+  const t = useT("account");
   const [data, setData] = useState<EntitlementsDto | null>(null);
   const [plans, setPlans] = useState<AvailablePlansDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +81,7 @@ export default function AccountPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to view your plan.");
+        setError(t("signInToView"));
         return;
       }
       const [entitlements, upgradePlans] = await Promise.all([
@@ -87,11 +91,11 @@ export default function AccountPage() {
       setData(entitlements);
       setPlans(upgradePlans);
     } catch {
-      setError("Couldn't load your plan and usage — please try again.");
+      setError(t("loadError"));
     } finally {
       setLoading(false);
     }
-  }, [getIdToken]);
+  }, [getIdToken, t]);
 
   /** Resolves a fresh token then runs a billing redirect (checkout/portal), surfacing failures. */
   const redirectTo = useCallback(
@@ -101,16 +105,16 @@ export default function AccountPage() {
       try {
         const token = await getIdToken();
         if (!token) {
-          setActionError("Please sign in again to continue.");
+          setActionError(t("signInAgain"));
           return;
         }
         window.location.href = await resolveUrl(token);
       } catch {
-        setActionError("Couldn't start the billing session — please try again.");
+        setActionError(t("billingError"));
         setBusy(false);
       }
     },
-    [getIdToken],
+    [getIdToken, t],
   );
 
   useEffect(() => {
@@ -124,8 +128,8 @@ export default function AccountPage() {
   if (!user) {
     return (
       <main className="card card-pad">
-        <h1>Plan &amp; usage</h1>
-        <Badge tone="info">Please sign in on the home page to view your plan.</Badge>
+        <h1>{t("heading")}</h1>
+        <Badge tone="info">{t("signInPrompt")}</Badge>
       </main>
     );
   }
@@ -135,18 +139,18 @@ export default function AccountPage() {
 
   return (
     <main className="card card-pad">
-      <h1>Plan &amp; usage</h1>
+      <h1>{t("heading")}</h1>
 
-      {loading && <Badge tone="info">Loading…</Badge>}
+      {loading && <Badge tone="info">{t("loading")}</Badge>}
       {error && <Badge tone="red">{error}</Badge>}
 
       {data && (
         <>
-          <Badge tone="green">Current plan: {data.plan.name}</Badge>
+          <Badge tone="green">{t("currentPlan", { name: data.plan.name })}</Badge>
 
           {metered.length > 0 && (
             <Card className="card-pad">
-              <span className="label">Usage this period</span>
+              <span className="label">{t("usageThisPeriod")}</span>
               {metered.map((feature) => (
                 <MeteredFeature key={feature.key} feature={feature} />
               ))}
@@ -155,7 +159,7 @@ export default function AccountPage() {
 
           {boolean.length > 0 && (
             <Card className="card-pad">
-              <span className="label">Features</span>
+              <span className="label">{t("features")}</span>
               {boolean.map((feature) => (
                 <BooleanFeature key={feature.key} feature={feature} />
               ))}
@@ -164,7 +168,7 @@ export default function AccountPage() {
 
           {plans && plans.upgrades.length > 0 && (
             <Card className="card-pad">
-              <span className="label">Upgrade</span>
+              <span className="label">{t("upgrade")}</span>
               {actionError && <Badge tone="red">{actionError}</Badge>}
               {plans.upgrades.map((plan) => (
                 <div key={plan.key} className="meter">
@@ -183,7 +187,7 @@ export default function AccountPage() {
                           )
                         }
                       >
-                        Upgrade to {plan.name} — {formatPrice(price)}
+                        {t("upgradeTo", { name: plan.name, price: formatPrice(price) })}
                       </Button>
                     ))}
                   </div>
@@ -194,7 +198,7 @@ export default function AccountPage() {
 
           {plans?.hasActiveSubscription && (
             <Card className="card-pad">
-              <span className="label">Billing</span>
+              <span className="label">{t("billing")}</span>
               {actionError && plans.upgrades.length === 0 && (
                 <Badge tone="red">{actionError}</Badge>
               )}
@@ -203,7 +207,7 @@ export default function AccountPage() {
                 disabled={busy}
                 onClick={() => void redirectTo((token) => openBillingPortal(token))}
               >
-                Manage billing
+                {t("manageBilling")}
               </Button>
             </Card>
           )}

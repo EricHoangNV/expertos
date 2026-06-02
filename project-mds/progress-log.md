@@ -3976,3 +3976,30 @@ ui build, admin tsc + next lint, root lint:css (stylelint), root knip. (admin ha
 **Gates:** api test 680 + lint + build, ui test 226 + build, admin tsc + next lint, web tsc, root lint:css + knip — all green. Total 1263 tests (no new test count; assertions added to existing cases). LEARNINGS #16 added.
 
 **Notes for next iteration:** Knip's repo-wide unused-file scan picks up stale `apps/admin/.next` / `apps/web/.next` build dirs as "unused files" — `rm -rf` them before running `pnpm knip` for a clean result. Next priorities unchanged: M13.2/M13.3 i18n string extraction, then M13.7 admin polish.
+
+---
+
+## M13.2 (i18n) — Translate web app: /chat, /history, /account static strings
+
+**What:** Extracted every static, user-facing English string in the three consumer pages (`apps/web/app/chat`, `/history`, `/account`) into the EN/VI dictionaries and wired them through `useT`, completing the i18n loop M13.1 established. The toggle in the chat header (M12.3.3 → M13.1 global locale) now switches the whole page's UI language, not just the answer language.
+
+**Approach:**
+- Grew `apps/web/src/lib/i18n/dictionaries.ts` from the single starter `chat` namespace (4 keys) to three page-scoped namespaces: `chat` (52), `history` (42), `account` (16) — EN and VI in lockstep (verified by a key-parity scan: every `en` leaf exists in `vi`). A few short strings (Loading…, Important, sign-in prompts) are intentionally duplicated per namespace so each page's translator stays self-contained (no cross-namespace lookups; the framework binds one namespace per `useT`).
+- Wired `useT("account")` / `useT("history")` into the previously-untranslated pages, including their page-local sub-components (`MeteredFeature`/`BooleanFeature`; `ConversationDetail`/`SavedAnswers`) — each calls its own `useT` since they're separate React components in the same file.
+- Chat page (already had `tChat = useT("chat")`): translated all of `ConsultationPrompt`, `AnswerActions`, `AssistantTurn` (fair-use / insufficient / high-stakes notices), `UploadPanel`, and the `ChatPage` errors + title fallbacks (`untitled` / `newConversation`). Plain non-hook helpers (`answerSourceLabel`, `sourceCardTitle`, `sourceCards`, `HighStakesNotice`) take a `Translator` param (imported `type Translator` from `@expertos/ui`) so they translate without becoming hooks.
+- Added `tChat`/`t` to the relevant `useCallback`/`useMemo` dependency arrays.
+
+**Scope boundaries (honest):**
+- System-generated content stays for **M13.4**: `HIGH_STAKES_DISCLAIMER` (from `@expertos/shared`), the API-supplied consultation `reason`/CTA, and insufficient-knowledge copy that originates server-side. (The page-level UI labels around them — "Important", "Limited knowledge" — are translated here.)
+- Locale-aware **formatting** stays for **M13.5**: `account/formatPrice` (Intl currency) and `history/when()` (`toLocaleString`) still use the system locale; date/number/VND formatting is its own task.
+- `formatBytes` B/KiB/MiB units left as-is (universal units, not prose).
+
+**Files changed:**
+- `apps/web/src/lib/i18n/dictionaries.ts` — EN/VI catalogs grown to 3 namespaces (110 keys each)
+- `apps/web/app/account/page.tsx` — `useT("account")` across page + MeteredFeature/BooleanFeature
+- `apps/web/app/history/page.tsx` — `useT("history")` across page + ConversationDetail/SavedAnswers; `titleOf` takes a localized fallback param
+- `apps/web/app/chat/page.tsx` — `useT("chat")` across all sub-components; plain helpers take `Translator`
+
+**Gates:** web `tsc --noEmit` + `next lint --max-warnings 0` clean; root `lint:css` + `knip` clean; `@expertos/ui` jest 226 (i18n core 100%) green. No new tests (apps/web has no jest suite, like apps/admin); translations are type-checked via `satisfies Messages` + the page tsc. Test total unchanged at 1263.
+
+**Notes for next iteration:** M13.3 = add an i18n provider + EN/VI dictionaries to `apps/admin` (reuse the `@expertos/ui` core; admin copy differs from consumer copy so it needs its own catalog). M13.4 = translate the system-content strings noted above. M13.5 = locale-aware date/number/currency.

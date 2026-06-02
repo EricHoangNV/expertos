@@ -42,6 +42,7 @@ import {
   SourcesDrawer,
   SourcesRail,
   SourcesRailHeader,
+  type Translator,
   TweaksDensityControl,
   TweaksLayoutControl,
   TweaksPanel,
@@ -112,9 +113,9 @@ interface UiMessage {
  * scoped the answer to educational context; the actionable "book a consultation" CTA arrives
  * separately as the M7 {@link ConsultationPrompt} (the topic trigger fires on high-stakes too).
  */
-function HighStakesNotice() {
+function HighStakesNotice({ t }: { t: Translator }) {
   return (
-    <ChatStateNotice tone="amber" label="Important">
+    <ChatStateNotice tone="amber" label={t("importantLabel")}>
       {HIGH_STAKES_DISCLAIMER}
     </ChatStateNotice>
   );
@@ -125,13 +126,13 @@ function HighStakesNotice() {
  * the resolved citations so the user sees what grounded the answer. Returns undefined when there are
  * no citations yet (mid-stream or insufficient knowledge), so the label only appears once grounded.
  */
-function answerSourceLabel(citations: ChatCitationDto[]): string | undefined {
+function answerSourceLabel(citations: ChatCitationDto[], t: Translator): string | undefined {
   if (citations.length === 0) return undefined;
   const hasKnowledge = citations.some((c) => c.kind === "knowledge");
   const hasUpload = citations.some((c) => c.kind === "upload");
-  if (hasKnowledge && hasUpload) return "grounded in published knowledge + your upload";
-  if (hasUpload) return "grounded in your upload";
-  return "grounded in published knowledge";
+  if (hasKnowledge && hasUpload) return t("sourceBoth");
+  if (hasUpload) return t("sourceUpload");
+  return t("sourceKnowledge");
 }
 
 /**
@@ -139,13 +140,13 @@ function answerSourceLabel(citations: ChatCitationDto[]): string | undefined {
  * `sourceLabel` before the ` · ` location separator), a knowledge citation shows a generic label
  * (the `document_version_id` is the provenance line, not the title).
  */
-function sourceCardTitle(citation: ChatCitationDto): string {
+function sourceCardTitle(citation: ChatCitationDto, t: Translator): string {
   if (citation.kind === "upload") {
-    const label = citation.sourceLabel ?? "Uploaded file";
+    const label = citation.sourceLabel ?? t("uploadedFile");
     const [file] = label.split(" · ");
     return file || label;
   }
-  return "Published knowledge";
+  return t("publishedKnowledge");
 }
 
 /**
@@ -168,14 +169,14 @@ function sourceCardProvenance(citation: ChatCitationDto): string | undefined {
  * sources rail (M12.5.1) and the slide-over drawer fallback (M12.5.4) so the two never drift. Returns
  * `undefined` when there are no citations, so the host (`SourcesRail`) shows its empty state instead.
  */
-function sourceCards(citations: ChatCitationDto[]) {
+function sourceCards(citations: ChatCitationDto[], t: Translator) {
   if (citations.length === 0) return undefined;
   return citations.map((citation) => (
     <SourceCard
       key={citation.ordinal}
       ordinal={citation.ordinal}
       kind={citation.kind}
-      title={sourceCardTitle(citation)}
+      title={sourceCardTitle(citation, t)}
       provenance={sourceCardProvenance(citation)}
       excerpt={citation.quote}
     />
@@ -204,6 +205,7 @@ function ConsultationPrompt({
   expertName?: string;
 }) {
   const { getIdToken } = useAuth();
+  const t = useT("chat");
   const [status, setStatus] = useState<"open" | "busy" | "booked" | "dismissed">("open");
   const [error, setError] = useState<string | null>(null);
 
@@ -214,7 +216,7 @@ function ConsultationPrompt({
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to continue.");
+          setError(t("consultSignIn"));
           setStatus("open");
           return;
         }
@@ -228,11 +230,11 @@ function ConsultationPrompt({
           setStatus("dismissed");
         }
       } catch {
-        setError("Couldn't record that — please try again.");
+        setError(t("consultRecordError"));
         setStatus("open");
       }
     },
-    [getIdToken, recommendation.id],
+    [getIdToken, recommendation.id, t],
   );
 
   if (status === "dismissed") return null;
@@ -241,19 +243,17 @@ function ConsultationPrompt({
     const link = recommendation.consultationType?.tidycalLink;
     return (
       <Badge tone="green">
-        {link
-          ? "We've opened your booking page in a new tab."
-          : "Thanks — we'll be in touch to schedule your consultation."}
+        {link ? t("consultBookedLink") : t("consultBookedNoLink")}
       </Badge>
     );
   }
 
   const busy = status === "busy";
   const bookLabel = recommendation.consultationType
-    ? `Book ${recommendation.consultationType.name}`
+    ? t("bookType", { name: recommendation.consultationType.name })
     : expertName
-      ? `Book with ${expertName}`
-      : "Book a consultation";
+      ? t("bookWithExpert", { name: expertName })
+      : t("bookGeneric");
   return (
     <ChatConsultationCard
       description={recommendation.reason}
@@ -315,6 +315,7 @@ function AnswerActions({
   onToggleSources: () => void;
 }) {
   const { getIdToken } = useAuth();
+  const t = useT("chat");
   const [saved, setSaved] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -329,17 +330,17 @@ function AnswerActions({
     try {
       const token = await getIdToken();
       if (!token) {
-        setSaveError("Please sign in to save answers.");
+        setSaveError(t("saveSignIn"));
         return;
       }
       await createSavedAnswer(token, messageId);
       setSaved(true);
     } catch {
-      setSaveError("Couldn't save — please try again.");
+      setSaveError(t("saveError"));
     } finally {
       setSaveBusy(false);
     }
-  }, [getIdToken, messageId]);
+  }, [getIdToken, messageId, t]);
 
   const sendFeedback = useCallback(
     async (helpful: boolean, withReason: boolean) => {
@@ -348,19 +349,19 @@ function AnswerActions({
       try {
         const token = await getIdToken();
         if (!token) {
-          setFbError("Please sign in to leave feedback.");
+          setFbError(t("feedbackSignIn"));
           return;
         }
         const trimmed = reason.trim();
         await submitFeedback(messageId, helpful, token, withReason && trimmed ? trimmed : undefined);
         setVerdict(helpful);
       } catch {
-        setFbError("Couldn't save your feedback — please try again.");
+        setFbError(t("feedbackError"));
       } finally {
         setFbBusy(false);
       }
     },
-    [getIdToken, messageId, reason],
+    [getIdToken, messageId, reason, t],
   );
 
   return (
@@ -382,8 +383,8 @@ function AnswerActions({
             onChange={(e) => setReason(e.target.value)}
             disabled={fbBusy}
             maxLength={500}
-            placeholder="Add a reason (optional)"
-            aria-label="Feedback reason"
+            placeholder={t("reasonPlaceholder")}
+            aria-label={t("reasonAria")}
           />
           <Button
             variant="ghost"
@@ -391,9 +392,9 @@ function AnswerActions({
             onClick={() => void sendFeedback(verdict, true)}
             disabled={fbBusy || !reason.trim()}
           >
-            Send reason
+            {t("sendReason")}
           </Button>
-          <span className="muted">Thanks for your feedback.</span>
+          <span className="muted">{t("feedbackThanks")}</span>
         </div>
       )}
       {saveError && <Badge tone="red">{saveError}</Badge>}
@@ -422,6 +423,7 @@ function AssistantTurn({
   /** When false, the "Verified" trust badge is suppressed (Tweaks toggle, M12.7.3). */
   showVerifiedBadge?: boolean;
 }) {
+  const t = useT("chat");
   const [sourcesOpen, setSourcesOpen] = useState(false);
   // When the drawer is the sources surface, the inline list stays closed and the
   // action-bar toggle opens the page-level drawer with this answer's citations.
@@ -432,7 +434,7 @@ function AssistantTurn({
     <ChatAssistantMessage
       expertName={message.expertName}
       aiRendition={Boolean(message.expertName)}
-      sourceLabel={message.done ? answerSourceLabel(message.citations) : undefined}
+      sourceLabel={message.done ? answerSourceLabel(message.citations, t) : undefined}
       verified={
         showVerifiedBadge &&
         message.done &&
@@ -442,17 +444,16 @@ function AssistantTurn({
     >
       <AssistantAnswer message={message} sourcesOpen={inlineOpen} />
       {message.done && message.degraded && (
-        <ChatStateNotice tone="info" label="Fair-use mode" variant="note">
-          Answered with a lighter model while you’re over this period’s soft limit.
+        <ChatStateNotice tone="info" label={t("fairUseLabel")} variant="note">
+          {t("fairUseBody")}
         </ChatStateNotice>
       )}
       {message.done && message.insufficientKnowledge && (
-        <ChatStateNotice tone="amber" label="Limited knowledge">
-          I couldn’t find enough in the expert’s knowledge base to answer this confidently. Try
-          rephrasing your question, or book a consultation for a direct answer.
+        <ChatStateNotice tone="amber" label={t("insufficientLabel")}>
+          {t("insufficientBody")}
         </ChatStateNotice>
       )}
-      {message.done && message.highStakes && <HighStakesNotice />}
+      {message.done && message.highStakes && <HighStakesNotice t={t} />}
       {message.done && message.recommendation && (
         <ConsultationPrompt recommendation={message.recommendation} expertName={message.expertName} />
       )}
@@ -502,6 +503,7 @@ function UploadPanel({
   onClose: () => void;
 }) {
   const { getIdToken } = useAuth();
+  const t = useT("chat");
   const [mode, setMode] = useState<UploadMode>("temporary");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -516,43 +518,39 @@ function UploadPanel({
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to upload a document.");
+          setError(t("uploadSignIn"));
           return;
         }
         const uploaded = await uploadFile(token, file, mode, conversationId);
         setFiles((prev) => [uploaded, ...prev]);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Upload failed.");
+        setError(e instanceof Error ? e.message : t("uploadFailed"));
       } finally {
         setBusy(false);
         setInputKey((k) => k + 1);
       }
     },
-    [getIdToken, mode, conversationId],
+    [getIdToken, mode, conversationId, t],
   );
 
   // The `.badge-info` mode label in the popover header (M12.6.2): a temporary upload
   // applies to this chat only and is never indexed into the user's knowledge; a
   // persistent upload is saved + indexed for future questions. Rendered uppercase by
   // the `.badge` text-transform, so "Temporary · not indexed" reads "TEMPORARY · NOT INDEXED".
-  const modeLabel =
-    mode === "persistent" ? "Persistent · saved to knowledge" : "Temporary · not indexed";
+  const modeLabel = mode === "persistent" ? t("modePersistent") : t("modeTemporary");
 
   return (
     <ChatUploadPopover onClose={onClose} modeLabel={modeLabel}>
-      <p className="muted">
-        Add a document for this chat. Persistent files are saved to your private knowledge and used
-        in future questions; temporary files apply to this conversation only and expire.
-      </p>
-      <Field label="Mode" htmlFor="upload-mode">
+      <p className="muted">{t("uploadIntro")}</p>
+      <Field label={t("modeFieldLabel")} htmlFor="upload-mode">
         <Select
           id="upload-mode"
           value={mode}
           onChange={(e) => setMode(e.target.value as UploadMode)}
           disabled={busy}
         >
-          <option value="temporary">Temporary (this conversation)</option>
-          <option value="persistent">Persistent (saved to my knowledge)</option>
+          <option value="temporary">{t("optionTemporary")}</option>
+          <option value="persistent">{t("optionPersistent")}</option>
         </Select>
       </Field>
       <input
@@ -560,17 +558,15 @@ function UploadPanel({
         type="file"
         accept={UPLOAD_ACCEPT}
         disabled={busy}
-        aria-label="Choose a document to upload"
+        aria-label={t("chooseFileAria")}
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) void upload(file);
         }}
       />
-      {busy && <span className="muted">Uploading…</span>}
+      {busy && <span className="muted">{t("uploading")}</span>}
       {mode === "temporary" && !conversationId && (
-        <span className="muted">
-          Send a message first — temporary files attach to this conversation.
-        </span>
+        <span className="muted">{t("tempHint")}</span>
       )}
       {error && <Badge tone="red">{error}</Badge>}
       {files.length > 0 && (
@@ -578,12 +574,14 @@ function UploadPanel({
           {files.map((f) => (
             <div key={f.id} className="row gap2 wrap">
               <span>{f.filename}</span>
-              <Badge tone={f.mode === "persistent" ? "green" : "info"}>{f.mode}</Badge>
+              <Badge tone={f.mode === "persistent" ? "green" : "info"}>
+                {f.mode === "persistent" ? t("modeBadgePersistent") : t("modeBadgeTemporary")}
+              </Badge>
               <span className="muted">{formatBytes(f.sizeBytes)}</span>
               {f.chunkCount > 0 ? (
-                <Badge tone="green">{f.chunkCount} searchable chunks</Badge>
+                <Badge tone="green">{t("searchableChunks", { count: f.chunkCount })}</Badge>
               ) : (
-                <Badge tone="amber">stored — not searchable yet</Badge>
+                <Badge tone="amber">{t("notSearchable")}</Badge>
               )}
             </div>
           ))}
@@ -808,13 +806,13 @@ export default function ChatPage() {
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
         .map((c) => ({
           id: c.id,
-          title: c.title ?? "Untitled conversation",
+          title: c.title ?? tChat("untitled"),
           expertName: c.expertId
             ? (experts.find((e) => e.expertId === c.expertId)?.displayName ?? null)
             : null,
           updatedAt: c.updatedAt,
         })),
-    [conversations, experts],
+    [conversations, experts, tChat],
   );
 
   // Debounced full-text search (M12.2.2 → M3.3). The query is trimmed and only
@@ -839,7 +837,7 @@ export default function ChatPage() {
           setSearchResults(
             hits.map((h) => ({
               id: h.conversation.id,
-              title: h.conversation.title ?? "Untitled conversation",
+              title: h.conversation.title ?? tChat("untitled"),
               snippet: h.snippet,
             })),
           );
@@ -855,7 +853,7 @@ export default function ChatPage() {
       active = false;
       clearTimeout(timer);
     };
-  }, [searchQuery, getIdToken]);
+  }, [searchQuery, getIdToken, tChat]);
 
   // "+ New conversation" (M12.2.1) — clears the active chat so the next message
   // starts a fresh conversation. The conversation list (M12.2.3) will let the
@@ -882,7 +880,7 @@ export default function ChatPage() {
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to open a conversation.");
+          setError(tChat("openSignIn"));
           return;
         }
         const detail = await getConversation(token, id);
@@ -905,16 +903,17 @@ export default function ChatPage() {
         // Selecting from the sidebar overlay (M12.9.1) dismisses it.
         setSidebarDrawerOpen(false);
       } catch {
-        setError("Couldn't open that conversation — please try again.");
+        setError(tChat("openError"));
       }
     },
-    [busy, getIdToken],
+    [busy, getIdToken, tChat],
   );
 
   // The header title (M12.3.1): the best-known title for the active chat, with a
   // fallback for an unsaved (new) conversation vs a saved one still awaiting its
   // auto-title. Only a saved conversation (has an id) can be renamed.
-  const displayTitle = conversationTitle ?? (conversationId ? "Untitled conversation" : "New conversation");
+  const displayTitle =
+    conversationTitle ?? (conversationId ? tChat("untitled") : tChat("newConversation"));
 
   // Click-to-rename (M12.3.1 → M3.2): open the inline editor seeded with the
   // current title. Guarded to saved conversations (a new chat has nothing to name).
@@ -950,7 +949,7 @@ export default function ChatPage() {
 
     const token = await getIdToken();
     if (!token) {
-      setError("Please sign in to chat.");
+      setError(tChat("sendSignIn"));
       return;
     }
 
@@ -1014,7 +1013,7 @@ export default function ChatPage() {
       }
       void loadEntitlements();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Chat failed.");
+      setError(e instanceof Error ? e.message : tChat("chatFailed"));
       setMessages((prev) => updateLast(prev, (m) => ({ ...m, done: true })));
     } finally {
       setBusy(false);
@@ -1030,14 +1029,15 @@ export default function ChatPage() {
     editingTitle,
     loadConversations,
     loadEntitlements,
+    tChat,
   ]);
 
   if (!user) {
     return (
       <ChatLayout direction={direction} density={density}>
         <main className="card card-pad">
-          <h1>Chat</h1>
-          <Badge tone="info">Please sign in on the home page to start chatting.</Badge>
+          <h1>{tChat("heading")}</h1>
+          <Badge tone="info">{tChat("signInPrompt")}</Badge>
         </main>
       </ChatLayout>
     );
@@ -1083,7 +1083,7 @@ export default function ChatPage() {
       density={density}
       rail={
         <SourcesRail header={<SourcesRailHeader count={railCitations.length} />}>
-          {sourceCards(railCitations)}
+          {sourceCards(railCitations, tChat)}
         </SourcesRail>
       }
       sidebar={
@@ -1173,7 +1173,7 @@ export default function ChatPage() {
         onClose={() => setDrawerCitations(null)}
         header={<SourcesRailHeader count={drawerCitations?.length ?? 0} />}
       >
-        {drawerCitations ? sourceCards(drawerCitations) : undefined}
+        {drawerCitations ? sourceCards(drawerCitations, tChat) : undefined}
       </SourcesDrawer>
       <ChatSidebarDrawer
         open={sidebarDrawerOpen && !sidebarInGrid}

@@ -4,7 +4,7 @@
 
 - Phase 0 + Phase 1 (M1–M11) backend/admin/expert work: COMPLETE (see PRD Task Manifest for per-task detail).
 - M12 (Frontend UI Overhaul) — consumer web `/chat` rebuild: COMPLETE (M12.1–M12.9).
-- M13 (UI i18n — EN+VI): M13.1 DONE — i18n core in `@expertos/ui` (`Locale`/`translate`/`createTranslator`, pure, 100% tested) + web `LocaleProvider`/`useLocale`/`useT` (localStorage + `PATCH /me/locale` persistence, `<html lang>` sync); chat `language` state lifted to global locale (drives UI + answer lang). Starter `chat` namespace wired; full string extraction = M13.2–M13.5.
+- M13 (UI i18n — EN+VI): M13.1 DONE (i18n core + web provider/hooks). M13.2 DONE — web string extraction across `/chat`/`/history`/`/account` via `useT`: EN/VI dictionaries grown to 3 namespaces (chat 52 / history 42 / account 16 keys, lockstep-verified); page-local sub-components call their own `useT`, plain helpers take a `Translator` param. M13.3–M13.5 remain (admin i18n + system content + locale formatting).
 - M13 (Admin & Expert Portal UI Overhaul) — admin portal rebuild to the approved mockups:
   - M13.1: DONE — sidebar nav regrouped (OPERATE/MONETIZE/EXPERT PORTAL + ANALYTICS/SYSTEM), count badges, identity footer + sign-out, role-aware topbar.
   - M13.2 (Dashboard): DONE — greeting + 7d/30d/QTD `.seg`, KPI grid, Questions Answered (`StackedBar`), Funnel, Low-Confidence, Knowledge Pipeline, Concierge SLA. New rollups `/admin/analytics/questions` + `/knowledge-pipeline`.
@@ -17,10 +17,10 @@
 - Gates (run per-workspace — `turbo` SIGILLs here): shared/ui/api build/eslint/jest + admin `tsc --noEmit` + `next lint` + web `tsc` + root `lint:css` + root `knip` all clean. (knip's repo-wide scan flags stale `apps/*/.next` build dirs as unused files — `rm -rf apps/admin/.next apps/web/.next` before running knip for a clean result.) (`next build` blocked in-sandbox by missing linux/arm64 SWC — environmental; `tsx` seed also blocked by an esbuild darwin/linux arch mismatch — migration validated via `prisma migrate deploy` + raw SQL instead.)
 
 - Next tasks (priority order):
-  1. **M13.2 (i18n)** — Translate web app: extract `/chat`/`/history`/`/account` strings via `useT` (many live in `@expertos/ui` components → pass translated text as props).
-  2. **M13.3 (i18n)** — Translate admin: add the i18n layer to `apps/admin` (reuse `@expertos/ui` core; needs its own provider/dictionaries).
-  3. **M13.4/M13.5 (i18n)** — system content (disclaimers/CTAs) + locale-aware date/number/currency formatting.
-  4. **M13.7 (admin)** — polish & ds.css conformance audit (`.voice-bar` gated on M13.5).
+  1. **M13.3 (i18n)** — Translate admin: add the i18n layer to `apps/admin` (reuse `@expertos/ui` core; needs its own provider/dictionaries).
+  2. **M13.4 (i18n)** — system content: high-stakes disclaimer (`HIGH_STAKES_DISCLAIMER` in shared), concierge tooltip, insufficient-knowledge, consultation CTA copy.
+  3. **M13.5 (i18n)** — locale-aware date/number/currency formatting (VI date format, VND). Note `apps/web/app/account` `formatPrice` + history `when()` still use system locale.
+  4. **M13.7 (admin)** — polish & ds.css conformance audit (`.voice-bar` gated on M13.5 admin).
   5. **M13.5 (admin)** — Voice profile page: blocked on a schema decision; flag to PM.
   6. **M11.1 fixme legs** / **NT human gates** — await external surfaces / PM sign-off.
 
