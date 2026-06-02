@@ -45,6 +45,7 @@
 37. **Untrusted text in LLM prompts** — retrieved chunks, uploaded docs, and the user question are untrusted; defend with a system-prompt instruction hierarchy + forged-`[n]`-marker neutralization at the single `buildAnswerPrompt` choke point (§1.4b)
 38. **Associate every form label** — the DS `Field` renders `<label>` separately, so pass `htmlFor` + a matching control `id`; an unassociated label is a silent a11y gap visual review won't catch (LEARNINGS #12)
 39. **Split-origin API needs CORS** — the SPA and API are different origins (separate Cloud Run services), so `enableCors` with an origin allowlist + the `Authorization` header; only a real browser preflight catches its absence (LEARNINGS #10)
+40. **Verify large-file integrity before committing** — the OWC mount can silently truncate a just-edited file before `git add` reads it; check `wc -l`/`tail` + watch for an unexpected deletion count in the commit stat, recover from the last good commit if hit (§3.4.2, LEARNINGS #23)
 
 ---
 
@@ -318,6 +319,16 @@ The Docker sandbox VM has only 4GB RAM. Running the full E2E stack (PostgreSQL +
 4. **Commit and push** the specs — the host machine will run them with real resources
 
 Jest suites (`apps/web`, `apps/admin`, `packages/*`) are fine to run in-sandbox — they use jsdom, not real servers.
+
+### 3.4.2 Verify Large-File Integrity Before Committing (OWC Mount Truncation)
+
+The `/Volumes/OWC-Express-1M2` mount nondeterministically corrupts files — not just Next dev chunks (§3.4.1 / LEARNINGS #22) but ordinary source/markdown too. A successful `Edit` can be silently **truncated on disk** before `git add` reads it back, so the commit captures the truncated file (e.g. a one-line manifest change committing as `1 insertion, 194 deletions`).
+
+**Rule:** When committing a large or important file (PRD.md, LEARNINGS.md, long source files):
+1. Before `git add`, sanity-check the file — `wc -l` matches expectations and `tail` shows the real end-of-file.
+2. After `git add`, scan the commit stat — a small logical change showing a large deletion count is the corruption tell.
+3. If hit, recover non-destructively: `git show <last-good-commit>:path > path`, re-apply the intended edit, verify line count + tail, and land a **new** restorative commit (don't force-push an already-pushed `main`).
+4. `diff -q <(git show HEAD:path) path` per committed file confirms HEAD == disk.
 
 ### 3.5 NaN and Infinity Guard in Numeric Calculations
 
