@@ -7,6 +7,7 @@ import { Chip } from "./Chip";
 import { Cite } from "./Cite";
 import { Content, Shell, Topbar } from "./Shell";
 import { ChatLayout } from "./ChatLayout";
+import { ChatSidebar } from "./ChatSidebar";
 import {
   DEFAULT_LAYOUT_DIRECTION,
   isLayoutDirection,
@@ -294,6 +295,58 @@ describe("ChatLayout — three-pane studio grid (M12.1)", () => {
   it("merges a caller className onto the grid container", () => {
     const el = ChatLayout({ className: "z", children: "chat" }) as ReactElement;
     expect(cls(el)).toBe("chat-layout chat-layout-studio z");
+  });
+});
+
+describe("ChatSidebar — dark rail shell (M12.2.1)", () => {
+  const noop = () => {};
+
+  it("renders the `.side .chat-side` rail with the ExpertOS wordmark + a full-width primary action", () => {
+    const el = ChatSidebar({ onNewConversation: noop }) as ReactElement;
+    expect(cls(el)).toBe("side chat-side");
+    const [brand, newBtn, body, foot] = kids(el) as unknown[];
+    // Brand row: the ExpertOS logo wordmark; no collapse button without onClose.
+    const brandEl = brand as ReactElement;
+    expect(cls(brandEl)).toBe("brand");
+    const brandKids = kids(brandEl) as unknown[];
+    expect(cls(brandKids[0] as ReactElement)).toBe("logo");
+    expect(brandKids[1]).toBeFalsy();
+    // Full-width crimson "New conversation".
+    const btn = newBtn as ReactElement;
+    expect(btn.type).toBe(Button);
+    expect((btn.props as { variant?: unknown }).variant).toBe("primary");
+    expect(cls(btn)).toBe("chat-side-new");
+    expect(kids(btn)).toBe("+ New conversation");
+    // Body/footer slots collapse when unused.
+    expect(body).toBeFalsy();
+    expect(foot).toBeFalsy();
+  });
+
+  it("renders the collapse button only when onClose is supplied", () => {
+    const el = ChatSidebar({ onNewConversation: noop, onClose: noop }) as ReactElement;
+    const [brand] = kids(el) as unknown[];
+    const collapse = (kids(brand as ReactElement) as unknown[])[1] as ReactElement;
+    expect(cls(collapse)).toBe("chat-side-collapse");
+    expect((collapse.props as { onClick?: unknown }).onClick).toBe(noop);
+    expect((collapse.props as { "aria-label"?: unknown })["aria-label"]).toBe("Collapse sidebar");
+  });
+
+  it("mounts children into the body slot and footer into the foot slot", () => {
+    const el = ChatSidebar({
+      onNewConversation: noop,
+      children: "list",
+      footer: "meter",
+    }) as ReactElement;
+    const [, , body, foot] = kids(el) as unknown[];
+    expect(cls(body as ReactElement)).toBe("chat-side-body");
+    expect(kids(body as ReactElement)).toBe("list");
+    expect(cls(foot as ReactElement)).toBe("chat-side-foot");
+    expect(kids(foot as ReactElement)).toBe("meter");
+  });
+
+  it("merges a caller className onto the rail", () => {
+    const el = ChatSidebar({ onNewConversation: noop, className: "z" }) as ReactElement;
+    expect(cls(el)).toBe("side chat-side z");
   });
 });
 

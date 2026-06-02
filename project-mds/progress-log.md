@@ -2667,3 +2667,32 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - `packages/ui/src/index.ts` — export the layout module.
 - `packages/ui/src/primitives.test.ts` — +6 tests (direction-aware ChatLayout + layout helpers).
 - `apps/web/app/chat/page.tsx` — page-owned `direction` state passed to `ChatLayout`.
+
+---
+
+## M12.2.1 — Chat sidebar shell (ChatSidebar component)
+
+**Ref:** PRD §M12 (Frontend UI Overhaul); `requirements/ui-reference-spec.md` ("1. Sidebar (Left Panel)")
+
+**What was done:**
+- New `packages/ui/src/ChatSidebar.tsx` — the dark ds.css `.side` rail that fills the `.chat-layout` sidebar pane (M12.1):
+  - ExpertOS wordmark in a reused `.brand` row (white `.expert` + crimson `.os`, white-on-dark via the existing `.side .brand .logo .expert` rule).
+  - Optional collapse button (`onClose?`) — inline SVG X with `aria-label="Collapse sidebar"`, rendered only when a caller supplies `onClose`.
+  - Full-width crimson "+ New conversation" `.btn-primary` (`.chat-side-new` → `width:100%`).
+  - `children` → `.chat-side-body` slot (search M12.2.2 + list M12.2.3) and `footer` → `.chat-side-foot` slot (usage meter M12.2.4); both collapse when unused.
+- `packages/ui/src/ds.css` — new `.chat-side*` block: `.chat-side-collapse` (36px transparent dark icon button, `rgba(255,255,255,.08)` hover matching the existing `.side .navitem` pattern), `.chat-side-new` full-width, `.chat-side-body` (flex:1, scroll column) + `.chat-side-foot` (margin-top:auto pin).
+- `apps/web/app/chat/page.tsx` — `startNewConversation` callback (clears messages/conversationId/draft/error, no-op while busy); `<ChatSidebar onNewConversation={…}>` passed to the signed-in `ChatLayout` `sidebar` prop (studio default shows it).
+- Tests: `primitives.test.ts` +4 (rail class + wordmark + full-width primary; collapse only with onClose; body/footer slot mounting; className merge) — ui 38 → 42; `ChatSidebar.tsx` 100% coverage. Rebuilt `packages/ui/dist` (web resolves the package from `dist`).
+
+**Key decisions:**
+- `onClose` is **opt-in** and NOT wired from the chat page yet: the collapse control only has a re-open affordance once Tweaks (M12.7) / the responsive overlay (M12.9.1) land, so passing it now would create a dead-end control. The component fully supports it; the page opts in later.
+- Reused the dark `.side` + `.brand` rather than inventing chat-only header classes — keeps the white-wordmark rule and dark-rail styling single-sourced with the admin/expert portals.
+- Body/footer slots added now (like ChatLayout's sidebar/rail slots in M12.1.2) so M12.2.2–4 mount content without reworking the signature.
+- SVG icon sized via width/height attributes (the AdminFrame GoogleIcon pattern) since a bare `.ic` class has no ds.css size rule.
+
+**Files changed:**
+- `packages/ui/src/ChatSidebar.tsx` — new presentational sidebar shell.
+- `packages/ui/src/ds.css` — `.chat-side*` styling.
+- `packages/ui/src/index.ts` — export `ChatSidebar` + props.
+- `packages/ui/src/primitives.test.ts` — +4 tests.
+- `apps/web/app/chat/page.tsx` — `startNewConversation` + sidebar wiring.

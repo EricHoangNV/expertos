@@ -384,3 +384,23 @@ kbd { font-family: var(--font-mono); font-size: 11px; background: var(--paper-2)
   min-height: 0;
   overflow-y: auto;
 }
+
+/* ============================================================
+   Chat sidebar (consumer web) — M12.2
+   Reuses the dark `.side` rail + `.brand` header inside the `.chat-layout`
+   grid; adds the collapse control, full-width "New conversation" action, and
+   the body/footer slots that the search+list (M12.2.2–3) and usage meter
+   (M12.2.4) mount into.
+   ============================================================ */
+.chat-side .chat-side-collapse {
+  margin-left: auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; flex: none;
+  border-radius: var(--r-sm); border: 1px solid transparent;
+  background: transparent; color: var(--ink-300);
+  transition: background .13s, color .13s;
+}
+.chat-side .chat-side-collapse:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.chat-side .chat-side-new { width: 100%; }
+.chat-side .chat-side-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s2); }
+.chat-side .chat-side-foot { margin-top: auto; padding-top: var(--s4); }

@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   ChatLayout,
+  ChatSidebar,
   DEFAULT_LAYOUT_DIRECTION,
   Field,
   Input,
@@ -429,6 +430,17 @@ export default function ChatPage() {
     };
   }, [user, getIdToken]);
 
+  // "+ New conversation" (M12.2.1) — clears the active chat so the next message
+  // starts a fresh conversation. The conversation list (M12.2.3) will let the
+  // user switch back to a prior chat.
+  const startNewConversation = useCallback(() => {
+    if (busy) return;
+    setMessages([]);
+    setConversationId(undefined);
+    setDraft("");
+    setError(null);
+  }, [busy]);
+
   const send = useCallback(async () => {
     const text = draft.trim();
     if (!text || busy) return;
@@ -504,7 +516,10 @@ export default function ChatPage() {
   }
 
   return (
-    <ChatLayout direction={direction}>
+    <ChatLayout
+      direction={direction}
+      sidebar={<ChatSidebar onNewConversation={startNewConversation} />}
+    >
       <main className="card card-pad chat-content">
         <h1>Chat</h1>
 

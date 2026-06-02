@@ -24,6 +24,8 @@ export { Shell, Topbar, Content } from "./Shell";
 export type { ShellProps, ContentProps } from "./Shell";
 export { ChatLayout } from "./ChatLayout";
 export type { ChatLayoutProps } from "./ChatLayout";
+export { ChatSidebar } from "./ChatSidebar";
+export type { ChatSidebarProps } from "./ChatSidebar";
 export {
   LAYOUT_DIRECTIONS,
   DEFAULT_LAYOUT_DIRECTION,
