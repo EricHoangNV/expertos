@@ -2,7 +2,8 @@
 
 ## Current State
 - Completed:
-  - M11.1 (executed green): Playwright E2E **15 pass / 4 skip (3 fixme + voice) / 0 fail** vs a live in-sandbox stack; `e2e/global-setup.ts` (mirror users, promote roles + member→Plus), programmatic emulator sign-in, CORS + a11y-label + harness-selector fixes (LEARNINGS #10/#11/#12)
+  - M11.1 (voice seed): `e2e/global-setup.ts` now seeds an active expert + published `en` voice profile (idempotent, linked to e2e-expert@), un-skipping the M2.2 "AI rendition" voice E2E leg → E2E now **16 pass / 3 skip (3 fixme) / 0 fail**. Validated against a live pgvector DB: picker + chat-resolution SQL both return the seed
+  - M11.1 (executed green): Playwright E2E vs a live in-sandbox stack; `e2e/global-setup.ts` (mirror users, promote roles + member→Plus), programmatic emulator sign-in, CORS + a11y-label + harness-selector fixes (LEARNINGS #10/#11/#12)
   - M11.1 (enabler fix): API Firebase init emulator-aware (`createFirebaseApp` inits with just `projectId` when `FIREBASE_AUTH_EMULATOR_HOST` set); fixes E2E boot. Prod no-op
   - M11 (harness): `infra/local-test-db.sh` + `pnpm test:integration` — pgvector in Docker; **50 live-DB tests green (15 RLS + 35 api)**
   - M6.2 (web): Self-serve checkout CTA — `GET /me/plans` + account-page Upgrade/Manage-billing
@@ -62,6 +63,6 @@
 - Build: passing — `pnpm build` builds all 7 workspaces. (Note: admin's standalone build flakily truncates `.next/server/pages-manifest.json` to 0 bytes [`Unexpected end of JSON input`] — only matters for `next start`; copy web's manifest or rebuild. Not a code error.)
 - Gates: typecheck ✅, test ✅ (coverage gate ≥90% met), lint ✅ (incl. stylelint), build ✅, deadcode (knip) ✅
 - Next tasks (priority order):
-  1. **M11.1 fixme legs** — un-skip when their surface lands: seed a published expert voice (voice test), a Draft doc (publish→retrieval round-trip), a throwaway user (deletion cascade), a Stripe test harness (hosted checkout). All currently `test.fixme`/`test.skip` by design.
+  1. **M11.1 fixme legs** — un-skip when their surface lands: a Draft doc (publish→retrieval round-trip), a throwaway user (deletion cascade), a Stripe test harness (hosted checkout). All currently `test.fixme` by design. (Voice leg now seeded → un-skipped.)
   2. **M11.4 / NT** — remaining sign-offs are now human gates (NT.3 PM approval, NT.4 copy/ToS, NT.5/6 deferred)
   3. Phase-0 Open Decisions (#3, product halves of #2/#6)

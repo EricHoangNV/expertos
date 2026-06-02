@@ -91,6 +91,48 @@ async function globalSetup(): Promise<void> {
           });
         }
       }
+
+      // Seed one active expert with a *published* English voice profile so the M2.2 voice
+      // picker has a non-neutral option and the chat voice layer resolves a profile. Without
+      // it the `web-voice-and-consultation` "AI rendition" test skips (the picker offers only
+      // the neutral voice). Eligibility mirrors `PgExpertStore`/`PgVoiceExampleStore`: the
+      // expert must be `active` and the profile `published` in the requested language (`en`).
+      // Idempotent: upsert the expert by (tenant, slug); create the profile only if absent.
+      // Linked to the e2e-expert@ identity so the expert portal flows see a real expert too.
+      const expertUser = await tx.user.findFirst({ where: { email: users.expert.email } });
+      const admin = await tx.user.findFirst({ where: { email: users.admin.email } });
+      const expert = await tx.expert.upsert({
+        where: { tenantId_slug: { tenantId: GLOBAL_TENANT_ID, slug: "e2e-expert" } },
+        update: { active: true },
+        create: {
+          tenantId: GLOBAL_TENANT_ID,
+          slug: "e2e-expert",
+          displayName: "Dr. Ada Mentor",
+          title: "Lead Expert",
+          active: true,
+          userId: expertUser?.id ?? null,
+        },
+      });
+      const publishedProfile = await tx.voiceProfile.findFirst({
+        where: { expertId: expert.id, language: "en", status: "published" },
+      });
+      if (!publishedProfile) {
+        await tx.voiceProfile.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            expertId: expert.id,
+            language: "en",
+            name: "Ada — measured & practical",
+            description: "E2E-seeded published voice profile.",
+            guidelines:
+              "Answer plainly and practically. Lead with the bottom line, then the reasoning. " +
+              "Stay grounded in the provided sources; never claim first-hand experience.",
+            status: "published",
+            approvedBy: admin?.id ?? null,
+            approvedAt: new Date(),
+          },
+        });
+      }
     });
   } finally {
     await prisma.$disconnect();

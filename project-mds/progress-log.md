@@ -2560,3 +2560,26 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 **Remaining (all by design):** 3 `test.fixme` legs (publish→retrieval round-trip + irreversible deletion cascade need a seed; Stripe-hosted checkout is an external surface) + the expert-voice test (needs a seeded published voice profile to un-skip).
 
 **Gates:** typecheck ✅, test ✅ (1037, coverage gate met), lint ✅ (incl. e2e + stylelint), deadcode ✅, build ✅. E2E run: 15/0/4.
+
+## M11.1: seed a published expert voice → un-skip the voice E2E leg
+**Date:** 2026-06-02
+**Ref:** PRD Task Manifest M11.1 ("Un-skipping the expert-voice test needs a seeded published voice profile")
+
+**What was done:**
+- Added idempotent expert-voice seeding to `e2e/global-setup.ts` (inside the existing admin-context transaction, after the member→Plus block): upsert one active `Expert` (slug `e2e-expert`, displayName "Dr. Ada Mentor", linked to the e2e-expert@ identity) + create a published `en` `VoiceProfile` if none exists (approvedBy = e2e-admin@, approvedAt = now).
+- This makes the M2.2 voice picker offer a non-neutral option and lets the chat voice layer resolve a profile, so the `web-voice-and-consultation` "selecting an expert voice renders an AI-rendition attribution" test (which was `test.skip(!expert, ...)` by design) now runs instead of skipping. No test-file change — the test was authored to run-when-present.
+- Validated the seed CRUD + both query paths against a live pgvector DB (`infra/local-test-db.sh up`): a throwaway `tsx` script replayed the exact seed block under RLS, then ran the real `PgExpertStore.listExperts` and `PgVoiceExampleStore.loadProfile` SQL — both returned the seeded "Dr. Ada Mentor". Re-ran to confirm idempotency (same IDs, still exactly one expert/profile). Script + container removed after.
+
+**Key decisions:**
+- **Seed in `global-setup.ts`, not `packages/db/prisma/seed.ts`.** The db seed is consumed by the live-DB integration harness (50 api/RLS tests); adding an expert there risks perturbing suites that assert empty-expert/no-voice states. global-setup is E2E-only with the smallest blast radius and is already the documented out-of-band stack prep.
+- **No embedded `VoiceExample` rows.** The rendition badge only needs a resolved published profile (expertName); voice examples require the embedding pipeline and aren't needed for the test. Seeded `guidelines` text so the voice still has substance for the prompt builder.
+- Linked the Expert to the e2e-expert@ user so the expert-portal E2E flows also see a real expert.
+
+**Files changed:**
+- `e2e/global-setup.ts` — +42 lines: idempotent active-expert + published-en-voice-profile seed inside the global-setup transaction.
+
+**Notes for next iteration:**
+- Couldn't execute the full Playwright run here (chromium needs system-deps + fonts + the emulator stack), but the seed's DB-write + both consuming SQL paths are verified against a real schema, and the test guard (`test.skip(!expert)`) flips deterministically once the picker has a non-neutral option. Expected E2E delta: 15→16 pass, 4→3 skip.
+- Remaining M11.1 fixme legs are still external/seed-gated: publish→retrieval round-trip (needs a Draft doc seed), deletion cascade (throwaway user), Stripe-hosted checkout (external surface).
+
+**Gates:** typecheck ✅, test ✅ (1037, unchanged — e2e excluded from default test), lint ✅ (incl. e2e + stylelint), deadcode ✅, build ✅ (7/7).
