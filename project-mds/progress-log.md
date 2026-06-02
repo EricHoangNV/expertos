@@ -4275,3 +4275,24 @@ Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:
 
 **Notes for next iteration:**
 - M15.1.6 (shared hooks/lib) is next: `useMediaQuery` (the matchMedia stub in jest.setup returns matches:true with no-op listeners — a controllable matchMedia per-test is needed to exercise the change-event path), the account/chat/history/upload client fns (assert request shape + error throwing via the manual fetch mock), and `firebase.ts` emulator-aware init (note: firebase.ts is excluded from `collectCoverageFrom`, and `firebase/*` is mocked — testing it means asserting `getFirebaseAuth` caches + the emulator branch runs under `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST`). Sign-out (`auth-context` `signOutUser` → firebase `signOut` mock) also lands here.
+
+---
+
+## M15.1.6 (test): web shared hooks/lib jest suites (+54) — 2026-06-02
+
+**Task:** M15.1.6 — shared hooks/lib tests for `apps/web`. Closes M15.1 (web jest suite).
+
+**What was added** (3 new files, web 42 → 96):
+- `src/lib/use-media-query.test.tsx` (7): a controllable per-test `matchMedia` (the jest.setup stub always returns `matches:true` with no-op listeners, so the change-event path needs a real fake) drives — initial match reflected after mount, false-when-no-match, breakpoint-cross via fired change events, listener unsubscribe on unmount, re-subscribe when the query prop changes (old query torn down), and the SSR-safe guard returning `false` when `matchMedia` is absent.
+- `src/lib/api-clients.test.ts` (~38): every web API client fn over the shared manual `fetch` mock — chat (`streamChat` SSE-frame parse + request body/auth header, `respondToRecommendation`, `submitFeedback` with/without reason, `fetchExperts`), account (`fetchEntitlements`/`fetchUpgradePlans`/`startCheckout`/`openBillingPortal`), history (`listConversations` page window, `getConversation`, `searchConversations` URL-encoding, `renameConversation`, `listSavedAnswers`, `createSavedAnswer` incl. 409→`duplicate`, `removeSavedAnswer` 204), upload (`uploadFile` multipart + Content-Type left unset + API `{message}` surfaced on rejection + status fallback, `UPLOAD_ACCEPT`), and i18n profile (`fetchProfileLocale`/`updateProfileLocale`). Each asserts the request shape (method/path/auth/body) + response pass-through + the non-2xx throw.
+- `src/lib/firebase.test.ts` (9): emulator-aware init via `jest.resetModules()` + a typed `require` per case (the module reads env at eval) — `isFirebaseConfigured` both ways, `getFirebaseAuth` caching, `googleProvider` instance, `connectAuthEmulator` called only when `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` is set (and NOT in prod), and `window.__e2eSignIn` installed only under the emulator + delegating to `signInWithEmailAndPassword`. (`firebase.ts` is excluded from `collectCoverageFrom` as a thin wrapper, but these branches are worth pinning; `firebase/*` stays auto-mocked.)
+
+**Decisions / honest deviations:**
+- `useLocale`/`useT` (listed in the task) were already fully covered by M15.1.5's i18n suite — not duplicated.
+- Removed the now-redundant `@testing-library/react` entry from knip `ignoreDependencies` (the direct `renderHook` import in the hook test made knip resolve it as used; with the entry present knip flagged it as an unused ignore).
+- eslint base is `next/core-web-vitals` with no `@typescript-eslint/*` rules registered, so `@typescript-eslint/no-explicit-any`/`no-require-imports` disable directives errored ("rule not found") — dropped them and used `typeof import(...)`-typed `require` helpers (no `any`) instead.
+
+**Gates:** web `tsc` clean, `next lint` clean, `jest` 96/96 pass (8 suites), root `knip` clean. Test-only + knip.json change → other workspaces unaffected (1322 → 1376 total tests).
+
+**Notes for next iteration:**
+- M15.2 (admin jest suite) is next: admin has a jest config but zero tests + no harness. Mirror the web harness (`apps/admin/test/` render helper over the real admin `LocaleProvider` + a mock auth/`adminSession` context, admin-client fetch mock, `next/navigation` mock). Start with M15.2.1 (harness), then AdminFrame role-aware nav (M15.2.2), dashboard (M15.2.3), CRUD pages (M15.2.5), concierge queue (M15.2.6), i18n + `useStatusLabel` 43-token + 24-namespace lockstep (M15.2.7). Admin auth differs from web — it gates on `adminSession`/`denied`, not raw firebase user.

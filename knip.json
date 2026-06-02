@@ -37,8 +37,7 @@
   "ignoreDependencies": [
     "ts-jest",
     "@types/jest",
-    "@prisma/client",
-    "@testing-library/react"
+    "@prisma/client"
   ],
   "ignore": ["**/*.test.ts", "**/*.test.tsx", "**/jest*.config.*", "load/**"]
 }
