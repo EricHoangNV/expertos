@@ -3067,3 +3067,34 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 - M12.5.1 done. Next: M12.5.2 (rail header: `.label` "SOURCES" + passage count + new `.trust-badge` outlined-crimson "ALL CITATIONS RESOLVED TO A REAL CHUNK" pill) → mounts in the `header` slot; M12.5.3 (source cards: numbered, match %, crimson/blue doc icon, title + version badge, `.source-prov` mono location, `.source-quote` left-bordered excerpt) → mounts as `children` — lift the existing `.source` markup out of `AnswerView`'s drawer; M12.5.4 (drawer fallback for classic/focus + narrow viewport).
 - Rebuild `packages/ui` after editing — apps consume `dist/` (web typecheck fails on a stale dist).
 - `turbo` SIGILLs in this sandbox — run gates per-workspace directly.
+
+## M12.5.2 — Sources-rail header (SOURCES label + passage count + trust badge)
+**Date:** 2026-06-02
+**Ref:** PRD §"UI Reference Spec" (M12.5.2); requirements/ui-reference-spec.md §4 (Sources Rail)
+
+**What was done:**
+- New presentational primitive `packages/ui/src/SourcesRailHeader.tsx` `SourcesRailHeader`: a `.sources-rail-title` block with the "SOURCES" `.label` + a mono-muted resolved-passage count, over an outlined-crimson `.trust-badge` (inline checkmark SVG + "All citations resolved to a real chunk").
+- Render-after-resolve (OD#7 / Design System): the passage count and the trust badge surface only once `count > 0`, so the rail never claims resolution before a single citation has resolved. Singular/plural passage label ("1 passage" / "N passages"). `trustLabel` overridable.
+- ds.css: new `.sources-rail-title` (column + baseline-justified title row) and `.trust-badge` (outlined crimson pill: transparent bg, `--red-700` text, `1px var(--red-600)` border, mono uppercase) blocks under the existing M12.5.1 `.sources-rail` rules.
+- Exported from `packages/ui/src/index.ts`; rebuilt `packages/ui` `dist/` so the web app picks up the new export.
+- Wired into `apps/web/app/chat/page.tsx`: a `railCitationCount` `useMemo` walks `messages` back-to-front for the latest assistant turn and reads `citations.length`; passed to `SourcesRail`'s `header` slot as `<SourcesRailHeader count={railCitationCount} />`.
+- +5 ui tests (primitives.test.ts), 100% coverage on the new file; ui suite 124→129, total 1132→1137.
+
+**Key decisions:**
+- Header is its own component (not inlined into `SourcesRail`) so M12.5.3's source cards can mount independently as `children` and the header stays unit-testable in isolation, matching the existing slot pattern (`header`/`children`).
+- Count derived from the *latest* assistant turn only (not summed across the conversation) — the rail shows sources for the current answer, per the spec ("cited sources for the current answer").
+- Render-after-resolve enforced in the component itself (gate on `count > 0`) rather than at the call site, so the guarantee can't be bypassed by a future caller.
+- Checkmark drawn as an inline `currentColor` SVG (same approach as `ChatConsultationCard`'s calendar icon) — no new asset, inherits the crimson via `color`.
+
+**Files changed:**
+- `packages/ui/src/SourcesRailHeader.tsx` — new component (added).
+- `packages/ui/src/index.ts` — export `SourcesRailHeader` + type.
+- `packages/ui/src/ds.css` — `.sources-rail-title` + `.trust-badge` rules.
+- `packages/ui/src/primitives.test.ts` — `SourcesRailHeader` describe block (+5 tests).
+- `apps/web/app/chat/page.tsx` — `railCitationCount` memo + header wiring + import.
+- `project-mds/PRD.md` — M12.5.2 → [x].
+
+**Notes for next iteration:**
+- M12.5.3 (source cards) is next: lift the `.source` card markup out of `AnswerView`'s sources drawer (numbered, match %, crimson/blue doc icon, title + version badge, `.source-prov` mono location, `.source-quote` left-bordered excerpt) and mount as `SourcesRail` `children`; feed from the same latest-answer citations the header counts. `.source` already exists in ds.css.
+- `railCitationCount` only feeds the header today; M12.5.3 will want the citation *array* of the latest answer (and likely a click-to-passage hook reusing `AnswerView`'s `onCite`). Consider lifting a `latestAnswerCitations` memo alongside the count.
+- Rebuild `packages/ui` after editing — apps consume `dist/`. `turbo` SIGILLs in this sandbox — run gates per-workspace directly.

@@ -27,6 +27,7 @@ import {
   type LayoutDirection,
   Select,
   SourcesRail,
+  SourcesRailHeader,
   Textarea,
 } from "@expertos/ui";
 import type {
@@ -575,6 +576,17 @@ export default function ChatPage() {
     [entitlements],
   );
 
+  // Resolved-citation count for the latest assistant answer — feeds the sources-rail
+  // header (M12.5.2). Render-after-resolve: only the latest answer's citations count,
+  // and `SourcesRailHeader` itself hides the count/trust badge until it is > 0.
+  const railCitationCount = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "assistant") return m.citations.length;
+    }
+    return 0;
+  }, [messages]);
+
   // The RECENT rows (M12.2.3): map summaries to list items, resolving the expert
   // display name from the loaded voices for the avatar, and sorting most-recent
   // first (the API already does, but lexicographic ISO sort is a cheap guard).
@@ -818,7 +830,7 @@ export default function ChatPage() {
   return (
     <ChatLayout
       direction={direction}
-      rail={<SourcesRail />}
+      rail={<SourcesRail header={<SourcesRailHeader count={railCitationCount} />} />}
       sidebar={
         <ChatSidebar
           onNewConversation={startNewConversation}

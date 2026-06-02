@@ -17,6 +17,7 @@ import { ChatAnswerActions } from "./ChatAnswerActions";
 import { ChatConsultationCard } from "./ChatConsultationCard";
 import { ChatStateNotice } from "./ChatStateNotice";
 import { SourcesRail } from "./SourcesRail";
+import { SourcesRailHeader } from "./SourcesRailHeader";
 import { AnswerProse } from "./AnswerProse";
 import { ChatTopbar } from "./ChatTopbar";
 import {
@@ -1407,5 +1408,55 @@ describe("SourcesRail — right-panel container (M12.5.1)", () => {
   it("omits the header region when no header is given", () => {
     const el = SourcesRail({ children: "card" }) as ReactElement;
     expect(parts(el).some((c) => /sources-rail-head/.test(String(cls(c))))).toBe(false);
+  });
+});
+
+describe("SourcesRailHeader — SOURCES label + count + trust badge (M12.5.2)", () => {
+  /** Non-falsy children of the `.sources-rail-title` container. */
+  const parts = (el: ReactElement): ReactElement[] =>
+    (kids(el) as unknown[]).filter((c): c is ReactElement => Boolean(c));
+  /** Non-falsy children of the title row (the SOURCES label + optional count). */
+  const rowParts = (el: ReactElement): ReactElement[] =>
+    (kids(parts(el)[0]) as unknown[]).filter((c): c is ReactElement => Boolean(c));
+
+  it("renders the `.sources-rail-title` container with the SOURCES `.label`", () => {
+    const el = SourcesRailHeader({ count: 0 }) as ReactElement;
+    expect(cls(el)).toBe("sources-rail-title");
+    const [label] = rowParts(el);
+    expect(cls(label)).toBe("label");
+    expect(kids(label)).toBe("Sources");
+  });
+
+  it("hides the passage count and trust badge before any citation resolves (count 0)", () => {
+    const el = SourcesRailHeader({ count: 0 }) as ReactElement;
+    // Only the title row is present — no count chip, no trust badge.
+    expect(parts(el)).toHaveLength(1);
+    expect(rowParts(el)).toHaveLength(1);
+  });
+
+  it("shows the mono passage count once resolved (singular vs plural)", () => {
+    const one = SourcesRailHeader({ count: 1 }) as ReactElement;
+    const count1 = rowParts(one)[1];
+    expect(cls(count1)).toBe("sources-rail-count mono muted");
+    expect(kids(count1)).toBe("1 passage");
+
+    const many = SourcesRailHeader({ count: 3 }) as ReactElement;
+    expect(kids(rowParts(many)[1])).toBe("3 passages");
+  });
+
+  it("renders the outlined-crimson `.trust-badge` only once at least one citation resolved", () => {
+    const el = SourcesRailHeader({ count: 2 }) as ReactElement;
+    const badge = parts(el)[1];
+    expect(cls(badge)).toBe("trust-badge");
+    // svg checkmark + the trust copy.
+    const badgeKids = (kids(badge) as unknown[]).filter(Boolean);
+    expect(badgeKids).toContain("All citations resolved to a real chunk");
+  });
+
+  it("honors a custom trust label", () => {
+    const el = SourcesRailHeader({ count: 1, trustLabel: "Every passage verified" }) as ReactElement;
+    const badge = parts(el)[1];
+    const badgeKids = (kids(badge) as unknown[]).filter(Boolean);
+    expect(badgeKids).toContain("Every passage verified");
   });
 });

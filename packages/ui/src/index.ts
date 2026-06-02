@@ -50,6 +50,8 @@ export { ChatStateNotice } from "./ChatStateNotice";
 export type { ChatStateNoticeProps, ChatStateNoticeTone } from "./ChatStateNotice";
 export { SourcesRail } from "./SourcesRail";
 export type { SourcesRailProps } from "./SourcesRail";
+export { SourcesRailHeader } from "./SourcesRailHeader";
+export type { SourcesRailHeaderProps } from "./SourcesRailHeader";
 export {
   ChatConversationList,
   AVATAR_TONES,

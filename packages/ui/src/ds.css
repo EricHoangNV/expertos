@@ -407,6 +407,21 @@ kbd { font-family: var(--font-mono); font-size: 11px; background: var(--paper-2)
 .sources-rail .sources-rail-body { display: flex; flex-direction: column; gap: var(--s3); min-height: 0; }
 .sources-rail .sources-rail-empty { margin: 0; font-size: 13px; }
 
+/* Rail header (M12.5.2) — "SOURCES" label + passage count over the trust badge. */
+.sources-rail-title { display: flex; flex-direction: column; gap: var(--s2); }
+.sources-rail-title .sources-rail-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); }
+.sources-rail-title .sources-rail-count { font-size: 11px; }
+
+/* Trust badge — outlined crimson pill claiming every citation resolved to a real chunk. */
+.trust-badge {
+  display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .04em;
+  padding: 4px 10px; border-radius: var(--r-pill);
+  color: var(--red-700); background: transparent; border: 1px solid var(--red-600);
+  text-transform: uppercase;
+}
+.trust-badge svg { flex: none; }
+
 /* ============================================================
    Chat sidebar (consumer web) — M12.2
    Reuses the dark `.side` rail + `.brand` header inside the `.chat-layout`
