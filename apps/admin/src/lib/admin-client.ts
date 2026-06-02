@@ -479,8 +479,28 @@ export interface VoiceProfileAdminDto {
   updatedAt: string;
 }
 
+/** A stored voice example (style sample) as surfaced to the sign-off detail view (M13.5). */
+interface VoiceExampleAdminDto {
+  id: string;
+  prompt: string | null;
+  content: string;
+  language: string;
+  createdAt: string;
+}
+
+/** A voice profile plus its style examples — the M13.5 sign-off detail view. */
+export interface VoiceProfileDetailDto extends VoiceProfileAdminDto {
+  exampleCount: number;
+  examples: VoiceExampleAdminDto[];
+}
+
 /** Sign-off lifecycle actions a reviewer can drive a voice profile through (M2.3). */
 export type VoiceProfileAction = "submit" | "approve" | "request-changes";
+
+/** A single voice profile plus its style examples (the M13.5 detail/sign-off view). */
+export function getVoiceProfile(token: string, id: string): Promise<VoiceProfileDetailDto> {
+  return request<VoiceProfileDetailDto>(`/voice-profiles/${id}`, token);
+}
 
 /** The voice-profile sign-off queue / authoring list (admin sees every profile in the tenant). */
 export function listVoiceProfiles(

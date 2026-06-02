@@ -22,7 +22,7 @@ import { Roles } from "../auth/roles.decorator";
 import type { AuthUser } from "../auth/auth.types";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { VoiceProfileService } from "./voice-profile.service";
-import type { VoiceProfileSummary } from "./voice.types";
+import type { VoiceProfileDetail, VoiceProfileSummary } from "./voice.types";
 
 /**
  * Expert/admin voice-profile authoring + sign-off API (M2.3) — the first admin/expert-portal
@@ -44,6 +44,15 @@ export class VoiceProfileController {
     query: VoiceProfileListQueryInput,
   ): Promise<VoiceProfileSummary[]> {
     return this.service.list(user, query);
+  }
+
+  /** A single profile plus its style examples — the sign-off detail view (M13.5). */
+  @Get(":id")
+  get(
+    @CurrentUser() user: AuthUser,
+    @Param("id", ParseUUIDPipe) id: string,
+  ): Promise<VoiceProfileDetail> {
+    return this.service.get(user, id);
   }
 
   /** Author a new draft voice profile. */

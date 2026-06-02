@@ -4115,3 +4115,27 @@ Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:
 **Gates:** root `lint:css` (now linting admin-login.css — clean), admin `tsc --noEmit` clean, admin `next lint` clean, root `knip` clean (`rm -rf apps/*/.next` first). No backend/shared/ui/web changes → test total stays 1274; admin has no jest suite (changes are presentational + a lint-glob string).
 
 **Learning:** updated LEARNINGS #13's open caveat to CLOSED — a guard that exists but doesn't glob the file is worse than no guard (reads green); inline `px` in JSX `style={{}}` is the remaining blind spot (outside both stylelint and eslint), so prefer a CSS class over an inline style for any sized property.
+
+---
+
+## 2026-06-02 — M13.5 Voice profile page (Expert Portal) — schema-honest lean version
+
+**Task:** M13.5 — the last open implementation milestone. Three prior agents deferred it as "needs a PM/schema decision." I confirmed the blocker is real for the *structured* widgets but found a buildable, fully schema-backed subset, and shipped that without fabricating any data.
+
+**Why partially blocked (the real constraint):** the mockup (`ui-reference-spec.md` Screen 4) wants a rich structured voice profile — Directness/Detail/Warmth **dimension bars**, Structure/Terminology **chips**, **rendition policy** (1st/3rd person), **Do/Don't rules**, a neutral-vs-voiced **comparison**, and per-example **fidelity scores**. The schema has **none** of these: `VoiceProfile` carries only a free-text `guidelines` blob (+ name/description/status/language/approval), and `VoiceExample` carries only `prompt`/`content`/`language` (+ embedding). Inventing those fields would bake an unreviewed voice-characterization model into the prompt builder that experts *legally sign off on* (NT.2) — a genuine product decision, not an implementation gap. So I built only what the data backs and left .3/.4/.5 (and the fidelity/per-row-approve parts of .6) + M13.7.4 `.voice-bar` deferred.
+
+**Built (schema-honest):**
+- **New API `GET /voice-profiles/:id`** — `VoiceProfileController.get` → `VoiceProfileService.get(user, profileId)`: reuses `loadManageable` (existing ownership rule: expert→own profile, admin→any in tenant) inside the RLS tx, then `voiceExample.findMany` (ordered newest-first) → new `VoiceProfileDetail` (= `VoiceProfileSummary` + `exampleCount` + `examples: VoiceExampleSummary[]`). Surfaces only real `prompt`/`content`, never the embedding.
+- **Admin detail page** `apps/admin/app/voice-profiles/[id]/page.tsx` (mirrors the `experts/[id]` `useParams` template): large expert-toned `.avatar.avatar-lg` + name + locale-aware status `.badge` + amber-dot "Awaiting your sign-off" badge (when `expert_review`) + meta (language · example count) + lifecycle sign-off buttons (submit/approve/request-changes, approve = `.btn-primary`) [M13.5.1]; amber warning banner (NT.2 voice-shapes-tone-not-facts copy) [M13.5.2]; description card; guidelines card (pre-wrap free text, with a sign-off note when approvable); examples list in `.panel` cards (prompt label + content) [M13.5.6 partial].
+- **List wiring:** `apps/admin/app/voice-profiles/page.tsx` row gains a "View" `.navitem` link → `/voice-profiles/[id]`.
+- **ds.css:** one reusable `.avatar-lg` (52px) utility next to the avatar tones (ds.css is px/hex-exempt per `.stylelintrc` override).
+- **i18n:** `voice-profiles` namespace grown with a `detail.*` block + `view` (EN+VI, lockstep-verified — each key 2×).
+- **admin-client:** `getVoiceProfile` + `VoiceProfileDetailDto` (`VoiceExampleAdminDto` left non-exported → knip-clean).
+
+**Omitted (deferred, no backing):** role/topics/profile-version meta (not modeled); dimension bars / structure+terminology chips / rendition policy (M13.5.3); do/don't rules (M13.5.4); neutral-vs-voiced comparison (M13.5.5); per-example fidelity + per-row approve (M13.5.6 — sign-off is profile-level); `.voice-bar` (M13.7.4). PRD rows annotated with the reason on each.
+
+**Files:** `apps/api/src/voice/{voice.types.ts,voice-profile.service.ts,voice-profile.controller.ts}` (+ matching `.test.ts` ×2), `apps/admin/app/voice-profiles/{page.tsx,[id]/page.tsx}`, `apps/admin/src/lib/admin-client.ts`, `apps/admin/src/lib/i18n/dictionaries/voice-profiles.ts`, `packages/ui/src/ds.css`, `project-mds/{PRD.md,progress-*.md}`.
+
+**Gates:** api build (nest) + eslint + jest **686 pass** (+6: 5 `VoiceProfileService.get` [owner/empty/admin/403/404] + 1 controller delegate; `voice-profile.service.ts` 100% coverage); admin `tsc --noEmit` + `next lint` clean; root `lint:css` + `knip` clean (`rm -rf apps/*/.next` first). Test total 1274→**1280**. (`next build` still env-blocked in-sandbox by arch mismatch — tsc+lint are the admin gate.)
+
+**Decision note:** I asked the user (AskUserQuestion) whether to extend the schema, build lean, or leave blocked; they declined to pick, so I used judgment and chose the lean build — it ships real value on the last open milestone, fabricates nothing, and avoids a unilateral product decision on a legally-sensitive (expert-signed) surface. The structured widgets stay flagged for PM.

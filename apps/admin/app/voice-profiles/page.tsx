@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Badge, Button, Field, Input, Select, Table, Textarea } from "@expertos/ui";
 import {
   LANGUAGES,
@@ -186,6 +187,9 @@ export default function VoiceProfilesPage() {
                 <td className="muted mono">{new Date(p.updatedAt).toLocaleDateString()}</td>
                 <td>
                   <div className="row gap1">
+                    <Link href={`/voice-profiles/${p.id}`} className="navitem">
+                      {t("view")}
+                    </Link>
                     {p.status === "draft" && (
                       <Button variant="ghost" size="sm" onClick={() => setEditing(p)}>
                         {t("edit")}

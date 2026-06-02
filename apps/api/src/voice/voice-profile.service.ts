@@ -14,7 +14,11 @@ import type { RetrievalLanguage } from "@expertos/ai";
 import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { StructuredLogger } from "../observability/logger.service";
-import type { VoiceProfileSummary } from "./voice.types";
+import type {
+  VoiceExampleSummary,
+  VoiceProfileDetail,
+  VoiceProfileSummary,
+} from "./voice.types";
 
 /** Prisma `select` that yields exactly a {@link VoiceProfileSummary} (plus the owning user). */
 const PROFILE_SELECT = {
@@ -205,6 +209,40 @@ export class VoiceProfileService {
       count: rows.length,
     });
     return rows.map(toSummary);
+  }
+
+  /**
+   * Load a single profile (ownership-checked, like {@link update}/{@link submit}) plus its style
+   * examples — the sign-off detail view (M13.5). An expert may read only their own profile; an
+   * admin any profile in the tenant. Returns only schema-backed data.
+   */
+  async get(user: AuthUser, profileId: string): Promise<VoiceProfileDetail> {
+    return this.rls.run(user, async (tx) => {
+      const row = await this.loadManageable(tx, user, profileId);
+      const examples = await tx.voiceExample.findMany({
+        where: { voiceProfileId: profileId },
+        select: { id: true, prompt: true, content: true, language: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      this.logger.info("voice profile detail loaded", {
+        profileId,
+        exampleCount: examples.length,
+      });
+      return {
+        ...toSummary(row),
+        exampleCount: examples.length,
+        examples: examples.map(
+          (e): VoiceExampleSummary => ({
+            id: e.id,
+            prompt: e.prompt,
+            content: e.content,
+            language: e.language as RetrievalLanguage,
+            createdAt: e.createdAt,
+          }),
+        ),
+      };
+    });
   }
 
   /** Shared state-machine step: assert the current status, then move + stamp + log. */

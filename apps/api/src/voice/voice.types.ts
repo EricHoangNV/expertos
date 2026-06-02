@@ -22,6 +22,30 @@ export interface VoiceProfileSummary {
 }
 
 /**
+ * A voice example as surfaced to the authoring/sign-off portal (M13.5) — the real stored
+ * `prompt`/`content`, never the embedding. The detail view lists these so the reviewer can read
+ * the style examples the answer renderer will draw from before they sign off on the voice.
+ */
+export interface VoiceExampleSummary {
+  id: string;
+  prompt: string | null;
+  content: string;
+  language: RetrievalLanguage;
+  createdAt: Date;
+}
+
+/**
+ * A single voice profile plus its style examples — the sign-off *detail* view (M13.5), as opposed
+ * to {@link VoiceProfileSummary} which is the list row. Carries only data the schema actually
+ * backs (the free-text guidelines + the stored examples); the mockup's structured voice
+ * dimensions are intentionally absent until a schema decision is made.
+ */
+export interface VoiceProfileDetail extends VoiceProfileSummary {
+  exampleCount: number;
+  examples: VoiceExampleSummary[];
+}
+
+/**
  * The voice profile metadata for an expert + language: the distilled guidelines plus the
  * display name the prompt builder needs for the "AI rendition of [Expert]" framing. Loaded
  * only for a *published* profile of an *active* expert.

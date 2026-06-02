@@ -46,6 +46,17 @@ function row(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function exampleRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "11111111-1111-1111-1111-111111111111",
+    prompt: "How do I price a franchise?",
+    content: "Start with prime cost, then the payback window.",
+    language: "en",
+    createdAt: new Date("2026-02-02T00:00:00Z"),
+    ...overrides,
+  };
+}
+
 interface Tx {
   expert: { findUnique: jest.Mock };
   voiceProfile: {
@@ -54,6 +65,7 @@ interface Tx {
     findUnique: jest.Mock;
     findMany: jest.Mock;
   };
+  voiceExample: { findMany: jest.Mock };
 }
 
 function makeHarness() {
@@ -65,6 +77,7 @@ function makeHarness() {
       findUnique: jest.fn().mockResolvedValue(row()),
       findMany: jest.fn().mockResolvedValue([row()]),
     },
+    voiceExample: { findMany: jest.fn().mockResolvedValue([exampleRow()]) },
   };
   const run = jest.fn((_user: AuthUser, work: (tx: unknown) => Promise<unknown>) => work(tx));
   const rls = { run } as unknown as RlsService;
@@ -208,6 +221,54 @@ describe("VoiceProfileService transitions", () => {
     const h = makeHarness();
     h.tx.voiceProfile.findUnique.mockResolvedValue(null);
     await expect(h.service.submit(OWNER, PROFILE_ID)).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe("VoiceProfileService.get", () => {
+  it("returns the profile plus its examples (ownership-checked) for the owner", async () => {
+    const h = makeHarness();
+    const result = await h.service.get(OWNER, PROFILE_ID);
+
+    expect(h.tx.voiceExample.findMany).toHaveBeenCalledWith({
+      where: { voiceProfileId: PROFILE_ID },
+      select: { id: true, prompt: true, content: true, language: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(result).toMatchObject({ id: PROFILE_ID, expertName: "Dr. Lan", exampleCount: 1 });
+    expect(result.examples).toHaveLength(1);
+    expect(result.examples[0]).toMatchObject({
+      content: "Start with prime cost, then the payback window.",
+      language: "en",
+    });
+    expect(h.info).toHaveBeenCalledWith(
+      "voice profile detail loaded",
+      expect.objectContaining({ profileId: PROFILE_ID, exampleCount: 1 }),
+    );
+  });
+
+  it("reports an empty example set without error", async () => {
+    const h = makeHarness();
+    h.tx.voiceExample.findMany.mockResolvedValue([]);
+    const result = await h.service.get(OWNER, PROFILE_ID);
+    expect(result.exampleCount).toBe(0);
+    expect(result.examples).toEqual([]);
+  });
+
+  it("lets an admin read any profile's examples", async () => {
+    const h = makeHarness();
+    await expect(h.service.get(ADMIN, PROFILE_ID)).resolves.toMatchObject({ id: PROFILE_ID });
+  });
+
+  it("403s when a non-owner expert reads the profile", async () => {
+    const h = makeHarness();
+    await expect(h.service.get(OTHER_EXPERT, PROFILE_ID)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(h.tx.voiceExample.findMany).not.toHaveBeenCalled();
+  });
+
+  it("404s when the profile does not exist", async () => {
+    const h = makeHarness();
+    h.tx.voiceProfile.findUnique.mockResolvedValue(null);
+    await expect(h.service.get(OWNER, PROFILE_ID)).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 

@@ -18,6 +18,7 @@ const SUMMARY = { id: ID } as VoiceProfileSummary;
 function makeController() {
   const service = {
     list: jest.fn().mockResolvedValue([SUMMARY]),
+    get: jest.fn().mockResolvedValue({ ...SUMMARY, exampleCount: 0, examples: [] }),
     create: jest.fn().mockResolvedValue(SUMMARY),
     update: jest.fn().mockResolvedValue(SUMMARY),
     submit: jest.fn().mockResolvedValue(SUMMARY),
@@ -32,6 +33,12 @@ describe("VoiceProfileController", () => {
     const { controller, service } = makeController();
     await controller.list(USER, { limit: 50 });
     expect(service.list).toHaveBeenCalledWith(USER, { limit: 50 });
+  });
+
+  it("get delegates the id for the detail view", async () => {
+    const { controller, service } = makeController();
+    await controller.get(USER, ID);
+    expect(service.get).toHaveBeenCalledWith(USER, ID);
   });
 
   it("create delegates the parsed body", async () => {
