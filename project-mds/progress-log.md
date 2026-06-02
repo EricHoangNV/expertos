@@ -4422,3 +4422,31 @@ Closed M15.2.5: jest coverage for the three admin CRUD pages flagged by the mile
 
 **Notes for next iteration:**
 - M15.2.6 (concierge review queue) next: two-pane layout, Open/Mine/Done filter bucketing, verdict-card selection, refined-answer submit → respond, escalate → escalate. M15.2.7 = admin i18n (`useStatusLabel` 43 tokens + EN/VI dictionary lockstep across 24 namespaces). Use `waitFor` (LEARNINGS #19); gate any staged-edit interactions on quiescence (LEARNINGS #20).
+
+---
+
+## M15.2.6 — Admin concierge review-queue jest suite
+
+**Date:** 2026-06-02
+
+Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app/concierge-reviews/page.tsx`, M13.6 two-pane queue + review detail). +12 tests → admin **83**, repo total **1459** (shared 190, ui 234, db 9, ai 161, api 686, web 96, admin 83).
+
+**New test file**
+- `apps/admin/app/concierge-reviews/page.test.tsx` (12) — rendered mostly as `role:"expert"` (the API voice-scopes an expert, so the queue loads with no expert picker):
+  - **Two-pane layout** — `.review-pane`/`.queue-list`/`.review-detail` present; both open items list; header "Queue · 2 open" + "SLA 24h" chip.
+  - **Auto-select + detail load** — first item auto-selected (`.queue-item.is-active`), detail loads the question + AI answer. The answer is asserted via the `.review-answer` paragraph because it ALSO pre-fills the refined-answer `<textarea>` (a bare `getByText` matches both → use the scoped node).
+  - **Triage filter** — Open shows requested/in_review only; Done shows answered/escalated/dismissed; Mine shows `claimedAt`-set items; per-tab empty copy.
+  - **Verdict + refined answer** — verdict-card `aria-pressed` flips on click; verdict-only `respond` POSTs `{verdict:"good",revisedAnswer:null}` when unchanged + the queue reloads; editing the textarea flips the CTA "Record verdict" → "Push refined update" and sends the revised text.
+  - **Escalate** — POST `/concierge-reviews/:id/escalate`.
+  - **Admin expert-picker gate** — `role:"admin"` shows the select-prompt until an expert is chosen, then the queue loads with `?expertId=ex_1`.
+  - **Load error** — unmocked `/concierge-reviews` → 404 → error badge.
+
+**Two test-only gotchas (no LEARNINGS warranted — both are local to this page's shape)**
+- The AdminFrame nav-count fetch also hits `/concierge-reviews` (with `?status=requested&limit=100`), so assertions that target the page's own queue load must distinguish it by the `offset=` param (page load) or `expertId=` (admin-scoped), not just the pathname or "first matching call".
+- The admin expert picker is populated by a separate `listExperts` effect; `fireEvent.change` on the `<select>` to a value whose `<option>` hasn't rendered yet is a no-op in jsdom. Wait for the roster `<option>` (`findByRole("option",{name})`) before changing the combobox.
+- For an expert the `.review-pane` always renders (`!isAdmin || expertId!==""`), so the error-state test asserts only the error badge — it does NOT assert the pane is absent (unlike the knowledge kanban, which hides on error).
+
+**Gates:** admin `tsc` + `next lint` clean; admin jest 83/83; root `knip` + `lint:css` clean (`rm -rf apps/*/.next` before knip). No source changes — test file only.
+
+**Notes for next iteration:**
+- M15.2.7 (admin i18n) next: `useStatusLabel` hook over all 43 status tokens + EN/VI dictionary lockstep across the 24 per-page namespaces (mirror the web M15.1.5 dictionary-lockstep approach). Then M15.3 (E2E expansion). Use `waitFor` (LEARNINGS #19); gate any staged-edit interactions on quiescence (LEARNINGS #20).
