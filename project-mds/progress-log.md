@@ -4139,3 +4139,29 @@ Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:
 **Gates:** api build (nest) + eslint + jest **686 pass** (+6: 5 `VoiceProfileService.get` [owner/empty/admin/403/404] + 1 controller delegate; `voice-profile.service.ts` 100% coverage); admin `tsc --noEmit` + `next lint` clean; root `lint:css` + `knip` clean (`rm -rf apps/*/.next` first). Test total 1274→**1280**. (`next build` still env-blocked in-sandbox by arch mismatch — tsc+lint are the admin gate.)
 
 **Decision note:** I asked the user (AskUserQuestion) whether to extend the schema, build lean, or leave blocked; they declined to pick, so I used judgment and chose the lean build — it ships real value on the last open milestone, fabricates nothing, and avoids a unilateral product decision on a legally-sensitive (expert-signed) surface. The structured widgets stay flagged for PM.
+
+## 2026-06-02 — M15.1.1 Web app jest harness (mock providers + render helper + fetch mocks)
+
+**What:** Stood up the first jest test harness for `apps/web` (it had a jest config but `passWithNoTests` and zero tests). The consumer pages are hook-heavy clients (auth context, locale context, fetch), so unlike the pure-function `@expertos/ui` primitives they need a real renderer — jsdom + Testing Library.
+
+**Key decision — ts-jest, not next/jest:** the jest.base comment says "Next.js apps use next/jest," but next/jest pulls in the next-swc native binary, which is arch-broken in this sandbox (same reason `next build` can't run here). Chose the repo-wide `ts-jest` preset instead (no native binary; matches every other workspace). The transform overrides the app tsconfig's `jsx:"preserve"` + ESM to `jsx:"react-jsx"` + CommonJS so jest can run the JSX.
+
+**Pieces built:**
+- `apps/web/jest.config.cjs` — jsdom env, ts-jest transform (jsx/module override), `\.css$`→`test/style-stub.cjs`, `collectCoverageFrom` over app+src (firebase wrapper excluded). Default `roots` (see LEARNINGS #18) + `testMatch`/`testPathIgnorePatterns` to scope tests.
+- `apps/web/jest.setup.ts` — `@testing-library/jest-dom` matchers; sets `NEXT_PUBLIC_FIREBASE_*` so `isFirebaseConfigured` is true (else AuthProvider short-circuits); matchMedia + scrollIntoView polyfills (jsdom gaps the app touches); per-test reset of auth/api/router state + localStorage.
+- Controllable firebase mock: `__mocks__/firebase/app.ts` + `__mocks__/firebase/auth.ts` delegate to `test/auth-state.ts` (`setMockUser`/`makeMockUser`/`registerAuthListener`). The real `AuthProvider` + `src/lib/firebase.ts` run unchanged on top — so provider code is exercised for coverage, no real SDK/network.
+- Controllable router mock: `__mocks__/next/navigation.ts` over `test/router-state.ts` (spy `push`/`replace`/… + pathname).
+- `test/api-mock.ts` — manual `fetch` registry keyed `"<METHOD> <pathname>"`, records every call (`apiCalls()`), `hasApiMock()`, default 404 for unmocked paths (keeps best-effort effects quiet). Handles all client base URLs (parses pathname).
+- `test/render.tsx` — `renderWithProviders(ui, { user?, locale? })` wraps in real `AuthProvider`+`LocaleProvider`; sets the mock user before mount (so `onAuthStateChanged` fires synchronously); seeds localStorage locale only when explicitly pinned (else the `GET /me` profile-seed path drives it); registers a default `GET /me` locale response. Re-exports the full Testing Library surface + mock helpers from one place.
+- `test/harness.test.tsx` — 5 self-tests proving the infra: mock sign-in → `useAuth`, signed-out, EN→VI locale via `useT`, router redirect spy, fetch routed through the mock.
+
+**Bugs found + fixed during setup (→ LEARNINGS #18):**
+1. Custom `roots: ["app","src",...]` silently disabled the `<rootDir>/__mocks__` node-module manual mocks (jest looks for them at the root of a configured root), so the real firebase ran and sign-in never worked. Fix: default `roots` + `testMatch`/`testPathIgnorePatterns`.
+2. The render helper always seeded localStorage locale → set LocaleProvider's `hasLocalPref` → suppressed the `GET /me` profile-seed effect, so the fetch self-test never saw `/me`. Fix: seed only when locale explicitly passed.
+3. knip flagged the testing-library devDeps unused (they live only in jest-ignored `*.test.tsx`/`test/` files). Fix: added to `ignoreDependencies` (like `ts-jest`/`@types/jest`) — but NOT `jest-environment-jsdom`, which knip's jest plugin already resolves (adding it triggers "Unused item in ignoreDependencies").
+
+**Deps added (`apps/web` devDependencies):** `@testing-library/react@16.3.2`, `@testing-library/dom@10.4.1`, `@testing-library/jest-dom@6.9.1`, `@testing-library/user-event@14.6.1`, `@types/jest@29.5.12`, `jest-environment-jsdom@29.7.0`, `ts-jest@29.2.2`. `pnpm install` triggered a full node_modules reinstall (lockfile additive).
+
+**Gates:** web `tsc` clean, `next lint` clean (test/ + __mocks__/ outside next-lint scope), `jest` 5/5 pass, root `knip` clean. No source code touched → other workspaces unaffected (1280 → 1285 total tests).
+
+**Next:** M15.1.2 (chat page tests) builds on this harness; M15.2 (admin) needs its own mirror of this harness in `apps/admin`.

@@ -251,6 +251,35 @@
 - [x] M14.4.2 `AdminFrame`: Access Denied screen when `denied === true` ("Your email is not authorized…" + Sign out button)
 - [x] M14.4.3 Access Control page (`app/access-control/page.tsx`): add form (email + role select + Add), table (Email, Role badge, Added by, Added at, Actions), role toggle + Remove with confirmation; nav item under SYSTEM group (`role: "admin"`)
 
+#### M15 — Test Coverage: Web & Admin Jest Suites + E2E Expansion
+
+> **No new features.** This milestone closes the test-coverage gap flagged by every prior agent: `apps/web` and `apps/admin` have jest configs but **zero test files**, and the E2E suite has only 7 specs (18 tests, 3 fixme). The goal is launch-grade confidence in the two frontend apps and broader E2E coverage of the admin portal + i18n + access control flows.
+
+##### M15.1 — Web app jest suite (`apps/web`)
+- [x] M15.1.1 Test harness setup: mock providers (Firebase auth, locale context, router), shared render helpers, MSW or manual fetch mocks for API calls (`/me`, `/conversations`, `/entitlements`, `/chat`) — **DONE.** `apps/web` now has a jsdom + Testing Library harness on the repo's ts-jest preset (not `next/jest` — its next-swc native binary is arch-broken in-sandbox, same as `next build`). Pieces: `jest.config.cjs` (ts-jest transform with `jsx:react-jsx`/CommonJS override, css→stub, default `roots` so node-module manual mocks resolve), `jest.setup.ts` (jest-dom matchers, `NEXT_PUBLIC_FIREBASE_*` env so `isFirebaseConfigured`, matchMedia/scrollIntoView polyfills, per-test reset); controllable mocks — `__mocks__/firebase/{app,auth}.ts` over `test/auth-state.ts` (`setMockUser`/`makeMockUser`), `__mocks__/next/navigation.ts` over `test/router-state.ts` (spy router + pathname), `test/api-mock.ts` (manual `fetch` registry keyed `METHOD pathname`, records calls, 404 default); `test/render.tsx` `renderWithProviders` wraps the unit in the REAL `AuthProvider`+`LocaleProvider` (exercises provider code) + re-exports the Testing Library surface. Validated by `test/harness.test.tsx` (5 tests: sign-in, signed-out, EN→VI locale, router redirect, fetch routing). knip: testing-library deps added to `ignoreDependencies` (test-only, knip-ignored files). Gates green: web `tsc` + `next lint` + jest (5) + root `knip`. See LEARNINGS #18.
+- [ ] M15.1.2 Chat page tests: message rendering (user bubble + assistant message + citations), send flow (input → API call → stream append), voice picker selection, layout direction switching, empty state, error states, insufficient-knowledge / high-stakes / degraded notice rendering
+- [ ] M15.1.3 History page tests: conversation list rendering + search, conversation detail (message replay + saved answers), rename, delete
+- [ ] M15.1.4 Account page tests: plan display + usage meter, locale toggle persistence, sign-out flow
+- [ ] M15.1.5 i18n tests: locale provider switching (EN→VI), dictionary key completeness (all `useT` calls resolve), formatted dates/currency respect active locale
+- [ ] M15.1.6 Shared hooks/lib tests: `useMediaQuery`, `useLocale`, `useT`, API client functions, `firebase.ts` emulator-aware init
+
+##### M15.2 — Admin app jest suite (`apps/admin`)
+- [ ] M15.2.1 Test harness setup: mock auth context (admin vs expert role), locale context, admin-client fetch mocks, shared render helpers
+- [ ] M15.2.2 AdminFrame tests: role-aware nav filtering (admin sees all groups, expert sees only EXPERT PORTAL), breadcrumb rendering, nav count badges, sidebar footer identity, access-denied gate when `denied=true`
+- [ ] M15.2.3 Dashboard tests: KPI cards render with mock analytics data, funnel bar proportions, low-confidence query list, knowledge pipeline status badges, concierge SLA card
+- [ ] M15.2.4 Knowledge page tests: kanban board column rendering per status, card actions (approve/request-changes), conversation-to-knowledge table
+- [ ] M15.2.5 CRUD page tests: entitlement matrix cell editing + staged publish + discard, access control add/remove/role-toggle + self-lockout guard, user management role change + deletion request
+- [ ] M15.2.6 Concierge review queue tests: two-pane layout, queue list filtering (Open/Mine/Done), verdict selection, refined answer submit, escalate action
+- [ ] M15.2.7 i18n tests: admin locale provider, `useStatusLabel` hook with all 43 status tokens, dictionary lockstep verification (EN/VI key parity across all 24 namespaces)
+
+##### M15.3 — E2E suite expansion (`e2e/`)
+- [ ] M15.3.1 Admin i18n E2E: toggle admin locale EN→VI, verify nav labels + page headers + status badges switch language
+- [ ] M15.3.2 Access control E2E: add email to whitelist, verify it appears in table, toggle role, remove email, verify access-denied screen for non-whitelisted user
+- [ ] M15.3.3 Concierge review E2E: open review queue, select item, submit verdict with edit, verify delivery
+- [ ] M15.3.4 Knowledge approval E2E: navigate kanban board, filter by status, approve a document from Expert Review → Published
+- [ ] M15.3.5 Resolve existing `test.fixme` legs: full publish→retrieval round-trip (seed prerequisite), deletion cascade, Stripe checkout page (external surface) — unblock or document why each remains skipped
+- [ ] M15.3.6 Web i18n E2E: toggle web locale EN→VI, verify chat UI labels + history page + account page switch language
+
 ### Phase 2 — Retention & Engagement (§"Phase 2 — Retention & Engagement") — not started
 - [ ] Deferred: CI/CD pipeline, mobile (React Native), notifications, voice/TTS, folders/export, follow-up suggestions, confidence indicator, personalized memory, persistent user/customer knowledge, consultation depth, reconciliation dashboard
 

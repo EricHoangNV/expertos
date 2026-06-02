@@ -34,6 +34,13 @@
       "project": ["**/*.ts"]
     }
   },
-  "ignoreDependencies": ["ts-jest", "@types/jest", "@prisma/client"],
+  "ignoreDependencies": [
+    "ts-jest",
+    "@types/jest",
+    "@prisma/client",
+    "@testing-library/react",
+    "@testing-library/dom",
+    "@testing-library/user-event"
+  ],
   "ignore": ["**/*.test.ts", "**/*.test.tsx", "**/jest*.config.*", "load/**"]
 }

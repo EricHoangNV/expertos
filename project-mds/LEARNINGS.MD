@@ -210,3 +210,15 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Fix: normalize whitespace before comparing — `s.replace(/\s/g, " ")`. JS `\s` matches both U+00A0 and U+202F (and other Unicode spaces), so this collapses any separator the formatter chose to a plain space. Alternatively assert with `.toContain()` on the digits + symbol substrings.
 
 **Rule:** Never assert `Intl.*`-formatted strings against a literal containing spaces with `.toBe()` — the separator is a no-break space (U+00A0/U+202F). Normalize with `.replace(/\s/g, " ")` (or use substring assertions) so the test is stable across whitespace variants and ICU versions.
+
+---
+
+## 18. A custom jest `roots` silently disables node-module manual mocks in `<rootDir>/__mocks__`
+
+**Context:** M15.1.1 (web jest harness) — `firebase/auth` manual mock in `apps/web/__mocks__/firebase/auth.ts` was being ignored, so the real Firebase SDK ran and `useAuth` always reported signed-out despite `setMockUser(...)`.
+
+- Jest auto-applies manual mocks for **node modules** (`__mocks__/<pkg>.ts`, adjacent to `node_modules`) only when that `__mocks__` directory sits at the root of one of the configured `roots`. Setting `roots: ["<rootDir>/app", "<rootDir>/src", ...]` to scope the test search moved the expected location to `app/__mocks__`, `src/__mocks__`, etc. — so `<rootDir>/__mocks__` was never consulted. There is **no warning**: the mock is just skipped and the real module loads.
+- Fix: leave `roots` at the default (`<rootDir>`) and scope where tests are found with `testMatch` (`"<rootDir>/(app|src|test)/**/*.test.{ts,tsx}"`) + `testPathIgnorePatterns` (`/node_modules/`, `/.next/`) instead. User-module manual mocks (`src/lib/__mocks__/foo.ts`) still require an explicit `jest.mock("./foo")`; only node-module mocks are automatic.
+- Two adjacent harness gotchas from the same task: (a) test-only deps used **only** in jest-ignored files (`@testing-library/react` etc., since knip's `ignore` drops `**/*.test.tsx`) must go in knip's `ignoreDependencies` like `ts-jest`/`@types/jest` — but do **not** add ones knip already resolves via its jest plugin (`jest-environment-jsdom`), or knip fails with "Unused item in ignoreDependencies". (b) A render helper that pre-seeds `localStorage` for a deterministic locale sets the LocaleProvider's `hasLocalPref` flag, which **suppresses** the `GET /me` profile-seed path — seed localStorage only when a test explicitly pins the locale, else let the profile response drive it.
+
+**Rule:** Don't narrow jest `roots` to subdirectories if you rely on `<rootDir>/__mocks__` node-module manual mocks — scope with `testMatch`/`testPathIgnorePatterns` instead. Test-only deps confined to knip-ignored files belong in `ignoreDependencies` (but not ones the jest plugin already sees).
