@@ -8,51 +8,67 @@ import type { Role } from "@expertos/shared";
 import { useAuth } from "../lib/auth-context";
 import "./admin-login.css";
 
+/**
+ * Sidebar nav grouping (M13.1.1) — restructured to the approved admin mockup. The three named
+ * groups OPERATE / MONETIZE / EXPERT PORTAL carry the mockup's primary items; the remaining
+ * working admin surfaces (analytics + system/ops) live under two extra sections so nothing is
+ * orphaned. Group headers render via the ds.css `.navgroup` label (uppercased by CSS).
+ */
+type NavGroup = "OPERATE" | "MONETIZE" | "EXPERT PORTAL" | "ANALYTICS" | "SYSTEM";
+
+const GROUP_ORDER: NavGroup[] = ["OPERATE", "MONETIZE", "EXPERT PORTAL", "ANALYTICS", "SYSTEM"];
+
 interface NavItem {
   href: string;
   label: string;
-  /** Section heading this item belongs under. */
-  group: "Expert" | "Admin";
+  /** Display section this item renders under. */
+  group: NavGroup;
+  /**
+   * Minimum role that may see the item. `expert` items consume the `@Roles("expert")` routes and
+   * are visible to experts and admins alike; `admin` items are `@Roles("admin")`-only platform
+   * surfaces, shown only once `/me` resolves to an admin (a UX gate — the API enforces the real
+   * boundary, so a direct hit still 403s for a non-admin).
+   */
+  role: "expert" | "admin";
 }
 
-/**
- * The portal nav. "Expert" items consume the `@Roles("expert")` routes (knowledge, drafts, voice
- * profiles, the M8.5 conversions + answer-review reads) — visible to experts and admins alike.
- * "Admin" items are `@Roles("admin")`-only platform surfaces, shown only once `/me` resolves to an
- * admin (a UX gate; the API enforces the real boundary, so a direct hit still 403s for a non-admin).
- */
 const NAV: NavItem[] = [
-  { href: "/knowledge", label: "Knowledge", group: "Expert" },
-  { href: "/knowledge-drafts", label: "Drafts", group: "Expert" },
-  { href: "/voice-profiles", label: "Voice profiles", group: "Expert" },
-  { href: "/answers", label: "AI answers", group: "Expert" },
-  { href: "/concierge-reviews", label: "Review queue", group: "Expert" },
-  { href: "/conversions", label: "Conversions", group: "Expert" },
-  { href: "/revenue", label: "Revenue", group: "Admin" },
-  { href: "/analytics", label: "Usage & cost", group: "Admin" },
-  { href: "/funnel", label: "Funnel", group: "Admin" },
-  { href: "/concierge-analytics", label: "Concierge ops", group: "Admin" },
-  { href: "/validation", label: "Validation", group: "Admin" },
-  { href: "/entitlements", label: "Entitlements", group: "Admin" },
-  { href: "/recommendation-rules", label: "Funnel rules", group: "Admin" },
-  { href: "/concierge", label: "Concierge", group: "Admin" },
-  { href: "/failed-queries", label: "Flagged answers", group: "Admin" },
-  { href: "/reconcile", label: "Bookings", group: "Admin" },
-  { href: "/users", label: "Users", group: "Admin" },
-  { href: "/experts", label: "Experts", group: "Admin" },
-  { href: "/retention", label: "Data retention", group: "Admin" },
-  { href: "/audit", label: "Audit log", group: "Admin" },
+  // OPERATE — core operational content views.
+  { href: "/", label: "Dashboard", group: "OPERATE", role: "admin" },
+  { href: "/knowledge", label: "Knowledge", group: "OPERATE", role: "expert" },
+  { href: "/knowledge-drafts", label: "Conversation → Knowledge", group: "OPERATE", role: "expert" },
+  { href: "/answers", label: "AI answers", group: "OPERATE", role: "expert" },
+  { href: "/failed-queries", label: "Low-confidence queries", group: "OPERATE", role: "admin" },
+  // MONETIZE — business / billing views.
+  { href: "/entitlements", label: "Plans & Entitlements", group: "MONETIZE", role: "admin" },
+  { href: "/revenue", label: "Revenue", group: "MONETIZE", role: "admin" },
+  { href: "/users", label: "Users & Subscriptions", group: "MONETIZE", role: "admin" },
+  { href: "/experts", label: "Experts", group: "MONETIZE", role: "admin" },
+  { href: "/recommendation-rules", label: "Funnel rules", group: "MONETIZE", role: "admin" },
+  // EXPERT PORTAL — expert-scoped views.
+  { href: "/voice-profiles", label: "Voice profiles", group: "EXPERT PORTAL", role: "expert" },
+  { href: "/concierge-reviews", label: "Concierge queue", group: "EXPERT PORTAL", role: "expert" },
+  { href: "/conversions", label: "Conversions", group: "EXPERT PORTAL", role: "expert" },
+  // ANALYTICS — admin reporting.
+  { href: "/analytics", label: "Usage & cost", group: "ANALYTICS", role: "admin" },
+  { href: "/funnel", label: "Funnel", group: "ANALYTICS", role: "admin" },
+  { href: "/concierge-analytics", label: "Concierge ops", group: "ANALYTICS", role: "admin" },
+  { href: "/validation", label: "Validation", group: "ANALYTICS", role: "admin" },
+  // SYSTEM — admin configuration & operations.
+  { href: "/concierge", label: "Concierge config", group: "SYSTEM", role: "admin" },
+  { href: "/reconcile", label: "Bookings", group: "SYSTEM", role: "admin" },
+  { href: "/retention", label: "Data retention", group: "SYSTEM", role: "admin" },
+  { href: "/audit", label: "Audit log", group: "SYSTEM", role: "admin" },
 ];
 
 function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  // Root ("/") must match exactly so it doesn't light up for every nested route.
+  const active =
+    item.href === "/"
+      ? pathname === "/"
+      : pathname === item.href || pathname.startsWith(`${item.href}/`);
   return (
-    <Link
-      href={item.href}
-      className={cx(
-        "navitem",
-        (pathname === item.href || pathname.startsWith(`${item.href}/`)) && "active",
-      )}
-    >
+    <Link href={item.href} className={cx("navitem", active && "active")}>
       {item.label}
     </Link>
   );
@@ -61,8 +77,7 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
 function Sidebar({ pathname, role }: { pathname: string; role: Role | null }) {
   // Admin items appear only for a resolved admin; everyone else sees the expert subset (the API
   // is the real gate, so this just keeps the nav honest about what the signed-in user can open).
-  const expertItems = NAV.filter((item) => item.group === "Expert");
-  const adminItems = role === "admin" ? NAV.filter((item) => item.group === "Admin") : [];
+  const visible = NAV.filter((item) => item.role === "expert" || role === "admin");
   return (
     <>
       <div className="brand">
@@ -71,18 +86,18 @@ function Sidebar({ pathname, role }: { pathname: string; role: Role | null }) {
           <span className="sub">OS · {role === "admin" ? "Admin" : "Expert"}</span>
         </div>
       </div>
-      <div className="navgroup">Expert</div>
-      {expertItems.map((item) => (
-        <NavLink key={item.href} item={item} pathname={pathname} />
-      ))}
-      {adminItems.length > 0 && (
-        <>
-          <div className="navgroup">Admin</div>
-          {adminItems.map((item) => (
-            <NavLink key={item.href} item={item} pathname={pathname} />
-          ))}
-        </>
-      )}
+      {GROUP_ORDER.map((group) => {
+        const items = visible.filter((item) => item.group === group);
+        if (items.length === 0) return null;
+        return (
+          <div key={group}>
+            <div className="navgroup">{group}</div>
+            {items.map((item) => (
+              <NavLink key={item.href} item={item} pathname={pathname} />
+            ))}
+          </div>
+        );
+      })}
     </>
   );
 }

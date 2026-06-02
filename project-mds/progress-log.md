@@ -3481,3 +3481,26 @@ Wired into `apps/web/app/chat/page.tsx`: `AssistantAnswer` shows `<ChatTypingInd
 **Notes for next iteration:**
 - M12.9.4 done. Remaining M12.9: M12.9.2 (ds.css conformance audit — grep all M12 CSS/TSX for hardcoded hex/px off the ds.css scale; confirm upload=info-blue vs knowledge=crimson distinction) and M12.9.3 (dark-sidebar render check). Both are largely verification sweeps over already-built components.
 - Then M13 (admin portal UI overhaul).
+
+## M13.1.1 — Admin sidebar nav restructure (OPERATE / MONETIZE / EXPERT PORTAL groups)
+**Date:** 2026-06-02
+**Ref:** PRD §M13.1.1 + requirements/ui-reference-spec.md "Admin & Expert Portal UI Reference Spec" → Sidebar Navigation
+
+**What was done:**
+- Restructured `apps/admin/src/components/AdminFrame.tsx` `NAV` from the old flat `Expert`/`Admin` two-group split into the mockup's named groups: OPERATE (Dashboard, Knowledge, Conversation → Knowledge, AI answers, Low-confidence queries), MONETIZE (Plans & Entitlements, Revenue, Users & Subscriptions, Experts, Funnel rules), EXPERT PORTAL (Voice profiles, Concierge queue, Conversions).
+- Added a Dashboard nav item pointing at `/` (root). `NavLink` now exact-matches `/` so the root item doesn't light up under every nested route.
+- Renamed labels to match the mockup wording: "Drafts" → "Conversation → Knowledge", "Flagged answers" → "Low-confidence queries", "Entitlements" → "Plans & Entitlements", "Users" → "Users & Subscriptions", "Concierge" → "Concierge config", "Review queue" → "Concierge queue".
+- `Sidebar` now iterates `GROUP_ORDER`, filtering items by role and rendering a `.navgroup` header only for non-empty groups.
+
+**Key decisions:**
+- The mockup lists only 9 primary items across 3 groups, but the live portal has 20 working routes. Rather than orphan the other 11 (analytics, system/ops, etc.), I kept the 3 mockup groups as the primary structure and added two extra sections — ANALYTICS (Usage & cost, Funnel, Concierge ops, Validation) and SYSTEM (Concierge config, Bookings, Data retention, Audit log) — so every existing page stays reachable while the mockup's grouping is honored.
+- Preserved the existing role-visibility model (`role: "expert"` = visible to all; `"admin"` = admin-only UX gate; API still enforces the real boundary). Per-item `role` replaces the old per-group split, so an item's display group is now independent of who can see it (lets expert-scoped Knowledge live under OPERATE while staying expert-visible). Finer role-aware display is the later M13.7.1.
+- Count badges (Knowledge/Low-confidence/Concierge) are explicitly M13.1.2 — left out here; the ds.css `.side .navitem .tag` hook already exists for them.
+
+**Files changed:**
+- `apps/admin/src/components/AdminFrame.tsx` — new `NavGroup` union + `GROUP_ORDER`, `NavItem` gains `group`/`role`, regrouped `NAV`, exact-root-match `NavLink`, `GROUP_ORDER`-driven `Sidebar`.
+
+**Notes for next iteration:**
+- M13.1.2 (count badges): fetch counts from `/knowledge` (status=expert-review), `/admin/failed-queries`, `/concierge-reviews` (open) and render `<span className="tag">` inside the `.navitem`. The `.side .navitem .tag` ds.css class (mono, semi-transparent, margin-left:auto) is ready.
+- `next build` cannot run in this sandbox (missing linux/arm64 SWC native binary) — validate admin via `tsc --noEmit` + `next lint` + root `knip` instead.
+- Dashboard nav points at `/` which is still the old "Review queues" landing; M13.2 replaces that page with the real dashboard.

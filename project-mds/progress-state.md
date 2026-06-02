@@ -13,14 +13,16 @@
   - M12.7 Tweaks panel (floating panel + layout-direction + density/toggles + topbar show/hide): DONE
   - M12.8 login page + post-login redirect: DONE
   - M12.9.1 mobile sidebar overlay (`ChatSidebarDrawer` + `ChatMenuButton` + topbar `leading` slot): DONE
-  - **M12.9.4 loading/empty states: DONE** — `Skeleton` (aria-hidden shimmer), `ChatTypingIndicator` (3-dot streaming `role=status`), `ChatEmptyState` ("Start a new conversation"); `ChatConversationList` loading → 4 skeleton rows (`aria-busy`); ds.css "Loading & empty states (M12.9.4)" + `prefers-reduced-motion` block. Wired into `/chat` (`AssistantAnswer` typing indicator, empty-thread empty state).
+  - M12.9.4 loading/empty states (`Skeleton`/`ChatTypingIndicator`/`ChatEmptyState`): DONE
+- M13 (Admin & Expert Portal UI Overhaul) — admin portal rebuild to the approved mockups:
+  - **M13.1.1 sidebar nav restructure: DONE** — `AdminFrame` `NAV` regrouped into the mockup's OPERATE / MONETIZE / EXPERT PORTAL groups (+ ANALYTICS / SYSTEM for the remaining working pages so none are orphaned); each item carries `group` + `role`, `Sidebar` renders `GROUP_ORDER` filtering by role; Dashboard nav item added (`/` root, exact-match active). Count badges = M13.1.2.
 - Tests: 1221 pass / 0 fail / 0 skip (shared 179, ui 213, db 9, ai 161, api 659).
-- Gates (run per-workspace — `turbo` SIGILLs in this sandbox): ui jest 213 pass / 100% coverage; `tsc --noEmit` clean (ui + web + admin, after rebuilding `packages/ui` dist); `next lint` clean; `stylelint` clean; `knip` clean.
+- Gates (run per-workspace — `turbo` SIGILLs in this sandbox): admin `tsc --noEmit` clean, `next lint` clean, root `knip` clean. (admin has no jest suite; `next build` blocked in-sandbox by the missing linux/arm64 SWC native binary — environmental, not code.)
 
 - Next tasks (priority order):
-  1. **M12.9.2** — ds.css conformance audit (no hardcoded colors/px outside ds.css scale; upload=info-blue `.cite.upload`/`badge-info` vs knowledge=crimson `.cite`/`badge-red` maintained across all M12 components). Read `requirements/ui-reference-spec.md` + `Design System.md`.
-  2. **M12.9.3** — dark-sidebar render check (logo, nav items, search, usage on `--ink-900`).
-  3. **M13 (Admin Portal UI Overhaul)** — sidebar/dashboard/kanban/matrix/voice/concierge rebuilds.
+  1. **M13.1.2** — count badges on nav items (knowledge needing review, flagged queries, open concierge) → `.navitem .tag`, fetched from existing APIs.
+  2. **M13.1.3 / M13.1.4** — bottom-pinned user identity + topbar breadcrumb/role-badge.
+  3. **M12.9.2 / M12.9.3** — ds.css conformance audit + dark-sidebar render check (quick wins).
   4. **M11.1 fixme legs** / **NT human gates** — await external surfaces / PM sign-off.
 
 ### Reusable building blocks for remaining UI work
