@@ -1469,6 +1469,63 @@ describe("ChatInputBar — sticky bottom composer (M12.6.1)", () => {
     }) as ReactElement;
     expect(barParts(el)[0]).toBe("popover");
   });
+
+  // M12.6.4 — keyboard send + auto-resize.
+  const inputOf = (el: ReactElement): ReactElement => rowParts(el)[1] as ReactElement;
+  const keyDownOf = (el: ReactElement) =>
+    (inputOf(el).props as { onKeyDown: (e: unknown) => void }).onKeyDown;
+  const keyEvent = (over: Record<string, unknown> = {}) => ({
+    key: "Enter",
+    shiftKey: false,
+    nativeEvent: { isComposing: false },
+    preventDefault: jest.fn(),
+    ...over,
+  });
+
+  it("Enter (no Shift) sends the draft and suppresses the newline", () => {
+    const onSend = jest.fn();
+    const el = ChatInputBar({ value: "ask", onChange: noop, onSend }) as ReactElement;
+    const e = keyEvent();
+    keyDownOf(el)(e);
+    expect(e.preventDefault).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("Shift+Enter inserts a newline (no send, no preventDefault)", () => {
+    const onSend = jest.fn();
+    const el = ChatInputBar({ value: "ask", onChange: noop, onSend }) as ReactElement;
+    const e = keyEvent({ shiftKey: true });
+    keyDownOf(el)(e);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("Enter does not send while busy or when the draft is empty", () => {
+    const onSend = jest.fn();
+    keyDownOf(ChatInputBar({ value: "ask", onChange: noop, onSend, busy: true }) as ReactElement)(
+      keyEvent(),
+    );
+    keyDownOf(ChatInputBar({ value: "   ", onChange: noop, onSend }) as ReactElement)(keyEvent());
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("does not send mid-IME-composition (isComposing)", () => {
+    const onSend = jest.fn();
+    const el = ChatInputBar({ value: "ask", onChange: noop, onSend }) as ReactElement;
+    const e = keyEvent({ nativeEvent: { isComposing: true } });
+    keyDownOf(el)(e);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("auto-resizes the textarea to its content via inputRef (null is a no-op)", () => {
+    const el = ChatInputBar({ value: "ask", onChange: noop, onSend: noop }) as ReactElement;
+    const inputRef = (inputOf(el).props as { inputRef: (n: unknown) => void }).inputRef;
+    const node = { style: { height: "10px" }, scrollHeight: 88 };
+    inputRef(node);
+    expect(node.style.height).toBe("88px");
+    expect(() => inputRef(null)).not.toThrow();
+  });
 });
 
 describe("ChatInputHelper — keyboard hint + remaining-quota row (M12.6.3)", () => {

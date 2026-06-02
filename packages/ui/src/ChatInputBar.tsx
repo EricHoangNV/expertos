@@ -1,6 +1,19 @@
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { cx } from "./cx";
 import { Textarea } from "./Field";
+
+/**
+ * Grow/shrink the textarea to fit its content (M12.6.4). Used as an inline ref
+ * callback so it re-runs on every render — covering keystrokes, deletions, and
+ * the parent clearing the draft after a send. `min/max-height` in ds.css clamp
+ * the rendered height (overflow scrolls past the cap), so this only needs to
+ * track `scrollHeight`.
+ */
+function autoResize(el: HTMLTextAreaElement | null): void {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
+}
 
 export interface ChatInputBarProps {
   /** Controlled draft value. */
@@ -39,8 +52,9 @@ export interface ChatInputBarProps {
  * the crimson circular send button (right). Presentational only: the page owns the
  * draft value, the send action, and the busy/streaming state. The attach button is
  * rendered only when `onAttach` is supplied (M12.6.2 wires the upload popover); the
- * `children` slot hosts the popover + helper text (M12.6.2 / M12.6.3). Keyboard
- * send (Enter) + textarea auto-resize land in M12.6.4.
+ * `children` slot hosts the popover + helper text (M12.6.2 / M12.6.3). Enter
+ * sends (Shift+Enter inserts a newline) and the textarea auto-resizes to its
+ * content (M12.6.4).
  */
 export function ChatInputBar({
   value,
@@ -53,6 +67,13 @@ export function ChatInputBar({
   children,
 }: ChatInputBarProps) {
   const canSend = !busy && value.trim().length > 0;
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter sends; Shift+Enter (and IME composition) fall through to a newline.
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      if (canSend) onSend();
+    }
+  };
   return (
     <div className="input-bar">
       {children}
@@ -83,6 +104,8 @@ export function ChatInputBar({
           className="input-bar-input"
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          inputRef={autoResize}
           disabled={busy}
           rows={1}
           placeholder={placeholder}

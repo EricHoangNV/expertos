@@ -2,6 +2,7 @@ import type {
   HTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
+  Ref,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
@@ -46,10 +47,16 @@ export function Select({
   return <select className={cx("select", className)} {...rest} />;
 }
 
+interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  /**
+   * Ref to the underlying `<textarea>`. A custom prop (not React's reserved
+   * `ref`) so `Textarea` stays a plain callable function — callers that need the
+   * element (e.g. ChatInputBar's auto-resize) pass it without forwardRef.
+   */
+  inputRef?: Ref<HTMLTextAreaElement>;
+}
+
 /** Design-system textarea — renders ds.css `.textarea`. */
-export function Textarea({
-  className,
-  ...rest
-}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cx("textarea", className)} {...rest} />;
+export function Textarea({ className, inputRef, ...rest }: TextareaProps) {
+  return <textarea ref={inputRef} className={cx("textarea", className)} {...rest} />;
 }

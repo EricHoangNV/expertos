@@ -3246,3 +3246,35 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 **Notes for next iteration:**
 - M12.6.4 (Enter-to-send unless Shift held; textarea auto-resize) is the last input-bar leg. It lands on the `ChatInputBar` `Textarea` (`onKeyDown` → `onSend` unless `shiftKey`; auto-resize by syncing `scrollHeight` to a height within the existing `min-height:44px`/`max-height:200px` ds.css bounds). The helper row already advertises this keyboard contract.
 - Reminder (hit again): rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing it — `apps/web` typechecks against `dist/`, so new exports are invisible until the build runs. Turbo is currently SIGILL-crashing in this sandbox; run per-package `tsc`/`eslint`/`knip`/`stylelint` directly.
+
+---
+
+## M12.6.4 — ChatInputBar keyboard behavior + textarea auto-resize (2026-06-02)
+
+**What:** Final input-bar leg. Enter (without Shift) sends and suppresses the newline; Shift+Enter inserts a newline; the textarea grows/shrinks to fit its content. M12.6 (input bar) is now complete.
+
+**Implementation (`packages/ui/src/ChatInputBar.tsx`):**
+- `handleKeyDown` on the `Textarea`: on `Enter` with no `shiftKey` and not `nativeEvent.isComposing` (IME guard), `preventDefault()` the newline and call `onSend()` when sendable (`canSend` reuses the existing trimmed-non-empty + not-busy gate). Shift+Enter and IME-composition Enter fall through to a normal newline.
+- Auto-resize via a module-level `autoResize(el)` passed as an **inline ref callback** (`inputRef={autoResize}`). Inline ref callbacks re-run on every render, so this covers all value changes — keystrokes, deletions, and the parent clearing the draft after a send — without any hook (packages/ui is deliberately hook-free; primitives are unit-tested by direct function invocation). It sets `height:auto` then `scrollHeight`; ds.css `min-height:44px`/`max-height:200px` clamp the rendered height and a new `overflow-y:auto` scrolls content past the 200px cap.
+
+**Shared primitive change (`packages/ui/src/Field.tsx`):**
+- Added an optional `inputRef?: Ref<HTMLTextAreaElement>` prop to `Textarea`, spread onto the native `<textarea>`'s `ref`. Used a **custom prop name** (not React's reserved `ref`) deliberately: `Textarea` stays a plain callable function, so the existing `Textarea({})` direct-invocation unit test (and the whole hook-free test convention) keeps working — no `forwardRef` needed. `TextareaProps` is intentionally not exported (knip would flag it; nothing external consumes it).
+
+**Key decisions:**
+- Inline-ref-callback over hooks: the only hook-free way to react to *every* value change (incl. the programmatic post-send reset) and keep the component testable by direct invocation. A change-handler-only resize would miss the after-send shrink.
+- IME guard (`isComposing`) so composing Vietnamese/CJK input via Enter doesn't fire a premature send (the app supports EN+VI).
+- No page changes: `apps/web/app/chat/page.tsx` already wires `ChatInputBar` and inherits the behavior; the M12.6.3 helper row already advertised the "Enter to send · Shift+Enter newline" contract.
+
+**Tests:** +5 ui tests in `primitives.test.ts` (Enter sends + preventDefault; Shift+Enter no-op; busy/empty no-send; IME-composition no-send; `inputRef` auto-resize sets `scrollHeight` + null no-op). ui suite 164 → 169, 100% coverage on `ChatInputBar.tsx`. Full ui suite green (169/169).
+
+**Gates:** per-workspace (turbo SIGILLs in sandbox) — `tsc --noEmit` ui + web ✅, `eslint` ui + web ✅, `knip` ✅, ui `jest` ✅. Rebuilt `packages/ui` dist (`tsc -p tsconfig.build.json`) before re-checking web.
+
+**Files changed:**
+- `packages/ui/src/ChatInputBar.tsx` — `handleKeyDown` + `autoResize` ref callback.
+- `packages/ui/src/Field.tsx` — optional `inputRef` on `Textarea`.
+- `packages/ui/src/ds.css` — `.input-bar-input` `overflow-y:auto`.
+- `packages/ui/src/primitives.test.ts` — +5 tests.
+- `project-mds/PRD.md`, `project-mds/progress-state.md`, `project-mds/progress-log.md` — manifest + state + log.
+
+**Notes for next iteration:**
+- M12.6 is fully done. Next M12 leg is **M12.7 Tweaks panel** (floating bottom-right card; `.seg` segmented control wired to the page's existing `direction` state + localStorage persistence; density options + trust-badge/concierge toggles; show/hide button in the topbar). The page already owns `LayoutDirection` state from M12.1.3 — M12.7.2 just needs the UI control + persistence.
