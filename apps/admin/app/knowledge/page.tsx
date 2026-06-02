@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Badge, Bar, Button, Table, cx, type BadgeTone } from "@expertos/ui";
+import { Badge, Bar, Button, Table, cx, type BadgeTone, type Translator } from "@expertos/ui";
 import type {
   KnowledgeDocumentDto,
   KnowledgeDraftSummaryDto,
@@ -17,7 +17,8 @@ import {
   listDrafts,
   versionAction,
 } from "../../src/lib/admin-client";
-import { draftStatusTone, statusLabel } from "../../src/lib/status-tone";
+import { draftStatusTone } from "../../src/lib/status-tone";
+import { useStatusLabel, useT } from "../../src/lib/i18n";
 
 /**
  * Knowledge approval — kanban board (M13.3, PRD §"Admin & Expert portals" / ui-reference-spec
@@ -42,18 +43,19 @@ import { draftStatusTone, statusLabel } from "../../src/lib/status-tone";
  *     the conversation-to-knowledge draft pipeline, which is the real authoring path.
  */
 
-/** The four lifecycle columns of the board, in pipeline order, with their badge tone. */
-const COLUMNS: { status: PublishStatusValue; label: string; tone: BadgeTone }[] = [
-  { status: "draft", label: "Draft", tone: "ink" },
-  { status: "ai_processing", label: "AI Processing", tone: "info" },
-  { status: "expert_review", label: "Expert Review", tone: "amber" },
-  { status: "published", label: "Published", tone: "green" },
+/** The four lifecycle columns of the board, in pipeline order, with their badge tone. `labelKey`
+ *  resolves against the `knowledge.columns.*` dictionary so the column/step labels are localized. */
+const COLUMNS: { status: PublishStatusValue; labelKey: string; tone: BadgeTone }[] = [
+  { status: "draft", labelKey: "columns.draft", tone: "ink" },
+  { status: "ai_processing", labelKey: "columns.aiProcessing", tone: "info" },
+  { status: "expert_review", labelKey: "columns.expertReview", tone: "amber" },
+  { status: "published", labelKey: "columns.published", tone: "green" },
 ];
 
 /** The status-pipeline steps, in pipeline order. The active highlight and the click-to-filter
  *  behaviour are computed at render from live data (M13.3.2), so the highlight tracks where the
  *  work actually is rather than a hardcoded stage. */
-const STEPS = COLUMNS.map((c) => ({ status: c.status, label: c.label }));
+const STEPS = COLUMNS.map((c) => ({ status: c.status, labelKey: c.labelKey }));
 
 interface BoardData {
   pipeline: KnowledgePipelineDto;
@@ -68,12 +70,14 @@ function DocCard({
   active,
   busy,
   onApprove,
+  t,
 }: {
   doc: KnowledgeDocumentDto;
   status: PublishStatusValue;
   active: boolean;
   busy: boolean;
   onApprove: (versionId: string) => void;
+  t: Translator;
 }) {
   const version = doc.latestVersion;
   return (
@@ -89,11 +93,11 @@ function DocCard({
 
       {status === "ai_processing" && (
         <>
-          <p className="kanban-card-summary mono">parse → chunk → embed</p>
+          <p className="kanban-card-summary mono">{t("card.processingStages")}</p>
           <Bar
             className="kanban-card-progress"
             value={version != null && version.chunkCount > 0 ? 66 : 33}
-            aria-label="Processing progress"
+            aria-label={t("card.processingProgress")}
           />
         </>
       )}
@@ -110,10 +114,10 @@ function DocCard({
               disabled={busy || version == null}
               onClick={() => version != null && onApprove(version.id)}
             >
-              Approve &amp; publish
+              {t("card.approve")}
             </Button>
             <Link href={`/knowledge/${doc.id}`} className="btn btn-ghost btn-sm">
-              Diff
+              {t("card.diff")}
             </Link>
           </div>
         </>
@@ -121,16 +125,16 @@ function DocCard({
 
       {status === "published" && version != null && (
         <p className="kanban-card-summary muted">
-          <Badge tone="green">v{version.versionNumber} live</Badge>{" "}
+          <Badge tone="green">{t("card.versionLive", { version: version.versionNumber })}</Badge>{" "}
           {version.approvedAt != null
-            ? `approved · ${new Date(version.approvedAt).toLocaleDateString()}`
-            : "published"}
+            ? t("card.approvedOn", { date: new Date(version.approvedAt).toLocaleDateString() })
+            : t("card.published")}
         </p>
       )}
 
       {status === "draft" && (
         <p className="kanban-card-summary muted">
-          {version?.changeSummary ?? "Awaiting submission for review."}
+          {version?.changeSummary ?? t("card.awaitingSubmission")}
         </p>
       )}
     </div>
@@ -138,6 +142,8 @@ function DocCard({
 }
 
 export default function KnowledgeApprovalPage() {
+  const t = useT("knowledge");
+  const statusLabel = useStatusLabel();
   const { getIdToken } = useAuth();
   const [data, setData] = useState<BoardData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -150,7 +156,7 @@ export default function KnowledgeApprovalPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("errors.signIn"));
         return;
       }
       const [pipeline, draft, ai, review, published, drafts] = await Promise.all([
@@ -173,9 +179,9 @@ export default function KnowledgeApprovalPage() {
         drafts,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load knowledge board.");
+      setError(err instanceof Error ? err.message : t("errors.loadBoard"));
     }
-  }, [getIdToken]);
+  }, [getIdToken, t]);
 
   useEffect(() => {
     void load();
@@ -188,18 +194,18 @@ export default function KnowledgeApprovalPage() {
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to continue.");
+          setError(t("errors.signIn"));
           return;
         }
         await versionAction(token, versionId, "approve");
         await load();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Approve failed.");
+        setError(err instanceof Error ? err.message : t("errors.approve"));
       } finally {
         setBusy(false);
       }
     },
-    [getIdToken, load],
+    [getIdToken, load, t],
   );
 
   // The highlighted step tracks where the work is: the selected filter, or — when nothing is
@@ -215,11 +221,11 @@ export default function KnowledgeApprovalPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Versioned · Expert-reviewed</div>
-          <h1 className="h1">Knowledge approval</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
         </div>
         <Link href="/knowledge-drafts" className="btn btn-ghost">
-          + New note
+          {t("newNote")}
         </Link>
       </div>
 
@@ -233,15 +239,17 @@ export default function KnowledgeApprovalPage() {
             type="button"
             className={cx("kanban-step", s.status === activeStatus && "is-active")}
             aria-pressed={focused === s.status}
-            title={focused === s.status ? "Show all columns" : `Show only ${s.label}`}
+            title={
+              focused === s.status
+                ? t("steps.showAll")
+                : t("steps.showOnly", { label: t(s.labelKey) })
+            }
             onClick={() => setFocused((f) => (f === s.status ? null : s.status))}
           >
-            {s.label}
+            {t(s.labelKey)}
           </button>
         ))}
-        <span className="kanban-step-note">
-          → Archived / Deprecated · every answer records which published version produced it
-        </span>
+        <span className="kanban-step-note">{t("steps.note")}</span>
       </div>
 
       {error != null && <Badge tone="red">{error}</Badge>}
@@ -254,12 +262,12 @@ export default function KnowledgeApprovalPage() {
             return (
               <div className="kanban-col" key={col.status}>
                 <div className="kanban-col-head">
-                  <div className="label">{col.label}</div>
+                  <div className="label">{t(col.labelKey)}</div>
                   <Badge tone={col.tone}>{data.pipeline.byStatus[col.status]}</Badge>
                 </div>
                 <div className="kanban-col-body">
                   {docs.length === 0 ? (
-                    <p className="muted kanban-empty">Nothing here.</p>
+                    <p className="muted kanban-empty">{t("columnEmpty")}</p>
                   ) : (
                     docs.map((doc, i) => (
                       <DocCard
@@ -269,6 +277,7 @@ export default function KnowledgeApprovalPage() {
                         active={col.status === "expert_review" && i === 0}
                         busy={busy}
                         onApprove={approve}
+                        t={t}
                       />
                     ))
                   )}
@@ -284,32 +293,36 @@ export default function KnowledgeApprovalPage() {
         <section className="convknow">
           <div className="convknow-head">
             <div>
-              <div className="eyebrow">Conversation → Knowledge</div>
-              <h2 className="h2">Grow the knowledge base from real usage</h2>
+              <div className="eyebrow">{t("convknow.eyebrow")}</div>
+              <h2 className="h2">{t("convknow.title")}</h2>
             </div>
             <div className="convknow-pills">
-              {["Conversation", "Mark valuable", "Draft", "Expert review", "Publish"].map(
-                (p, i, arr) => (
-                  <span key={p} className="convknow-pill">
-                    {p}
-                    {i < arr.length - 1 && <span className="convknow-pill-sep"> · </span>}
-                  </span>
-                ),
-              )}
+              {[
+                "convknow.pills.conversation",
+                "convknow.pills.markValuable",
+                "convknow.pills.draft",
+                "convknow.pills.expertReview",
+                "convknow.pills.publish",
+              ].map((pKey, i, arr) => (
+                <span key={pKey} className="convknow-pill">
+                  {t(pKey)}
+                  {i < arr.length - 1 && <span className="convknow-pill-sep"> · </span>}
+                </span>
+              ))}
             </div>
           </div>
 
           {data.drafts.length === 0 ? (
-            <p className="muted">No conversation-sourced drafts yet.</p>
+            <p className="muted">{t("convknow.empty")}</p>
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <th>Recurring question</th>
-                  <th>Status</th>
-                  <th>From chat</th>
-                  <th>Lang</th>
-                  <th>Action</th>
+                  <th>{t("convknow.colQuestion")}</th>
+                  <th>{t("convknow.colStatus")}</th>
+                  <th>{t("convknow.colFromChat")}</th>
+                  <th>{t("convknow.colLang")}</th>
+                  <th>{t("convknow.colAction")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -323,11 +336,13 @@ export default function KnowledgeApprovalPage() {
                         {statusLabel(draft.status)}
                       </Badge>
                     </td>
-                    <td className="muted">{draft.conversationId ? "yes" : "—"}</td>
+                    <td className="muted">
+                      {draft.conversationId ? t("convknow.fromChatYes") : t("convknow.fromChatNo")}
+                    </td>
                     <td className="mono">{draft.language}</td>
                     <td>
                       <Link href={`/knowledge-drafts/${draft.id}`} className="btn btn-primary btn-sm">
-                        Draft
+                        {t("convknow.draftAction")}
                       </Link>
                     </td>
                   </tr>

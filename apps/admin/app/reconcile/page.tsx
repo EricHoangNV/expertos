@@ -8,6 +8,7 @@ import type {
 } from "@expertos/shared";
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
+import { useT } from "../../src/lib/i18n";
 import { getUnmatchedBookings, reconcileBookings } from "../../src/lib/admin-client";
 
 /** Page size for the unmatched-booking feed. */
@@ -21,6 +22,7 @@ const PAGE_SIZE = 50;
  */
 export default function ReconcilePage() {
   const { getIdToken } = useAuth();
+  const t = useT("reconcile");
   const [rows, setRows] = useState<UnmatchedBookingEventDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -36,17 +38,17 @@ export default function ReconcilePage() {
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to continue.");
+          setError(t("errorSignIn"));
           return;
         }
         const page = await getUnmatchedBookings(token, { limit: PAGE_SIZE, offset });
         setHasMore(page.length === PAGE_SIZE);
         setRows((prev) => (offset === 0 || prev == null ? page : [...prev, ...page]));
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load unmatched bookings.");
+        setError(err instanceof Error ? err.message : t("errorLoad"));
       }
     },
-    [getIdToken],
+    [getIdToken, t],
   );
 
   useEffect(() => {
@@ -67,36 +69,33 @@ export default function ReconcilePage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("errorSignIn"));
         return;
       }
       const summary = await reconcileBookings(token, since.trim());
       setResult(summary);
       await loadPage(0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Reconcile failed.");
+      setError(err instanceof Error ? err.message : t("errorReconcile"));
     } finally {
       setRunning(false);
     }
-  }, [getIdToken, since, loadPage]);
+  }, [getIdToken, since, loadPage, t]);
 
   return (
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Consultations</div>
-          <h1 className="h1">Bookings</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("heading")}</h1>
         </div>
       </div>
-      <p className="muted">
-        Booking confirmations arrive by webhook. Re-poll TidyCal to recover any the webhook missed,
-        and review bookings that couldn&apos;t be tied to a user — kept here so none silently vanish.
-      </p>
+      <p className="muted">{t("intro")}</p>
 
       <Card pad>
-        <div className="label">Run reconcile</div>
+        <div className="label">{t("runReconcile")}</div>
         <div className="row gap2">
-          <Field label="Since (optional)" htmlFor="since">
+          <Field label={t("sinceLabel")} htmlFor="since">
             <Input
               id="since"
               type="datetime-local"
@@ -105,24 +104,24 @@ export default function ReconcilePage() {
             />
           </Field>
           <Button variant="primary" onClick={() => void runReconcile()} disabled={running}>
-            {running ? "Reconciling…" : "Run reconcile"}
+            {running ? t("reconciling") : t("runReconcile")}
           </Button>
         </div>
         {result != null && (
           <div className="row gap1">
-            <Stat label="Polled" value={result.polled} />
-            <Stat label="Applied" value={result.applied} />
-            <Stat label="Matched" value={result.matched} />
-            <Stat label="Already seen" value={result.skipped} />
+            <Stat label={t("polled")} value={result.polled} />
+            <Stat label={t("applied")} value={result.applied} />
+            <Stat label={t("matched")} value={result.matched} />
+            <Stat label={t("alreadySeen")} value={result.skipped} />
           </div>
         )}
       </Card>
 
       {error != null && <Badge tone="red">{error}</Badge>}
 
-      <h2 className="h2">Unmatched bookings</h2>
+      <h2 className="h2">{t("unmatchedHeading")}</h2>
       {rows != null && rows.length === 0 && (
-        <p className="muted">No unmatched bookings — every booking has been correlated.</p>
+        <p className="muted">{t("emptyUnmatched")}</p>
       )}
 
       {rows != null && rows.length > 0 && (
@@ -130,22 +129,22 @@ export default function ReconcilePage() {
           {rows.map((row) => (
             <Card key={row.id} pad>
               <div className="row gap2">
-                <Badge tone="amber">Unmatched</Badge>
+                <Badge tone="amber">{t("unmatchedBadge")}</Badge>
                 <Badge tone="info">{row.eventType}</Badge>
                 <Badge tone="ink">{row.provider}</Badge>
                 <span className="grow" />
                 <span className="muted mono">{new Date(row.receivedAt).toLocaleString()}</span>
               </div>
 
-              <div className="label">Booking reference</div>
-              <p className="mono">{row.bookingRef ?? <span className="muted">— (none)</span>}</p>
+              <div className="label">{t("bookingReference")}</div>
+              <p className="mono">{row.bookingRef ?? <span className="muted">{t("none")}</span>}</p>
 
-              <div className="label">Contact email</div>
-              <p>{row.email ?? <span className="muted">— (none)</span>}</p>
+              <div className="label">{t("contactEmail")}</div>
+              <p>{row.email ?? <span className="muted">{t("none")}</span>}</p>
 
               {row.scheduledAt != null && (
                 <>
-                  <div className="label">Scheduled</div>
+                  <div className="label">{t("scheduled")}</div>
                   <p>{new Date(row.scheduledAt).toLocaleString()}</p>
                 </>
               )}
@@ -156,7 +155,7 @@ export default function ReconcilePage() {
 
       {hasMore && (
         <Button variant="ghost" onClick={() => void loadMore()} disabled={loadingMore}>
-          {loadingMore ? "Loading…" : "Load more"}
+          {loadingMore ? t("loadingMore") : t("loadMore")}
         </Button>
       )}
     </AdminFrame>

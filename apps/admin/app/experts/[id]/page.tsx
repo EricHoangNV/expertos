@@ -8,8 +8,10 @@ import type { AdminExpertDetailDto } from "@expertos/shared";
 import { AdminFrame } from "../../../src/components/AdminFrame";
 import { useAuth } from "../../../src/lib/auth-context";
 import { getExpert, setExpertActive, updateExpert } from "../../../src/lib/admin-client";
+import { useT } from "../../../src/lib/i18n";
 
 export default function ExpertDetailPage() {
+  const t = useT("experts");
   const params = useParams<{ id: string }>();
   const expertId = params.id;
   const { getIdToken } = useAuth();
@@ -19,24 +21,24 @@ export default function ExpertDetailPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const token = useCallback(async () => {
-    const t = await getIdToken();
-    if (!t) {
-      setError("Please sign in to continue.");
+    const tok = await getIdToken();
+    if (!tok) {
+      setError(t("signInError"));
       return null;
     }
-    return t;
-  }, [getIdToken]);
+    return tok;
+  }, [getIdToken, t]);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const t = await token();
-      if (!t) return;
-      setExpert(await getExpert(t, expertId));
+      const tok = await token();
+      if (!tok) return;
+      setExpert(await getExpert(tok, expertId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load the expert.");
+      setError(err instanceof Error ? err.message : t("detail.loadError"));
     }
-  }, [token, expertId]);
+  }, [token, expertId, t]);
 
   useEffect(() => {
     void load();
@@ -45,22 +47,22 @@ export default function ExpertDetailPage() {
   const toggleActive = useCallback(async () => {
     if (expert == null) return;
     try {
-      const t = await token();
-      if (!t) return;
-      const updated = await setExpertActive(t, expert.id, !expert.active);
+      const tok = await token();
+      if (!tok) return;
+      const updated = await setExpertActive(tok, expert.id, !expert.active);
       setExpert(updated);
-      setNotice(updated.active ? "Expert activated." : "Expert deactivated.");
+      setNotice(updated.active ? t("detail.activated") : t("detail.deactivated"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to change active state.");
+      setError(err instanceof Error ? err.message : t("detail.toggleError"));
     }
-  }, [expert, token]);
+  }, [expert, token, t]);
 
   return (
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Roster</div>
-          <h1 className="h1">{expert?.displayName ?? "Expert"}</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{expert?.displayName ?? t("detail.fallbackTitle")}</h1>
         </div>
       </div>
 
@@ -71,18 +73,18 @@ export default function ExpertDetailPage() {
         <div className="col gap3">
           <div className="row gap2">
             <Badge tone={expert.active ? "green" : "ink"}>
-              {expert.active ? "active" : "inactive"}
+              {expert.active ? t("active") : t("inactive")}
             </Badge>
             <span className="muted mono">{expert.slug}</span>
             <span className="grow" />
             <Button variant="subtle" size="sm" onClick={() => void toggleActive()}>
-              {expert.active ? "Deactivate" : "Activate"}
+              {expert.active ? t("detail.deactivate") : t("detail.activate")}
             </Button>
           </div>
 
           <div className="row gap3">
-            <Stat label="Voice profiles" value={String(expert.voiceProfileCount)} />
-            <Stat label="Documents" value={String(expert.documentCount)} />
+            <Stat label={t("detail.statVoiceProfiles")} value={String(expert.voiceProfileCount)} />
+            <Stat label={t("detail.statDocuments")} value={String(expert.documentCount)} />
           </div>
 
           <ProfileEditor
@@ -90,20 +92,20 @@ export default function ExpertDetailPage() {
             getToken={token}
             onSaved={(updated) => {
               setExpert(updated);
-              setNotice("Expert updated.");
+              setNotice(t("detail.updated"));
             }}
             onError={setError}
           />
 
           <section className="card card-pad">
-            <div className="label">Voice profiles</div>
+            <div className="label">{t("detail.voiceProfiles.label")}</div>
             <p className="muted">
               {expert.voiceProfileCount === 0
-                ? "No voice profiles yet."
-                : `${expert.voiceProfileCount} voice profile(s) authored.`}
+                ? t("detail.voiceProfiles.none")
+                : t("detail.voiceProfiles.count", { count: expert.voiceProfileCount })}
             </p>
             <Link href={`/voice-profiles?expertId=${expert.id}`} className="navitem">
-              Manage voice profiles →
+              {t("detail.voiceProfiles.manage")}
             </Link>
           </section>
         </div>
@@ -120,6 +122,7 @@ interface ProfileEditorProps {
 }
 
 function ProfileEditor({ expert, getToken, onSaved, onError }: ProfileEditorProps) {
+  const t = useT("experts");
   const [displayName, setDisplayName] = useState(expert.displayName);
   const [title, setTitle] = useState(expert.title ?? "");
   const [bio, setBio] = useState(expert.bio ?? "");
@@ -129,10 +132,10 @@ function ProfileEditor({ expert, getToken, onSaved, onError }: ProfileEditorProp
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      const t = await getToken();
-      if (!t) return;
+      const tok = await getToken();
+      if (!tok) return;
       const trimmedUser = userId.trim();
-      const updated = await updateExpert(t, expert.id, {
+      const updated = await updateExpert(tok, expert.id, {
         displayName: displayName.trim(),
         title,
         bio,
@@ -140,41 +143,43 @@ function ProfileEditor({ expert, getToken, onSaved, onError }: ProfileEditorProp
       });
       onSaved(updated);
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to update expert.");
+      onError(err instanceof Error ? err.message : t("detail.editor.saveError"));
     } finally {
       setSaving(false);
     }
-  }, [getToken, expert.id, displayName, title, bio, userId, onSaved, onError]);
+  }, [getToken, expert.id, displayName, title, bio, userId, onSaved, onError, t]);
 
   return (
     <section className="card card-pad">
-      <div className="label">Details</div>
+      <div className="label">{t("detail.editor.label")}</div>
       <div className="col gap2">
         <div className="row gap2">
-          <Field label="Display name">
+          <Field label={t("detail.editor.displayNameLabel")}>
             <Input
               value={displayName}
               disabled={saving}
               onChange={(e) => setDisplayName(e.target.value)}
             />
           </Field>
-          <Field label="Title">
+          <Field label={t("detail.editor.titleLabel")}>
             <Input value={title} disabled={saving} onChange={(e) => setTitle(e.target.value)} />
           </Field>
         </div>
-        <Field label="Bio">
+        <Field label={t("detail.editor.bioLabel")}>
           <Textarea rows={3} value={bio} disabled={saving} onChange={(e) => setBio(e.target.value)} />
         </Field>
-        <Field label="Linked operator user id (blank to unlink)">
+        <Field label={t("detail.editor.operatorLabel")}>
           <Input
-            placeholder="user uuid"
+            placeholder={t("detail.editor.operatorPlaceholder")}
             value={userId}
             disabled={saving}
             onChange={(e) => setUserId(e.target.value)}
           />
         </Field>
         {expert.linkedUserEmail != null && (
-          <span className="muted mono">operator: {expert.linkedUserEmail}</span>
+          <span className="muted mono">
+            {t("detail.editor.operatorCurrent", { email: expert.linkedUserEmail })}
+          </span>
         )}
         <div className="row">
           <Button
@@ -183,7 +188,7 @@ function ProfileEditor({ expert, getToken, onSaved, onError }: ProfileEditorProp
             disabled={saving || displayName.trim() === ""}
             onClick={() => void save()}
           >
-            {saving ? "Saving…" : "Save details"}
+            {saving ? t("detail.editor.saving") : t("detail.editor.save")}
           </Button>
         </div>
       </div>

@@ -4063,3 +4063,29 @@ Wired the two call sites:
 **Gotcha (LEARNINGS-worthy):** `Intl.NumberFormat` currency output inserts a **no-break space** (U+00A0 / U+202F) between amount and symbol — `"4,99 US$"` typed with a regular space fails `.toBe()` against the formatter output even though they look identical. Normalize with `.replace(/\s/g, " ")` in assertions (`\s` matches both no-break variants).
 
 **Notes for next iteration:** The only remaining M13 i18n task is **M13.3 (admin portal)** — needs its own `LocaleProvider`/dictionaries on the `@expertos/ui` core + a locale toggle in `AdminFrame`; ~5.3K LOC across 26 pages (large). It can reuse the M13.5 formatters for its date/currency cells.
+
+---
+
+## M13.3 (i18n) — Admin & Expert portal string extraction (EN + VI)
+
+**What:** Made the entire admin/expert portal bilingual (the last open M13 i18n task). The language toggle now switches all admin UI chrome + page strings, not just chat answers.
+
+**Infrastructure (mirrors the web app, M13.1 pattern):**
+- `apps/admin/src/lib/i18n/` — `locale-context.tsx` (`LocaleProvider`/`useLocale`/`useT` over the pure `@expertos/ui` core; resolution SSR-default → localStorage `expertos:admin-locale` → profile-on-sign-in; `<html lang>` sync), `profile-client.ts` (`GET /me` seed + `PATCH /me/locale` write-through), `index.ts`.
+- Wired `LocaleProvider` into `apps/admin/app/layout.tsx` (inside `AuthProvider`).
+- EN/VI `.seg` language toggle added to the `AdminFrame` topbar (`LanguageToggle` using `useLocale` + `LOCALES`).
+
+**Dictionaries — split per-page namespace (unlike web's single file, given ~25 pages):**
+- `dictionaries.ts` assembles 24 namespace modules (`dictionaries/<route>.ts`, each exporting `en`/`vi`) into `MESSAGES: Record<Locale, Messages>`. Each page (route) owns its namespace file; list+detail pages share one (knowledge, knowledge-drafts, users, experts).
+- ~900 keys total, EN/VI lockstep-verified by a key-set comparison script (all 24 namespaces balanced + non-empty).
+- `common` namespace holds the shared chrome: nav labels (keyed, surfaced in nav + breadcrumb), group headers, breadcrumb/role badge, identity footer, sign-in screen, M14 access-denied screen.
+
+**Pages wired (25):** dashboard (`app/page.tsx`), revenue, analytics, funnel, concierge-analytics, conversions, concierge-reviews, audit, entitlements, retention, recommendation-rules, voice-profiles, concierge, knowledge (+[id]), knowledge-drafts (+[id]), failed-queries, users (+[id]), experts (+[id]), access-control, validation, reconcile, answers. Done largely via 8 parallel subagents (each owning disjoint page+dictionary files — pre-stubbed namespace files + pre-wired `dictionaries.ts` meant zero shared-file edits) plus the `answers` page + all chrome done directly.
+
+**Status badges — locale-aware `useStatusLabel()`:** the generic `statusLabel` enum-humanizer (`replace(/_/g," ")`) in `status-tone.ts` was replaced by a `useStatusLabel()` hook (in the i18n layer) backed by a shared `common.status.*` map (43 lifecycle tokens: publish/draft/consultation/funnel-trigger+response/concierge-status/visibility/verdict/fair-use/deletion/subscription, EN+VI). Unknown tokens fall back to the old underscore→space form, so a new enum value never breaks. The 10 pages using it just swap the import for a hook call — every `statusLabel(x)` call site is unchanged. Dead `statusLabel` export removed from `status-tone.ts` (knip).
+
+**Files:** new `apps/admin/src/lib/i18n/{index.ts,locale-context.tsx,profile-client.ts,dictionaries.ts}` + `dictionaries/*.ts` (24); edited `apps/admin/app/layout.tsx`, `apps/admin/src/components/AdminFrame.tsx` (nav `labelKey` refactor + group keys + `LanguageToggle` + translator threading), `apps/admin/src/lib/status-tone.ts` (removed `statusLabel`), and all 25 page files.
+
+**Gates:** admin `tsc --noEmit` + `next lint --max-warnings 0` clean (fixed one `react-hooks/exhaustive-deps` from a subagent's `roleLabel` → wrapped in `useCallback`); root `lint:css` + `knip` clean (`rm -rf apps/*/.next` first). EN/VI lockstep verified. No backend/shared/ui/web changes → their suites unaffected (test total stays 1274; admin + web have no jest suite). `next build` blocked in-sandbox (arch mismatch, environmental) — validated via `tsc` + `next lint` + `satisfies Messages`.
+
+**Honest deviations / left untranslated:** server-dynamic content (user names, emails, document/plan titles, dates, model names) is interpolated, not translated; the recommendation-rules keywords textarea placeholder (`legal/tax/contract`) left as illustrative sample data; existing `toLocaleString` date/number call sites left as-is (M13.5 formatters available for future tightening; not in M13.3 scope per the manifest's date/number note pointing to M13.5).

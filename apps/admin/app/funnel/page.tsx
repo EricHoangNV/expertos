@@ -11,10 +11,10 @@ import type {
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
 import { getFunnelAnalytics } from "../../src/lib/admin-client";
+import { useStatusLabel, useT } from "../../src/lib/i18n";
 import {
   consultationStatusTone,
   funnelResponseTone,
-  statusLabel,
 } from "../../src/lib/status-tone";
 
 /** Trailing-window options the dashboard offers, in days (matches the usage dashboard). */
@@ -65,6 +65,8 @@ function rate(part: number, whole: number): string {
  * read; this page just renders the aggregates the `/admin/analytics/funnel` read returns.
  */
 export default function FunnelPage() {
+  const t = useT("funnel");
+  const statusLabel = useStatusLabel();
   const { getIdToken } = useAuth();
   const [days, setDays] = useState<number>(30);
   const [report, setReport] = useState<FunnelAnalyticsDto | null>(null);
@@ -76,14 +78,14 @@ export default function FunnelPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("errorSignIn"));
         return;
       }
       setReport(await getFunnelAnalytics(token, days));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load funnel analytics.");
+      setError(err instanceof Error ? err.message : t("errorLoad"));
     }
-  }, [getIdToken, days]);
+  }, [getIdToken, days, t]);
 
   useEffect(() => {
     void load();
@@ -93,66 +95,63 @@ export default function FunnelPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Analytics</div>
-          <h1 className="h1">Consultation funnel</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
         </div>
-        <Field label="Window">
+        <Field label={t("window")}>
           <Select value={days} onChange={(e) => setDays(Number(e.target.value))}>
             {DAY_OPTIONS.map((d) => (
               <option key={d} value={d}>
-                Last {d} days
+                {t("windowOption", { days: d })}
               </option>
             ))}
           </Select>
         </Field>
       </div>
-      <p className="muted">
-        Platform-wide attribution from conversation to booked revenue. Consultation counts and revenue
-        cover only consultations that arose from an in-chat recommendation.
-      </p>
+      <p className="muted">{t("intro")}</p>
 
       {error != null && <Badge tone="red">{error}</Badge>}
 
       {report != null && (
         <>
           <div className="row gap1">
-            <Stat label={`Conversations · ${days}d`} value={count(report.conversations)} />
-            <Stat label={`Recommendations · ${days}d`} value={count(report.recommendations)} />
-            <Stat label={`Booked · ${days}d`} value={count(report.byResponse.book)} />
-            <Stat label={`Consultations · ${days}d`} value={count(report.consultations)} />
-            <Stat label={`Revenue · ${days}d`} value={usd(report.bookedRevenueCents)} />
+            <Stat label={t("conversations", { days })} value={count(report.conversations)} />
+            <Stat label={t("recommendations", { days })} value={count(report.recommendations)} />
+            <Stat label={t("booked", { days })} value={count(report.byResponse.book)} />
+            <Stat label={t("consultations", { days })} value={count(report.consultations)} />
+            <Stat label={t("revenue", { days })} value={usd(report.bookedRevenueCents)} />
           </div>
 
           <div className="row gap1">
             <Stat
-              label="Conversation → recommendation"
+              label={t("rateConversationToRecommendation")}
               value={rate(report.recommendations, report.conversations)}
             />
             <Stat
-              label="Recommendation → booked"
+              label={t("rateRecommendationToBooked")}
               value={rate(report.byResponse.book, report.recommendations)}
             />
           </div>
 
-          <h3 className="h3">Recommendations by trigger</h3>
+          <h3 className="h3">{t("byTrigger")}</h3>
           <Table>
             <thead>
               <tr>
-                <th>Trigger</th>
-                <th>Recommendations</th>
+                <th>{t("colTrigger")}</th>
+                <th>{t("colRecommendations")}</th>
               </tr>
             </thead>
             <tbody>
-              {TRIGGERS.map((t) => (
-                <tr key={t}>
-                  <td>{statusLabel(t)}</td>
-                  <td className="mono">{count(report.byTrigger[t])}</td>
+              {TRIGGERS.map((trigger) => (
+                <tr key={trigger}>
+                  <td>{statusLabel(trigger)}</td>
+                  <td className="mono">{count(report.byTrigger[trigger])}</td>
                 </tr>
               ))}
             </tbody>
           </Table>
 
-          <h3 className="h3">Recommendations by response</h3>
+          <h3 className="h3">{t("byResponse")}</h3>
           <div className="row gap2">
             {RESPONSES.map((r) => (
               <Badge key={r} tone={funnelResponseTone(r)}>
@@ -161,7 +160,7 @@ export default function FunnelPage() {
             ))}
           </div>
 
-          <h3 className="h3">Consultations by status</h3>
+          <h3 className="h3">{t("byStatus")}</h3>
           <div className="row gap2">
             {STATUSES.map((s) => (
               <Badge key={s} tone={consultationStatusTone(s)}>

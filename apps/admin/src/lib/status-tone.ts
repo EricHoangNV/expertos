@@ -98,8 +98,3 @@ const FUNNEL_RESPONSE_TONES: Record<RecommendationFunnelResponse, BadgeTone> = {
 export function funnelResponseTone(response: RecommendationFunnelResponse): BadgeTone {
   return FUNNEL_RESPONSE_TONES[response];
 }
-
-/** Human label for a status (replaces `_` with a space so `expert_review` reads naturally). */
-export function statusLabel(status: string): string {
-  return status.replace(/_/g, " ");
-}

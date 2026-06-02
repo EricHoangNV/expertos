@@ -12,10 +12,10 @@ import type {
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
 import { getExpertConversions, listExperts } from "../../src/lib/admin-client";
+import { useStatusLabel, useT } from "../../src/lib/i18n";
 import {
   consultationStatusTone,
   funnelResponseTone,
-  statusLabel,
 } from "../../src/lib/status-tone";
 
 /** Display order for the breakdown tables (matches the DTO record keys). */
@@ -50,6 +50,8 @@ function usd(cents: number): string {
  * this page just renders the aggregates the `/expert/conversions` read returns.
  */
 export default function ConversionsPage() {
+  const t = useT("conversions");
+  const statusLabel = useStatusLabel();
   const { getIdToken, role } = useAuth();
   const isAdmin = role === "admin";
   const [experts, setExperts] = useState<AdminExpertSummaryDto[]>([]);
@@ -89,14 +91,14 @@ export default function ConversionsPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("errorSignIn"));
         return;
       }
       setData(await getExpertConversions(token, isAdmin ? expertId : undefined));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load conversions.");
+      setError(err instanceof Error ? err.message : t("errorLoad"));
     }
-  }, [getIdToken, role, isAdmin, expertId]);
+  }, [getIdToken, role, isAdmin, expertId, t]);
 
   useEffect(() => {
     void load();
@@ -106,13 +108,13 @@ export default function ConversionsPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Funnel</div>
-          <h1 className="h1">Consultation conversions</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
         </div>
         {isAdmin && (
-          <Field label="Expert">
+          <Field label={t("expert")}>
             <Select value={expertId} onChange={(e) => setExpertId(e.target.value)}>
-              <option value="">Select an expert…</option>
+              <option value="">{t("selectExpertPlaceholder")}</option>
               {experts.map((ex) => (
                 <option key={ex.id} value={ex.id}>
                   {ex.displayName}
@@ -122,49 +124,44 @@ export default function ConversionsPage() {
           </Field>
         )}
       </div>
-      <p className="muted">
-        Recommendations, bookings, and attributed revenue from conversations held in this expert&rsquo;s
-        voice.
-      </p>
+      <p className="muted">{t("intro")}</p>
 
       {error != null && <Badge tone="red">{error}</Badge>}
       {isAdmin && expertId === "" && (
-        <p className="muted">Select an expert to view their conversions.</p>
+        <p className="muted">{t("selectExpertPrompt")}</p>
       )}
 
       {data != null && data.expert == null && !isAdmin && (
-        <p className="muted">
-          Your account isn&rsquo;t linked to an expert profile yet, so there are no conversions to show.
-        </p>
+        <p className="muted">{t("noExpertProfile")}</p>
       )}
 
       {data != null && data.expert != null && (
         <>
           <div className="row gap1">
-            <Stat label="Recommendations" value={data.recommendationCount} />
-            <Stat label="Booked" value={data.byResponse.book} />
-            <Stat label="Revenue" value={usd(data.revenueCents)} />
+            <Stat label={t("recommendations")} value={data.recommendationCount} />
+            <Stat label={t("booked")} value={data.byResponse.book} />
+            <Stat label={t("revenue")} value={usd(data.revenueCents)} />
           </div>
 
-          <h3 className="h3">By trigger</h3>
+          <h3 className="h3">{t("byTrigger")}</h3>
           <Table>
             <thead>
               <tr>
-                <th>Trigger</th>
-                <th>Recommendations</th>
+                <th>{t("colTrigger")}</th>
+                <th>{t("colRecommendations")}</th>
               </tr>
             </thead>
             <tbody>
-              {TRIGGERS.map((t) => (
-                <tr key={t}>
-                  <td>{statusLabel(t)}</td>
-                  <td className="mono">{data.byTrigger[t]}</td>
+              {TRIGGERS.map((trigger) => (
+                <tr key={trigger}>
+                  <td>{statusLabel(trigger)}</td>
+                  <td className="mono">{data.byTrigger[trigger]}</td>
                 </tr>
               ))}
             </tbody>
           </Table>
 
-          <h3 className="h3">By response</h3>
+          <h3 className="h3">{t("byResponse")}</h3>
           <div className="row gap2">
             {RESPONSES.map((r) => (
               <Badge key={r} tone={funnelResponseTone(r)}>
@@ -173,7 +170,7 @@ export default function ConversionsPage() {
             ))}
           </div>
 
-          <h3 className="h3">By consultation status</h3>
+          <h3 className="h3">{t("byStatus")}</h3>
           <div className="row gap2">
             {STATUSES.map((s) => (
               <Badge key={s} tone={consultationStatusTone(s)}>
@@ -182,18 +179,18 @@ export default function ConversionsPage() {
             ))}
           </div>
 
-          <h3 className="h3">Recent recommendations</h3>
+          <h3 className="h3">{t("recentRecommendations")}</h3>
           {data.recent.length === 0 ? (
-            <p className="muted">No recommendations yet.</p>
+            <p className="muted">{t("noRecommendations")}</p>
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <th>When</th>
-                  <th>Trigger</th>
-                  <th>Response</th>
-                  <th>Consultation</th>
-                  <th>Amount</th>
+                  <th>{t("colWhen")}</th>
+                  <th>{t("colTrigger")}</th>
+                  <th>{t("colResponse")}</th>
+                  <th>{t("colConsultation")}</th>
+                  <th>{t("colAmount")}</th>
                 </tr>
               </thead>
               <tbody>

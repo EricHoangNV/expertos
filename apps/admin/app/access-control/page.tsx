@@ -5,6 +5,7 @@ import { Badge, Button, Field, Input, Select, Table } from "@expertos/ui";
 import type { AllowedEmailDto, AllowedEmailRole } from "@expertos/shared";
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
+import { useT } from "../../src/lib/i18n";
 import {
   addAllowedEmail,
   listAllowedEmails,
@@ -27,6 +28,7 @@ function AddAllowedEmail({
   onAdded: (email: string) => void;
   onError: (message: string) => void;
 }) {
+  const t = useT("accessControl");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<AllowedEmailRole>("expert");
   const [busy, setBusy] = useState(false);
@@ -34,7 +36,7 @@ function AddAllowedEmail({
   const submit = useCallback(async () => {
     const trimmed = email.trim();
     if (trimmed === "") {
-      onError("Enter an email to add.");
+      onError(t("errorEnterEmail"));
       return;
     }
     setBusy(true);
@@ -42,7 +44,7 @@ function AddAllowedEmail({
     try {
       const token = await getToken();
       if (!token) {
-        onError("Please sign in to continue.");
+        onError(t("errorSignIn"));
         return;
       }
       await addAllowedEmail(token, { email: trimmed, role });
@@ -50,18 +52,18 @@ function AddAllowedEmail({
       setRole("expert");
       onAdded(trimmed.toLowerCase());
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to add the email.");
+      onError(err instanceof Error ? err.message : t("errorAdd"));
     } finally {
       setBusy(false);
     }
-  }, [email, role, getToken, onAdded, onError]);
+  }, [email, role, getToken, onAdded, onError, t]);
 
   return (
     <div className="row gap2">
-      <Field label="Email">
+      <Field label={t("emailLabel")}>
         <Input
           type="email"
-          placeholder="person@example.com"
+          placeholder={t("emailPlaceholder")}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => {
@@ -69,14 +71,14 @@ function AddAllowedEmail({
           }}
         />
       </Field>
-      <Field label="Role">
+      <Field label={t("roleLabel")}>
         <Select value={role} onChange={(e) => setRole(e.target.value as AllowedEmailRole)}>
-          <option value="expert">Expert</option>
-          <option value="admin">Admin</option>
+          <option value="expert">{t("roleExpert")}</option>
+          <option value="admin">{t("roleAdmin")}</option>
         </Select>
       </Field>
       <Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy}>
-        {busy ? "Adding…" : "Add"}
+        {busy ? t("adding") : t("add")}
       </Button>
     </div>
   );
@@ -84,6 +86,11 @@ function AddAllowedEmail({
 
 export default function AccessControlPage() {
   const { getIdToken } = useAuth();
+  const t = useT("accessControl");
+  const roleLabel = useCallback(
+    (role: AllowedEmailRole) => (role === "admin" ? t("roleAdmin") : t("roleExpert")),
+    [t],
+  );
   const [rows, setRows] = useState<AllowedEmailDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -95,14 +102,14 @@ export default function AccessControlPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("errorSignIn"));
         return;
       }
       setRows(await listAllowedEmails(token));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load the whitelist.");
+      setError(err instanceof Error ? err.message : t("errorLoad"));
     }
-  }, [getIdToken]);
+  }, [getIdToken, t]);
 
   useEffect(() => {
     void load();
@@ -118,25 +125,25 @@ export default function AccessControlPage() {
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to continue.");
+          setError(t("errorSignIn"));
           return;
         }
         await updateAllowedEmail(token, row.id, { role: next });
-        setNotice(`${row.email} is now ${next}.`);
+        setNotice(t("noticeRoleChanged", { email: row.email, role: roleLabel(next) }));
         await load();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to change the role.");
+        setError(err instanceof Error ? err.message : t("errorChangeRole"));
       } finally {
         setBusyId(null);
       }
     },
-    [getIdToken, load],
+    [getIdToken, load, t, roleLabel],
   );
 
   // Remove a row (with confirmation; the API rejects removing your own entry).
   const remove = useCallback(
     async (row: AllowedEmailDto) => {
-      if (!window.confirm(`Remove ${row.email} from the admin portal whitelist?`)) {
+      if (!window.confirm(t("confirmRemove", { email: row.email }))) {
         return;
       }
       setBusyId(row.id);
@@ -145,32 +152,28 @@ export default function AccessControlPage() {
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to continue.");
+          setError(t("errorSignIn"));
           return;
         }
         await removeAllowedEmail(token, row.id);
-        setNotice(`Removed ${row.email}.`);
+        setNotice(t("noticeRemoved", { email: row.email }));
         await load();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to remove the email.");
+        setError(err instanceof Error ? err.message : t("errorRemove"));
       } finally {
         setBusyId(null);
       }
     },
-    [getIdToken, load],
+    [getIdToken, load, t],
   );
 
   return (
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">System</div>
-          <h1 className="h1">Access control</h1>
-          <p className="muted">
-            The admin portal is invite-only. Only the emails below can sign in; each one&apos;s role
-            is synced from this list on every sign-in. Removing an entry blocks access on the next
-            sign-in. The consumer app is unaffected.
-          </p>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("heading")}</h1>
+          <p className="muted">{t("intro")}</p>
         </div>
       </div>
 
@@ -180,24 +183,24 @@ export default function AccessControlPage() {
       <AddAllowedEmail
         getToken={getIdToken}
         onAdded={(email) => {
-          setNotice(`Added ${email}.`);
+          setNotice(t("noticeAdded", { email }));
           void load();
         }}
         onError={(message) => setError(message === "" ? null : message)}
       />
 
       {rows != null && rows.length === 0 && (
-        <p className="muted">No emails are whitelisted yet.</p>
+        <p className="muted">{t("empty")}</p>
       )}
 
       {rows != null && rows.length > 0 && (
         <Table>
           <thead>
             <tr>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Added by</th>
-              <th>Added at</th>
+              <th>{t("thEmail")}</th>
+              <th>{t("thRole")}</th>
+              <th>{t("thAddedBy")}</th>
+              <th>{t("thAddedAt")}</th>
               <th />
             </tr>
           </thead>
@@ -206,7 +209,7 @@ export default function AccessControlPage() {
               <tr key={row.id}>
                 <td>{row.email}</td>
                 <td>
-                  <Badge tone={roleTone(row.role)}>{row.role}</Badge>
+                  <Badge tone={roleTone(row.role)}>{roleLabel(row.role)}</Badge>
                 </td>
                 <td>{row.createdByEmail ?? <span className="muted">—</span>}</td>
                 <td className="muted mono">{new Date(row.createdAt).toLocaleString()}</td>
@@ -218,7 +221,7 @@ export default function AccessControlPage() {
                       onClick={() => void toggleRole(row)}
                       disabled={busyId === row.id}
                     >
-                      {row.role === "admin" ? "Make expert" : "Make admin"}
+                      {row.role === "admin" ? t("makeExpert") : t("makeAdmin")}
                     </Button>
                     <Button
                       variant="ghost"
@@ -226,7 +229,7 @@ export default function AccessControlPage() {
                       onClick={() => void remove(row)}
                       disabled={busyId === row.id}
                     >
-                      Remove
+                      {t("remove")}
                     </Button>
                   </div>
                 </td>

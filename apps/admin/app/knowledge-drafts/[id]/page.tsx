@@ -8,7 +8,8 @@ import type { KnowledgeDraftDto, KnowledgeDraftStatusValue } from "@expertos/sha
 import { AdminFrame } from "../../../src/components/AdminFrame";
 import { useAuth } from "../../../src/lib/auth-context";
 import { draftAction, getDraft, updateDraft, type DraftAction } from "../../../src/lib/admin-client";
-import { draftStatusTone, statusLabel } from "../../../src/lib/status-tone";
+import { draftStatusTone } from "../../../src/lib/status-tone";
+import { useStatusLabel, useT } from "../../../src/lib/i18n";
 
 /** The lifecycle actions offered for a draft, given its current status. */
 function actionsFor(status: KnowledgeDraftStatusValue): DraftAction[] {
@@ -22,14 +23,17 @@ function actionsFor(status: KnowledgeDraftStatusValue): DraftAction[] {
   }
 }
 
-const ACTION_LABEL: Record<DraftAction, string> = {
-  submit: "Submit for review",
-  publish: "Publish",
-  "request-changes": "Request changes",
-  reject: "Reject",
+/** Action → dictionary key (`knowledgeDrafts.actions.*`), resolved via the translator at render. */
+const ACTION_LABEL_KEY: Record<DraftAction, string> = {
+  submit: "actions.submit",
+  publish: "actions.publish",
+  "request-changes": "actions.requestChanges",
+  reject: "actions.reject",
 };
 
 export default function DraftDetailPage() {
+  const t = useT("knowledgeDrafts");
+  const statusLabel = useStatusLabel();
   const params = useParams<{ id: string }>();
   const id = params.id;
   const { getIdToken } = useAuth();
@@ -50,14 +54,14 @@ export default function DraftDetailPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("errors.signIn"));
         return;
       }
       apply(await getDraft(token, id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load draft.");
+      setError(err instanceof Error ? err.message : t("errors.loadDraft"));
     }
-  }, [apply, getIdToken, id]);
+  }, [apply, getIdToken, id, t]);
 
   useEffect(() => {
     void load();
@@ -70,17 +74,17 @@ export default function DraftDetailPage() {
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to continue.");
+          setError(t("errors.signIn"));
           return;
         }
         apply(await fn(token));
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Action failed.");
+        setError(err instanceof Error ? err.message : t("errors.action"));
       } finally {
         setBusy(false);
       }
     },
-    [apply, getIdToken],
+    [apply, getIdToken, t],
   );
 
   const save = useCallback(
@@ -101,13 +105,13 @@ export default function DraftDetailPage() {
       <div className="pagehead">
         <div>
           <div className="eyebrow">
-            <Link href="/knowledge-drafts">← Drafts</Link>
+            <Link href="/knowledge-drafts">{t("detail.back")}</Link>
           </div>
-          <h1 className="h1">{draft?.title ?? "Draft"}</h1>
+          <h1 className="h1">{draft?.title ?? t("detail.fallbackTitle")}</h1>
           {draft != null && (
             <p className="muted mono">
               {draft.language}
-              {draft.conversationId ? " · from conversation" : ""}
+              {draft.conversationId ? t("detail.fromConversation") : ""}
             </p>
           )}
         </div>
@@ -120,7 +124,7 @@ export default function DraftDetailPage() {
 
       {draft != null && (
         <>
-          <Field label="Title" htmlFor="draft-title">
+          <Field label={t("detail.titleLabel")} htmlFor="draft-title">
             <Input
               id="draft-title"
               value={title}
@@ -128,7 +132,7 @@ export default function DraftDetailPage() {
               onChange={(e) => setTitle(e.target.value)}
             />
           </Field>
-          <Field label="Content" htmlFor="draft-content">
+          <Field label={t("detail.contentLabel")} htmlFor="draft-content">
             <Textarea
               id="draft-content"
               rows={14}
@@ -141,7 +145,7 @@ export default function DraftDetailPage() {
           <div className="row gap1">
             {editable && (
               <Button variant="subtle" disabled={busy || !dirty} onClick={() => void save()}>
-                Save changes
+                {t("detail.save")}
               </Button>
             )}
             {actionsFor(draft.status).map((action) => (
@@ -151,7 +155,7 @@ export default function DraftDetailPage() {
                 disabled={busy}
                 onClick={() => void act(action)}
               >
-                {ACTION_LABEL[action]}
+                {t(ACTION_LABEL_KEY[action])}
               </Button>
             ))}
           </div>

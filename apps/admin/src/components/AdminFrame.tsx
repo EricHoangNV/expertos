@@ -10,13 +10,16 @@ import {
   Button,
   Content,
   cx,
+  LOCALES,
   Shell,
   Topbar,
+  type Translator,
 } from "@expertos/ui";
 import type { User } from "firebase/auth";
 import type { Role } from "@expertos/shared";
 import { useAuth } from "../lib/auth-context";
 import { CAP, useNavCounts, type NavCounts } from "../lib/use-nav-counts";
+import { useLocale, useT } from "../lib/i18n";
 import "./admin-login.css";
 
 /**
@@ -29,9 +32,19 @@ type NavGroup = "OPERATE" | "MONETIZE" | "EXPERT PORTAL" | "ANALYTICS" | "SYSTEM
 
 const GROUP_ORDER: NavGroup[] = ["OPERATE", "MONETIZE", "EXPERT PORTAL", "ANALYTICS", "SYSTEM"];
 
+/** Maps each nav group to its `common.group.*` translation key (M13.3). */
+const GROUP_KEY: Record<NavGroup, string> = {
+  OPERATE: "group.operate",
+  MONETIZE: "group.monetize",
+  "EXPERT PORTAL": "group.expertPortal",
+  ANALYTICS: "group.analytics",
+  SYSTEM: "group.system",
+};
+
 interface NavItem {
   href: string;
-  label: string;
+  /** The item's `common.nav.*` translation key (M13.3) — surfaced in the nav and the breadcrumb. */
+  labelKey: string;
   /** Display section this item renders under. */
   group: NavGroup;
   /**
@@ -50,41 +63,41 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   // OPERATE — core operational content views.
-  { href: "/", label: "Dashboard", group: "OPERATE", role: "admin" },
-  { href: "/knowledge", label: "Knowledge", group: "OPERATE", role: "expert", badge: "knowledgeReview" },
-  { href: "/knowledge-drafts", label: "Conversation → Knowledge", group: "OPERATE", role: "expert" },
-  { href: "/answers", label: "AI answers", group: "OPERATE", role: "expert" },
-  { href: "/failed-queries", label: "Low-confidence queries", group: "OPERATE", role: "admin", badge: "failedQueries" },
+  { href: "/", labelKey: "nav.dashboard", group: "OPERATE", role: "admin" },
+  { href: "/knowledge", labelKey: "nav.knowledge", group: "OPERATE", role: "expert", badge: "knowledgeReview" },
+  { href: "/knowledge-drafts", labelKey: "nav.conversationKnowledge", group: "OPERATE", role: "expert" },
+  { href: "/answers", labelKey: "nav.aiAnswers", group: "OPERATE", role: "expert" },
+  { href: "/failed-queries", labelKey: "nav.lowConfidence", group: "OPERATE", role: "admin", badge: "failedQueries" },
   // MONETIZE — business / billing views.
-  { href: "/entitlements", label: "Plans & Entitlements", group: "MONETIZE", role: "admin" },
-  { href: "/revenue", label: "Revenue", group: "MONETIZE", role: "admin" },
-  { href: "/users", label: "Users & Subscriptions", group: "MONETIZE", role: "admin" },
-  { href: "/experts", label: "Experts", group: "MONETIZE", role: "admin" },
-  { href: "/recommendation-rules", label: "Funnel rules", group: "MONETIZE", role: "admin" },
+  { href: "/entitlements", labelKey: "nav.plansEntitlements", group: "MONETIZE", role: "admin" },
+  { href: "/revenue", labelKey: "nav.revenue", group: "MONETIZE", role: "admin" },
+  { href: "/users", labelKey: "nav.usersSubscriptions", group: "MONETIZE", role: "admin" },
+  { href: "/experts", labelKey: "nav.experts", group: "MONETIZE", role: "admin" },
+  { href: "/recommendation-rules", labelKey: "nav.funnelRules", group: "MONETIZE", role: "admin" },
   // EXPERT PORTAL — expert-scoped views.
-  { href: "/voice-profiles", label: "Voice profiles", group: "EXPERT PORTAL", role: "expert" },
-  { href: "/concierge-reviews", label: "Concierge queue", group: "EXPERT PORTAL", role: "expert", badge: "conciergeOpen" },
-  { href: "/conversions", label: "Conversions", group: "EXPERT PORTAL", role: "expert" },
+  { href: "/voice-profiles", labelKey: "nav.voiceProfiles", group: "EXPERT PORTAL", role: "expert" },
+  { href: "/concierge-reviews", labelKey: "nav.conciergeQueue", group: "EXPERT PORTAL", role: "expert", badge: "conciergeOpen" },
+  { href: "/conversions", labelKey: "nav.conversions", group: "EXPERT PORTAL", role: "expert" },
   // ANALYTICS — admin reporting.
-  { href: "/analytics", label: "Usage & cost", group: "ANALYTICS", role: "admin" },
-  { href: "/funnel", label: "Funnel", group: "ANALYTICS", role: "admin" },
-  { href: "/concierge-analytics", label: "Concierge ops", group: "ANALYTICS", role: "admin" },
-  { href: "/validation", label: "Validation", group: "ANALYTICS", role: "admin" },
+  { href: "/analytics", labelKey: "nav.usageCost", group: "ANALYTICS", role: "admin" },
+  { href: "/funnel", labelKey: "nav.funnel", group: "ANALYTICS", role: "admin" },
+  { href: "/concierge-analytics", labelKey: "nav.conciergeOps", group: "ANALYTICS", role: "admin" },
+  { href: "/validation", labelKey: "nav.validation", group: "ANALYTICS", role: "admin" },
   // SYSTEM — admin configuration & operations.
-  { href: "/concierge", label: "Concierge config", group: "SYSTEM", role: "admin" },
-  { href: "/reconcile", label: "Bookings", group: "SYSTEM", role: "admin" },
-  { href: "/retention", label: "Data retention", group: "SYSTEM", role: "admin" },
-  { href: "/access-control", label: "Access control", group: "SYSTEM", role: "admin" },
-  { href: "/audit", label: "Audit log", group: "SYSTEM", role: "admin" },
+  { href: "/concierge", labelKey: "nav.conciergeConfig", group: "SYSTEM", role: "admin" },
+  { href: "/reconcile", labelKey: "nav.bookings", group: "SYSTEM", role: "admin" },
+  { href: "/retention", labelKey: "nav.dataRetention", group: "SYSTEM", role: "admin" },
+  { href: "/access-control", labelKey: "nav.accessControl", group: "SYSTEM", role: "admin" },
+  { href: "/audit", labelKey: "nav.auditLog", group: "SYSTEM", role: "admin" },
 ];
 
-/** The current page's display name for the topbar breadcrumb (M13.1.4) — the active nav item's label. */
-function currentPageLabel(pathname: string): string {
-  if (pathname === "/") return "Dashboard";
+/** The active nav item's `common.nav.*` key for the topbar breadcrumb (M13.1.4), resolved by the caller. */
+function currentPageLabelKey(pathname: string): string {
+  if (pathname === "/") return "nav.dashboard";
   const item = NAV.find(
     (it) => it.href !== "/" && (pathname === it.href || pathname.startsWith(`${it.href}/`)),
   );
-  return item?.label ?? "Console";
+  return item?.labelKey ?? "nav.console";
 }
 
 function BellIcon() {
@@ -100,10 +113,12 @@ function NavLink({
   item,
   pathname,
   counts,
+  t,
 }: {
   item: NavItem;
   pathname: string;
   counts: NavCounts;
+  t: Translator;
 }) {
   // Root ("/") must match exactly so it doesn't light up for every nested route.
   const active =
@@ -115,7 +130,7 @@ function NavLink({
   const showBadge = count != null && count > 0;
   return (
     <Link href={item.href} className={cx("navitem", active && "active")}>
-      {item.label}
+      {t(item.labelKey)}
       {showBadge && <span className="tag">{count >= CAP ? `${CAP}+` : count}</span>}
     </Link>
   );
@@ -131,15 +146,17 @@ function SidebarFooter({
   user,
   role,
   onSignOut,
+  t,
 }: {
   user: User;
   role: Role | null;
   onSignOut: () => void;
+  t: Translator;
 }) {
   // Prefer the Google display name, fall back to the email local-part, then a neutral label.
-  const name = user.displayName?.trim() || user.email?.split("@")[0] || "You";
+  const name = user.displayName?.trim() || user.email?.split("@")[0] || t("fallbackName");
   const seed = user.email ?? user.uid;
-  const roleLabel = `${role === "admin" ? "Admin" : "Expert"} · ExpertOS`;
+  const roleLabel = role === "admin" ? t("roleLabelAdmin") : t("roleLabelExpert");
   return (
     <div className="side-foot">
       <div className="side-user">
@@ -152,7 +169,7 @@ function SidebarFooter({
         </div>
       </div>
       <Button variant="ghost" size="sm" onClick={onSignOut}>
-        Sign out
+        {t("signOut")}
       </Button>
     </div>
   );
@@ -164,12 +181,14 @@ function Sidebar({
   counts,
   user,
   onSignOut,
+  t,
 }: {
   pathname: string;
   role: Role | null;
   counts: NavCounts;
   user: User;
   onSignOut: () => void;
+  t: Translator;
 }) {
   // Admin items appear only for a resolved admin; everyone else sees the expert subset (the API
   // is the real gate, so this just keeps the nav honest about what the signed-in user can open).
@@ -179,7 +198,7 @@ function Sidebar({
       <div className="brand">
         <div className="logo">
           <span className="expert">Expert</span>
-          <span className="sub">OS · {role === "admin" ? "Admin" : "Expert"}</span>
+          <span className="sub">{role === "admin" ? t("brandSuffixAdmin") : t("brandSuffixExpert")}</span>
         </div>
       </div>
       {GROUP_ORDER.map((group) => {
@@ -187,15 +206,39 @@ function Sidebar({
         if (items.length === 0) return null;
         return (
           <div key={group}>
-            <div className="navgroup">{group}</div>
+            <div className="navgroup">{t(GROUP_KEY[group])}</div>
             {items.map((item) => (
-              <NavLink key={item.href} item={item} pathname={pathname} counts={counts} />
+              <NavLink key={item.href} item={item} pathname={pathname} counts={counts} t={t} />
             ))}
           </div>
         );
       })}
-      <SidebarFooter user={user} role={role} onSignOut={onSignOut} />
+      <SidebarFooter user={user} role={role} onSignOut={onSignOut} t={t} />
     </>
+  );
+}
+
+/**
+ * EN/VI language switcher (M13.3) — a `.seg` segmented control in the topbar, mirroring the consumer
+ * web app's toggle. Persists through {@link useLocale} (localStorage + `PATCH /me/locale`).
+ */
+function LanguageToggle() {
+  const { locale, setLocale } = useLocale();
+  const t = useT("common");
+  return (
+    <div className="seg" role="group" aria-label={t("language")}>
+      {LOCALES.map((l) => (
+        <button
+          key={l}
+          type="button"
+          className={cx(locale === l && "active")}
+          aria-pressed={locale === l}
+          onClick={() => setLocale(l)}
+        >
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -219,36 +262,27 @@ function GoogleIcon() {
  * to sign out and try a different account.
  */
 function AccessDenied({ onSignOut }: { onSignOut: () => void }) {
+  const t = useT("common");
   return (
     <main className="card card-pad" style={{ maxWidth: "32rem", margin: "4rem auto" }}>
-      <div className="eyebrow">Access control</div>
-      <h1 className="h2">Access denied</h1>
-      <p className="muted">
-        Your email is not authorized to access the admin portal. Contact an administrator to request
-        access.
-      </p>
+      <div className="eyebrow">{t("denied.eyebrow")}</div>
+      <h1 className="h2">{t("denied.title")}</h1>
+      <p className="muted">{t("denied.body")}</p>
       <Button variant="ghost" onClick={onSignOut}>
-        Sign out
+        {t("signOut")}
       </Button>
     </main>
   );
 }
 
 const ROLES = [
-  {
-    id: "admin" as const,
-    name: "Admin",
-    desc: "Knowledge, plans, revenue, users",
-  },
-  {
-    id: "expert" as const,
-    name: "Expert",
-    desc: "Voice approval, concierge review, conversions",
-  },
+  { id: "admin" as const, nameKey: "login.roleAdminName", descKey: "login.roleAdminDesc" },
+  { id: "expert" as const, nameKey: "login.roleExpertName", descKey: "login.roleExpertDesc" },
 ];
 
 function AdminLogin({ onSignIn }: { onSignIn: () => Promise<void> }) {
   const [selectedRole, setSelectedRole] = useState<"admin" | "expert">("admin");
+  const t = useT("common");
 
   return (
     <div className="admin-login">
@@ -256,12 +290,12 @@ function AdminLogin({ onSignIn }: { onSignIn: () => Promise<void> }) {
         <div className="admin-login-header">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/ExpertOS.png" alt="ExpertOS" className="admin-login-logo" />
-          <Badge tone="ink">Console</Badge>
+          <Badge tone="ink">{t("login.badge")}</Badge>
         </div>
 
-        <h1 className="admin-login-title">Sign in to the console</h1>
+        <h1 className="admin-login-title">{t("login.title")}</h1>
 
-        <div className="label">I&apos;m signing in as</div>
+        <div className="label">{t("login.prompt")}</div>
 
         <div className="admin-login-roles">
           {ROLES.map((r) => (
@@ -272,8 +306,8 @@ function AdminLogin({ onSignIn }: { onSignIn: () => Promise<void> }) {
             >
               <div className="admin-login-role-radio" />
               <div className="admin-login-role-body">
-                <div className="admin-login-role-name">{r.name}</div>
-                <div className="admin-login-role-desc">{r.desc}</div>
+                <div className="admin-login-role-name">{t(r.nameKey)}</div>
+                <div className="admin-login-role-desc">{t(r.descKey)}</div>
               </div>
             </div>
           ))}
@@ -286,7 +320,7 @@ function AdminLogin({ onSignIn }: { onSignIn: () => Promise<void> }) {
           onClick={() => void onSignIn()}
         >
           <GoogleIcon />
-          Continue with Google
+          {t("login.continueGoogle")}
         </button>
 
       </div>
@@ -305,11 +339,12 @@ export function AdminFrame({ children }: { children: ReactNode }) {
   const { user, role, denied, loading, signInWithGoogle, signOutUser, getIdToken } = useAuth();
   const pathname = usePathname();
   const counts = useNavCounts(user && !denied ? role : null, getIdToken);
+  const t = useT("common");
 
   if (loading) {
     return (
       <main className="card card-pad">
-        <Badge tone="info">Loading…</Badge>
+        <Badge tone="info">{t("loading")}</Badge>
       </main>
     );
   }
@@ -332,23 +367,25 @@ export function AdminFrame({ children }: { children: ReactNode }) {
           counts={counts}
           user={user}
           onSignOut={() => void signOutUser()}
+          t={t}
         />
       }
     >
       <Topbar>
         {/* Breadcrumb (M13.1.4): "ADMIN › Page" / "EXPERT PORTAL › Page", role-aware prefix. */}
         <div className="crumb grow">
-          <span className="label">{role === "admin" ? "Admin" : "Expert Portal"}</span>
+          <span className="label">{role === "admin" ? t("breadcrumbAdmin") : t("breadcrumbExpert")}</span>
           <span className="crumb-sep" aria-hidden>
             ›
           </span>
-          <span className="crumb-page">{currentPageLabel(pathname)}</span>
+          <span className="crumb-page">{t(currentPageLabelKey(pathname))}</span>
         </div>
         {/* Role badge: which view the signed-in user is in (the API enforces the real boundary). */}
         <Badge tone={role === "admin" ? "red" : "amber"}>
-          {role === "admin" ? "Admin view" : "Expert view"}
+          {role === "admin" ? t("adminView") : t("expertView")}
         </Badge>
-        <button type="button" className="btn btn-icon btn-subtle" aria-label="Notifications">
+        <LanguageToggle />
+        <button type="button" className="btn btn-icon btn-subtle" aria-label={t("notifications")}>
           <BellIcon />
         </button>
       </Topbar>

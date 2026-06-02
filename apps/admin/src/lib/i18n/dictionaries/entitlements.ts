@@ -1,0 +1,106 @@
+import type { Messages } from "@expertos/ui";
+
+/** Plans & entitlements matrix (M13.3): header, publish controls, matrix cells, footer cards. */
+export const en = {
+  eyebrow: "Configuration, not code",
+  title: "Plan & entitlement matrix",
+  lede: "This table is the free-vs-paid definition. Edit a cell, hit publish — no deploy. One guard ({guard}) reads it everywhere.",
+  discardChanges: "Discard changes",
+  publishChanges: "Publish changes",
+  publishing: "Publishing…",
+  publishCountOne: "Publish {count} change",
+  publishCountOther: "Publish {count} changes",
+  publishedOne: "Published {count} change.",
+  publishedOther: "Published {count} changes.",
+  signInError: "Please sign in to continue.",
+  loadError: "Failed to load the entitlement matrix.",
+  saveFailed: "Save failed.",
+  limitsError: "Limits must be whole numbers ≥ 0.",
+  colFeature: "Feature",
+  planInactive: " (inactive)",
+  freePrice: "$0",
+  type: {
+    metered: "metered",
+    boolean: "boolean",
+  },
+  cell: {
+    granted: "Granted",
+    included: "Included",
+    off: "Off",
+    unlimited: "Unlimited",
+    hardLimitAria: "{feature} hard limit",
+    windowAria: "{feature} window",
+    softLimitAria: "{feature} soft limit",
+    windowPlaceholder: "window…",
+    softLabel: "soft",
+    softPlaceholder: "none",
+    unsaved: "Unsaved",
+  },
+  window: {
+    day: "/day",
+    week: "/week",
+    month: "/month",
+  },
+  foot: {
+    fairUse: "Fair use",
+    fairUseTitle: "Premium never hard-stops",
+    fairUseBody:
+      "Past the soft cap, the guard returns the answer on a lighter model instead of a 402 — degrade, don't block. A hard limit is the only true wall.",
+    quotaCells: "Quota cells",
+    quotaCellsTitle: "Numbers calibrated to unit economics",
+    quotaCellsBody:
+      "Open Decision #4 set cost-per-answer vs price before these quotas locked (M6.5). A metered cell needs a window; a soft limit must sit below the hard limit to fire.",
+  },
+} satisfies Messages;
+
+export const vi = {
+  eyebrow: "Cấu hình, không phải mã nguồn",
+  title: "Ma trận gói & quyền lợi",
+  lede: "Bảng này là định nghĩa miễn phí so với trả phí. Sửa một ô, nhấn xuất bản — không cần triển khai. Một bộ bảo vệ duy nhất ({guard}) đọc bảng này ở khắp nơi.",
+  discardChanges: "Hủy thay đổi",
+  publishChanges: "Xuất bản thay đổi",
+  publishing: "Đang xuất bản…",
+  publishCountOne: "Xuất bản {count} thay đổi",
+  publishCountOther: "Xuất bản {count} thay đổi",
+  publishedOne: "Đã xuất bản {count} thay đổi.",
+  publishedOther: "Đã xuất bản {count} thay đổi.",
+  signInError: "Vui lòng đăng nhập để tiếp tục.",
+  loadError: "Không thể tải ma trận quyền lợi.",
+  saveFailed: "Lưu thất bại.",
+  limitsError: "Giới hạn phải là số nguyên ≥ 0.",
+  colFeature: "Tính năng",
+  planInactive: " (không hoạt động)",
+  freePrice: "0₫",
+  type: {
+    metered: "đo lường",
+    boolean: "bật/tắt",
+  },
+  cell: {
+    granted: "Đã cấp",
+    included: "Bao gồm",
+    off: "Tắt",
+    unlimited: "Không giới hạn",
+    hardLimitAria: "Giới hạn cứng {feature}",
+    windowAria: "Khung thời gian {feature}",
+    softLimitAria: "Giới hạn mềm {feature}",
+    windowPlaceholder: "khung thời gian…",
+    softLabel: "mềm",
+    softPlaceholder: "không",
+    unsaved: "Chưa lưu",
+  },
+  window: {
+    day: "/ngày",
+    week: "/tuần",
+    month: "/tháng",
+  },
+  foot: {
+    fairUse: "Sử dụng hợp lý",
+    fairUseTitle: "Gói Premium không bao giờ chặn cứng",
+    fairUseBody:
+      "Vượt ngưỡng mềm, bộ bảo vệ trả lời bằng mô hình nhẹ hơn thay vì lỗi 402 — giảm chất lượng, không chặn. Chỉ giới hạn cứng mới là bức tường thực sự.",
+    quotaCells: "Ô hạn mức",
+    quotaCellsTitle: "Các con số được hiệu chỉnh theo kinh tế đơn vị",
+    quotaCellsBody:
+      "Quyết định mở #4 đã đặt chi phí mỗi câu trả lời so với giá trước khi khóa các hạn mức này (M6.5). Ô đo lường cần một khung thời gian; giới hạn mềm phải thấp hơn giới hạn cứng thì mới kích hoạt.",
+  },
+} satisfies Messages;

@@ -8,7 +8,8 @@ import type { KnowledgeDocumentDetailDto, KnowledgeVersionDto } from "@expertos/
 import { AdminFrame } from "../../../src/components/AdminFrame";
 import { useAuth } from "../../../src/lib/auth-context";
 import { versionAction, getDocument, type VersionAction } from "../../../src/lib/admin-client";
-import { publishStatusTone, statusLabel } from "../../../src/lib/status-tone";
+import { publishStatusTone } from "../../../src/lib/status-tone";
+import { useStatusLabel, useT } from "../../../src/lib/i18n";
 
 /** The lifecycle actions offered for a version, given its current status. */
 function actionsFor(version: KnowledgeVersionDto): VersionAction[] {
@@ -24,14 +25,17 @@ function actionsFor(version: KnowledgeVersionDto): VersionAction[] {
   }
 }
 
-const ACTION_LABEL: Record<VersionAction, string> = {
-  submit: "Submit for review",
-  approve: "Approve & publish",
-  "request-changes": "Request changes",
-  archive: "Archive",
+/** Action → dictionary key (`knowledge.detail.actions.*`), resolved via the translator at render. */
+const ACTION_LABEL_KEY: Record<VersionAction, string> = {
+  submit: "detail.actions.submit",
+  approve: "detail.actions.approve",
+  "request-changes": "detail.actions.requestChanges",
+  archive: "detail.actions.archive",
 };
 
 export default function KnowledgeDetailPage() {
+  const t = useT("knowledge");
+  const statusLabel = useStatusLabel();
   const params = useParams<{ id: string }>();
   const id = params.id;
   const { getIdToken } = useAuth();
@@ -44,14 +48,14 @@ export default function KnowledgeDetailPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("errors.signIn"));
         return;
       }
       setDoc(await getDocument(token, id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load document.");
+      setError(err instanceof Error ? err.message : t("errors.loadDocument"));
     }
-  }, [getIdToken, id]);
+  }, [getIdToken, id, t]);
 
   useEffect(() => {
     void load();
@@ -64,18 +68,18 @@ export default function KnowledgeDetailPage() {
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to continue.");
+          setError(t("errors.signIn"));
           return;
         }
         await versionAction(token, versionId, action);
         await load();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Action failed.");
+        setError(err instanceof Error ? err.message : t("errors.action"));
       } finally {
         setBusy(false);
       }
     },
-    [getIdToken, load],
+    [getIdToken, load, t],
   );
 
   return (
@@ -83,13 +87,15 @@ export default function KnowledgeDetailPage() {
       <div className="pagehead">
         <div>
           <div className="eyebrow">
-            <Link href="/knowledge">← Knowledge</Link>
+            <Link href="/knowledge">{t("detail.back")}</Link>
           </div>
-          <h1 className="h1">{doc?.title ?? "Document"}</h1>
+          <h1 className="h1">{doc?.title ?? t("detail.fallbackTitle")}</h1>
           {doc != null && (
             <p className="muted mono">
-              {doc.scope} · {doc.language} · {doc.versionCount} version
-              {doc.versionCount === 1 ? "" : "s"}
+              {doc.scope} · {doc.language} ·{" "}
+              {doc.versionCount === 1
+                ? t("detail.versionCountOne", { count: doc.versionCount })
+                : t("detail.versionCountMany", { count: doc.versionCount })}
             </p>
           )}
         </div>
@@ -104,12 +110,12 @@ export default function KnowledgeDetailPage() {
         <Table>
           <thead>
             <tr>
-              <th>Version</th>
-              <th>Status</th>
-              <th>Chunks</th>
-              <th>Change summary</th>
-              <th>Created</th>
-              <th>Actions</th>
+              <th>{t("detail.colVersion")}</th>
+              <th>{t("detail.colStatus")}</th>
+              <th>{t("detail.colChunks")}</th>
+              <th>{t("detail.colChangeSummary")}</th>
+              <th>{t("detail.colCreated")}</th>
+              <th>{t("detail.colActions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -120,7 +126,7 @@ export default function KnowledgeDetailPage() {
                   {version.isPublished && (
                     <>
                       {" "}
-                      <Badge tone="green">live</Badge>
+                      <Badge tone="green">{t("detail.live")}</Badge>
                     </>
                   )}
                 </td>
@@ -130,7 +136,7 @@ export default function KnowledgeDetailPage() {
                   </Badge>
                 </td>
                 <td>{version.chunkCount}</td>
-                <td className="muted">{version.changeSummary ?? "—"}</td>
+                <td className="muted">{version.changeSummary ?? t("detail.noSummary")}</td>
                 <td className="muted">{new Date(version.createdAt).toLocaleDateString()}</td>
                 <td>
                   <div className="row gap1">
@@ -142,7 +148,7 @@ export default function KnowledgeDetailPage() {
                         disabled={busy}
                         onClick={() => void act(version.id, action)}
                       >
-                        {ACTION_LABEL[action]}
+                        {t(ACTION_LABEL_KEY[action])}
                       </Button>
                     ))}
                   </div>

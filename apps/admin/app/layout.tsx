@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import "@expertos/ui/ds.css";
 import { AuthProvider } from "../src/lib/auth-context";
+import { LocaleProvider } from "../src/lib/i18n";
 
 export const metadata = {
   title: "ExpertOS · Admin",
@@ -11,7 +12,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <LocaleProvider>{children}</LocaleProvider>
+        </AuthProvider>
       </body>
     </html>
   );

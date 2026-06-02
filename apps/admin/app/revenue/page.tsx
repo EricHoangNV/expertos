@@ -5,6 +5,7 @@ import { Badge, Stat, Table, Field, Select } from "@expertos/ui";
 import type { RevenueReportDto } from "@expertos/shared";
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
+import { useT } from "../../src/lib/i18n";
 import { getRevenueReport } from "../../src/lib/admin-client";
 
 /** Trailing-window options the dashboard offers. */
@@ -24,6 +25,7 @@ function usdFromMicros(micros: number): string {
 }
 
 export default function RevenuePage() {
+  const t = useT("revenue");
   const { getIdToken } = useAuth();
   const [months, setMonths] = useState<number>(12);
   const [report, setReport] = useState<RevenueReportDto | null>(null);
@@ -35,14 +37,14 @@ export default function RevenuePage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("errorSignIn"));
         return;
       }
       setReport(await getRevenueReport(token, months));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load revenue report.");
+      setError(err instanceof Error ? err.message : t("errorLoad"));
     }
-  }, [getIdToken, months]);
+  }, [getIdToken, months, t]);
 
   useEffect(() => {
     void load();
@@ -52,14 +54,14 @@ export default function RevenuePage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Revenue</div>
-          <h1 className="h1">Revenue report</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
         </div>
-        <Field label="Window">
+        <Field label={t("window")}>
           <Select value={months} onChange={(e) => setMonths(Number(e.target.value))}>
             {MONTH_OPTIONS.map((m) => (
               <option key={m} value={m}>
-                Last {m} months
+                {t("windowOption", { months: m })}
               </option>
             ))}
           </Select>
@@ -71,27 +73,27 @@ export default function RevenuePage() {
       {report != null && (
         <>
           <div className="row gap1">
-            <Stat label="MRR" value={usd(report.mrrCents)} />
-            <Stat label="Active subscribers" value={report.activeSubscriptions} />
-            <Stat label={`Net revenue · ${months}mo`} value={usd(report.netCents)} />
-            <Stat label={`AI cost · ${months}mo`} value={usdFromMicros(report.aiCostMicros)} />
+            <Stat label={t("mrr")} value={usd(report.mrrCents)} />
+            <Stat label={t("activeSubscribers")} value={report.activeSubscriptions} />
+            <Stat label={t("netRevenue", { months })} value={usd(report.netCents)} />
+            <Stat label={t("aiCost", { months })} value={usdFromMicros(report.aiCostMicros)} />
             <Stat
-              label={`Gross margin · ${months}mo`}
+              label={t("grossMargin", { months })}
               value={usd(report.marginCents)}
               trend={report.marginCents >= 0 ? "up" : "down"}
             />
           </div>
 
-          <h3 className="h3">By plan</h3>
+          <h3 className="h3">{t("byPlan")}</h3>
           {report.byPlan.length === 0 ? (
-            <p className="muted">No active subscriptions.</p>
+            <p className="muted">{t("noSubscriptions")}</p>
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <th>Plan</th>
-                  <th>Active subscribers</th>
-                  <th>MRR</th>
+                  <th>{t("colPlan")}</th>
+                  <th>{t("colActiveSubscribers")}</th>
+                  <th>{t("colMrr")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -106,18 +108,18 @@ export default function RevenuePage() {
             </Table>
           )}
 
-          <h3 className="h3">By month</h3>
+          <h3 className="h3">{t("byMonth")}</h3>
           {report.periods.length === 0 ? (
-            <p className="muted">No ledger activity in this window.</p>
+            <p className="muted">{t("noLedgerActivity")}</p>
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <th>Month</th>
-                  <th>Gross</th>
-                  <th>Refunds</th>
-                  <th>Net</th>
-                  <th>Transactions</th>
+                  <th>{t("colMonth")}</th>
+                  <th>{t("colGross")}</th>
+                  <th>{t("colRefunds")}</th>
+                  <th>{t("colNet")}</th>
+                  <th>{t("colTransactions")}</th>
                 </tr>
               </thead>
               <tbody>

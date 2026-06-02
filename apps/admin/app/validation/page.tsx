@@ -5,6 +5,7 @@ import { Badge, Field, Select, Stat } from "@expertos/ui";
 import type { ValidationAnalyticsDto } from "@expertos/shared";
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
+import { useT } from "../../src/lib/i18n";
 import { getValidationAnalytics } from "../../src/lib/admin-client";
 
 /** Trailing-window options the dashboard offers, in days (matches the other analytics dashboards). */
@@ -32,6 +33,7 @@ function usd(cents: number): string {
  */
 export default function ValidationPage() {
   const { getIdToken } = useAuth();
+  const t = useT("validation");
   const [days, setDays] = useState<number>(30);
   const [report, setReport] = useState<ValidationAnalyticsDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,14 +44,14 @@ export default function ValidationPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("errorSignIn"));
         return;
       }
       setReport(await getValidationAnalytics(token, days));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load validation analytics.");
+      setError(err instanceof Error ? err.message : t("errorLoad"));
     }
-  }, [getIdToken, days]);
+  }, [getIdToken, days, t]);
 
   useEffect(() => {
     void load();
@@ -59,96 +61,92 @@ export default function ValidationPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Analytics</div>
-          <h1 className="h1">Validation scorecard</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("heading")}</h1>
         </div>
-        <Field label="Window">
+        <Field label={t("windowLabel")}>
           <Select value={days} onChange={(e) => setDays(Number(e.target.value))}>
             {DAY_OPTIONS.map((d) => (
               <option key={d} value={d}>
-                Last {d} days
+                {t("windowOption", { days: d })}
               </option>
             ))}
           </Select>
         </Field>
       </div>
-      <p className="muted">
-        The core go/no-go signals — activation, engagement, willingness to pay, and funnel conversion.
-        Raw numbers only: targets are set post-launch once real usage exists. Willingness-to-pay is
-        cumulative (current platform state); the rest cover the selected window.
-      </p>
+      <p className="muted">{t("intro")}</p>
 
       {error != null && <Badge tone="red">{error}</Badge>}
 
       {report != null && (
         <>
-          <h3 className="h3">Activation</h3>
-          <p className="muted">New users reaching a cited answer within 24h of signing up.</p>
+          <h3 className="h3">{t("activationHeading")}</h3>
+          <p className="muted">{t("activationDescription")}</p>
           <div className="row gap1">
             <Stat
-              label={`Activation rate · ${days}d`}
+              label={t("activationRate", { days })}
               value={pct(report.activation.activationRate)}
-              delta={`${count(report.activation.activatedUsers)} of ${count(
-                report.activation.newUsers,
-              )} new users`}
+              delta={t("activationDelta", {
+                activated: count(report.activation.activatedUsers),
+                total: count(report.activation.newUsers),
+              })}
             />
-            <Stat label={`New users · ${days}d`} value={count(report.activation.newUsers)} />
-            <Stat label={`Activated · ${days}d`} value={count(report.activation.activatedUsers)} />
+            <Stat label={t("newUsers", { days })} value={count(report.activation.newUsers)} />
+            <Stat label={t("activated", { days })} value={count(report.activation.activatedUsers)} />
           </div>
 
-          <h3 className="h3">Engagement</h3>
-          <p className="muted">
-            Questions asked, and whether the new cohort comes back 1–7 days after signup.
-          </p>
+          <h3 className="h3">{t("engagementHeading")}</h3>
+          <p className="muted">{t("engagementDescription")}</p>
           <div className="row gap1">
             <Stat
-              label={`Return rate · ${days}d`}
+              label={t("returnRate", { days })}
               value={pct(report.engagement.returnRate)}
-              delta={`${count(report.engagement.returnedUsers)} of ${count(
-                report.activation.newUsers,
-              )} new users returned`}
+              delta={t("returnDelta", {
+                returned: count(report.engagement.returnedUsers),
+                total: count(report.activation.newUsers),
+              })}
             />
-            <Stat label={`Active users · ${days}d`} value={count(report.engagement.activeUsers)} />
-            <Stat label={`Questions · ${days}d`} value={count(report.engagement.totalQuestions)} />
+            <Stat label={t("activeUsers", { days })} value={count(report.engagement.activeUsers)} />
+            <Stat label={t("questions", { days })} value={count(report.engagement.totalQuestions)} />
             <Stat
-              label="Median questions / active user"
+              label={t("medianQuestions")}
               value={report.engagement.medianQuestionsPerActiveUser.toLocaleString("en-US")}
             />
           </div>
 
-          <h3 className="h3">Willingness to pay</h3>
-          <p className="muted">Cumulative — paying subscribers against all users (current state).</p>
+          <h3 className="h3">{t("wtpHeading")}</h3>
+          <p className="muted">{t("wtpDescription")}</p>
           <div className="row gap1">
             <Stat
-              label="Free → paid"
+              label={t("freeToPaid")}
               value={pct(report.willingnessToPay.freeToPaidRate)}
-              delta={`${count(report.willingnessToPay.payingUsers)} of ${count(
-                report.willingnessToPay.totalUsers,
-              )} users`}
+              delta={t("wtpDelta", {
+                paying: count(report.willingnessToPay.payingUsers),
+                total: count(report.willingnessToPay.totalUsers),
+              })}
             />
-            <Stat label="Paying users" value={count(report.willingnessToPay.payingUsers)} />
-            <Stat label="Trialing users" value={count(report.willingnessToPay.trialingUsers)} />
-            <Stat label="Total users" value={count(report.willingnessToPay.totalUsers)} />
+            <Stat label={t("payingUsers")} value={count(report.willingnessToPay.payingUsers)} />
+            <Stat label={t("trialingUsers")} value={count(report.willingnessToPay.trialingUsers)} />
+            <Stat label={t("totalUsers")} value={count(report.willingnessToPay.totalUsers)} />
           </div>
 
-          <h3 className="h3">Funnel conversion</h3>
-          <p className="muted">
-            In-chat recommendation → booked consultation, and booked revenue per buyer.
-          </p>
+          <h3 className="h3">{t("funnelHeading")}</h3>
+          <p className="muted">{t("funnelDescription")}</p>
           <div className="row gap1">
             <Stat
-              label={`Recommendation → booking · ${days}d`}
+              label={t("recommendationToBooking", { days })}
               value={pct(report.funnel.recommendationToBookingRate)}
-              delta={`${count(report.funnel.bookings)} of ${count(
-                report.funnel.recommendations,
-              )} recommendations`}
+              delta={t("funnelDelta", {
+                bookings: count(report.funnel.bookings),
+                recommendations: count(report.funnel.recommendations),
+              })}
             />
-            <Stat label={`Bookings · ${days}d`} value={count(report.funnel.bookings)} />
-            <Stat label={`Booked revenue · ${days}d`} value={usd(report.funnel.bookedRevenueCents)} />
+            <Stat label={t("bookings", { days })} value={count(report.funnel.bookings)} />
+            <Stat label={t("bookedRevenue", { days })} value={usd(report.funnel.bookedRevenueCents)} />
             <Stat
-              label="Revenue / buyer"
+              label={t("revenuePerBuyer")}
               value={usd(report.funnel.revenuePerBookingUserCents)}
-              delta={`${count(report.funnel.bookingUsers)} buyers`}
+              delta={t("revenuePerBuyerDelta", { buyers: count(report.funnel.bookingUsers) })}
             />
           </div>
         </>

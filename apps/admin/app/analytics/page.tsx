@@ -5,6 +5,7 @@ import { Badge, Stat, Table, Field, Select } from "@expertos/ui";
 import type { UsageAnalyticsDto } from "@expertos/shared";
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
+import { useT } from "../../src/lib/i18n";
 import { getUsageAnalytics } from "../../src/lib/admin-client";
 
 /** Trailing-window options the dashboard offers, in days. */
@@ -26,6 +27,7 @@ function count(n: number): string {
 }
 
 export default function AnalyticsPage() {
+  const t = useT("analytics");
   const { getIdToken } = useAuth();
   const [days, setDays] = useState<number>(30);
   const [report, setReport] = useState<UsageAnalyticsDto | null>(null);
@@ -37,14 +39,14 @@ export default function AnalyticsPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("errorSignIn"));
         return;
       }
       setReport(await getUsageAnalytics(token, days));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load usage analytics.");
+      setError(err instanceof Error ? err.message : t("errorLoad"));
     }
-  }, [getIdToken, days]);
+  }, [getIdToken, days, t]);
 
   useEffect(() => {
     void load();
@@ -54,14 +56,14 @@ export default function AnalyticsPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Analytics</div>
-          <h1 className="h1">Usage &amp; cost</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
         </div>
-        <Field label="Window">
+        <Field label={t("window")}>
           <Select value={days} onChange={(e) => setDays(Number(e.target.value))}>
             {DAY_OPTIONS.map((d) => (
               <option key={d} value={d}>
-                Last {d} days
+                {t("windowOption", { days: d })}
               </option>
             ))}
           </Select>
@@ -73,25 +75,25 @@ export default function AnalyticsPage() {
       {report != null && (
         <>
           <div className="row gap1">
-            <Stat label={`AI events · ${days}d`} value={count(report.totalEvents)} />
-            <Stat label={`Active users · ${days}d`} value={count(report.activeUsers)} />
-            <Stat label={`Prompt tokens · ${days}d`} value={count(report.promptTokens)} />
-            <Stat label={`Completion tokens · ${days}d`} value={count(report.completionTokens)} />
-            <Stat label={`AI cost · ${days}d`} value={usdFromMicros(report.totalCostMicros)} />
+            <Stat label={t("aiEvents", { days })} value={count(report.totalEvents)} />
+            <Stat label={t("activeUsers", { days })} value={count(report.activeUsers)} />
+            <Stat label={t("promptTokens", { days })} value={count(report.promptTokens)} />
+            <Stat label={t("completionTokens", { days })} value={count(report.completionTokens)} />
+            <Stat label={t("aiCost", { days })} value={usdFromMicros(report.totalCostMicros)} />
           </div>
 
-          <h3 className="h3">By feature</h3>
+          <h3 className="h3">{t("byFeature")}</h3>
           {report.byFeature.length === 0 ? (
-            <p className="muted">No usage in this window.</p>
+            <p className="muted">{t("noUsage")}</p>
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <th>Feature</th>
-                  <th>Events</th>
-                  <th>Prompt tokens</th>
-                  <th>Completion tokens</th>
-                  <th>Cost</th>
+                  <th>{t("colFeature")}</th>
+                  <th>{t("colEvents")}</th>
+                  <th>{t("colPromptTokens")}</th>
+                  <th>{t("colCompletionTokens")}</th>
+                  <th>{t("colCost")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -108,18 +110,18 @@ export default function AnalyticsPage() {
             </Table>
           )}
 
-          <h3 className="h3">By model</h3>
+          <h3 className="h3">{t("byModel")}</h3>
           {report.byModel.length === 0 ? (
-            <p className="muted">No usage in this window.</p>
+            <p className="muted">{t("noUsage")}</p>
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <th>Model</th>
-                  <th>Events</th>
-                  <th>Prompt tokens</th>
-                  <th>Completion tokens</th>
-                  <th>Cost</th>
+                  <th>{t("colModel")}</th>
+                  <th>{t("colEvents")}</th>
+                  <th>{t("colPromptTokens")}</th>
+                  <th>{t("colCompletionTokens")}</th>
+                  <th>{t("colCost")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -136,17 +138,17 @@ export default function AnalyticsPage() {
             </Table>
           )}
 
-          <h3 className="h3">By day</h3>
+          <h3 className="h3">{t("byDay")}</h3>
           {report.periods.length === 0 ? (
-            <p className="muted">No usage in this window.</p>
+            <p className="muted">{t("noUsage")}</p>
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <th>Day</th>
-                  <th>Events</th>
-                  <th>Active users</th>
-                  <th>Cost</th>
+                  <th>{t("colDay")}</th>
+                  <th>{t("colEvents")}</th>
+                  <th>{t("colActiveUsers")}</th>
+                  <th>{t("colCost")}</th>
                 </tr>
               </thead>
               <tbody>

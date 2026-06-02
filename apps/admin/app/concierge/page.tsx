@@ -6,6 +6,7 @@ import type { ReviewConfigDto, ReviewConfigUpdateInput } from "@expertos/shared"
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
 import { getConciergeConfig, updateConciergeConfig } from "../../src/lib/admin-client";
+import { useT } from "../../src/lib/i18n";
 
 /**
  * The mode shown in the editor's dropdown. Off is the absence of a trigger; the two on-states map to
@@ -14,12 +15,11 @@ import { getConciergeConfig, updateConciergeConfig } from "../../src/lib/admin-c
  */
 type ConciergeMode = "off" | "user_prompted" | "auto_silent";
 
-const MODE_HELP: Record<ConciergeMode, string> = {
-  off: "No human-review trigger. Low-confidence answers are delivered as-is.",
-  user_prompted:
-    "Mode A — the chat offers “would you like our team to review this?” and the user opts in.",
-  auto_silent:
-    "Mode B — the user sees a normal AI answer while it is quietly queued for human review.",
+/** Maps each editor mode to its `modeHelp` dictionary key. */
+const MODE_HELP_KEY: Record<ConciergeMode, string> = {
+  off: "modeHelp.off",
+  user_prompted: "modeHelp.userPrompted",
+  auto_silent: "modeHelp.autoSilent",
 };
 
 /** Collapse the DTO's enabled+triggerMode into the single editor mode. */
@@ -46,6 +46,7 @@ function parseThreshold(raw: string): number | undefined {
 }
 
 export default function ConciergePage() {
+  const t = useT("concierge");
   const { getIdToken } = useAuth();
   const [config, setConfig] = useState<ReviewConfigDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,14 +57,14 @@ export default function ConciergePage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("signInRequired"));
         return;
       }
       setConfig(await getConciergeConfig(token));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load the concierge config.");
+      setError(err instanceof Error ? err.message : t("loadFailed"));
     }
-  }, [getIdToken]);
+  }, [getIdToken, t]);
 
   useEffect(() => {
     void load();
@@ -73,12 +74,9 @@ export default function ConciergePage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Concierge mode</div>
-          <h1 className="h1">Human-review trigger</h1>
-          <p className="muted">
-            When the AI is low-confidence, a human expert can step in. Changes take effect on the next
-            chat turn — no deploy.
-          </p>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
+          <p className="muted">{t("subtitle")}</p>
         </div>
       </div>
 
@@ -103,6 +101,7 @@ interface ConfigEditorProps {
  * gate). Saving posts the whole config; range errors are surfaced inline.
  */
 function ConfigEditor({ config, getToken, onSaved }: ConfigEditorProps) {
+  const t = useT("concierge");
   const [mode, setMode] = useState<ConciergeMode>(modeOf(config));
   const [threshold, setThreshold] = useState(String(config.confidenceThreshold));
   const [slaHours, setSlaHours] = useState(String(config.slaHours));
@@ -119,17 +118,17 @@ function ConfigEditor({ config, getToken, onSaved }: ConfigEditorProps) {
 
     const parsedThreshold = parseThreshold(threshold);
     if (parsedThreshold === undefined) {
-      setError("Confidence threshold must be a number between 0 and 1.");
+      setError(t("thresholdInvalid"));
       return;
     }
     const parsedSla = parsePositiveInt(slaHours);
     if (parsedSla === undefined) {
-      setError("SLA must be a whole number of hours ≥ 1.");
+      setError(t("slaInvalid"));
       return;
     }
     const parsedCap = parsePositiveInt(volumeCap);
     if (parsedCap === undefined) {
-      setError("Daily volume cap must be a whole number ≥ 1.");
+      setError(t("capInvalid"));
       return;
     }
 
@@ -146,21 +145,21 @@ function ConfigEditor({ config, getToken, onSaved }: ConfigEditorProps) {
     try {
       const token = await getToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("signInRequired"));
         return;
       }
       onSaved(await updateConciergeConfig(token, body));
       setSaved(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed.");
+      setError(err instanceof Error ? err.message : t("saveFailed"));
     } finally {
       setSaving(false);
     }
-  }, [mode, threshold, slaHours, volumeCap, config.triggerMode, getToken, onSaved]);
+  }, [mode, threshold, slaHours, volumeCap, config.triggerMode, getToken, onSaved, t]);
 
   return (
     <div className="col gap2">
-      <Field label="Trigger mode">
+      <Field label={t("triggerMode")}>
         <Select
           value={mode}
           disabled={saving}
@@ -169,23 +168,21 @@ function ConfigEditor({ config, getToken, onSaved }: ConfigEditorProps) {
             touched();
           }}
         >
-          <option value="off">Off</option>
-          <option value="user_prompted">Mode A — user-prompted</option>
+          <option value="off">{t("modeOff")}</option>
+          <option value="user_prompted">{t("modeUserPrompted")}</option>
           <option value="auto_silent" disabled={!config.silentReviewAllowed}>
-            Mode B — auto-silent
-            {!config.silentReviewAllowed && " (pending legal sign-off)"}
+            {t("modeAutoSilent")}
+            {!config.silentReviewAllowed && t("modeAutoSilentPending")}
           </option>
         </Select>
-        <span className="muted">{MODE_HELP[mode]}</span>
+        <span className="muted">{t(MODE_HELP_KEY[mode])}</span>
       </Field>
 
       {!config.silentReviewAllowed && (
-        <Badge tone="amber">
-          Mode B (silent review) is pending the OD#5 legal/brand sign-off and can’t be enabled yet.
-        </Badge>
+        <Badge tone="amber">{t("silentReviewPending")}</Badge>
       )}
 
-      <Field label="Confidence threshold (0–1)">
+      <Field label={t("confidenceThreshold")}>
         <Input
           type="number"
           min={0}
@@ -200,7 +197,7 @@ function ConfigEditor({ config, getToken, onSaved }: ConfigEditorProps) {
         />
       </Field>
 
-      <Field label="SLA (hours)">
+      <Field label={t("slaHours")}>
         <Input
           type="number"
           min={1}
@@ -213,7 +210,7 @@ function ConfigEditor({ config, getToken, onSaved }: ConfigEditorProps) {
         />
       </Field>
 
-      <Field label="Daily volume cap">
+      <Field label={t("volumeCap")}>
         <Input
           type="number"
           min={1}
@@ -228,9 +225,9 @@ function ConfigEditor({ config, getToken, onSaved }: ConfigEditorProps) {
 
       <div className="row gap1">
         <Button variant="subtle" size="sm" disabled={saving} onClick={() => void save()}>
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("saving") : t("save")}
         </Button>
-        {saved && <Badge tone="green">Saved</Badge>}
+        {saved && <Badge tone="green">{t("saved")}</Badge>}
       </div>
       {error != null && <Badge tone="red">{error}</Badge>}
     </div>

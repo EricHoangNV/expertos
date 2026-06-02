@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Button, Card, Input, Select, Table } from "@expertos/ui";
+import { Badge, Button, Card, Input, Select, Table, type Translator } from "@expertos/ui";
 import type {
   EntitlementCellDto,
   EntitlementMatrixDto,
@@ -13,6 +13,7 @@ import type {
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
 import { getEntitlementMatrix, updateEntitlementCell } from "../../src/lib/admin-client";
+import { useT } from "../../src/lib/i18n";
 
 const WINDOWS: UsageWindowValue[] = ["day", "week", "month"];
 
@@ -65,6 +66,7 @@ function parseQuota(raw: string): number | null | undefined {
 function buildBody(
   feature: EntitlementMatrixFeatureDto,
   draft: CellDraft,
+  t: Translator,
 ): EntitlementUpdateInput | string {
   if (feature.type !== "metered") {
     return { enabled: draft.enabled, limit: null, softLimit: null, window: null };
@@ -72,7 +74,7 @@ function buildBody(
   const limit = parseQuota(draft.limit);
   const softLimit = parseQuota(draft.softLimit);
   if (limit === undefined || softLimit === undefined) {
-    return "Limits must be whole numbers ≥ 0.";
+    return t("limitsError");
   }
   return {
     enabled: draft.enabled,
@@ -83,9 +85,9 @@ function buildBody(
 }
 
 /** Format a plan's configured prices for the column header (e.g. "$4.99/mo · $69.99/yr", or "$0"). */
-function priceLabel(plan: EntitlementMatrixPlanDto): string {
+function priceLabel(plan: EntitlementMatrixPlanDto, t: Translator): string {
   if (plan.prices.length === 0) {
-    return "$0";
+    return t("freePrice");
   }
   const order: Record<string, number> = { month: 0, year: 1 };
   return [...plan.prices]
@@ -101,13 +103,15 @@ function priceLabel(plan: EntitlementMatrixPlanDto): string {
     .join(" · ");
 }
 
-const WINDOW_UNIT: Record<UsageWindowValue, string> = {
-  day: "/day",
-  week: "/week",
-  month: "/month",
+/** Maps each usage window to its dictionary key fragment under `window.*` (e.g. "/day"). */
+const WINDOW_UNIT_KEY: Record<UsageWindowValue, string> = {
+  day: "day",
+  week: "week",
+  month: "month",
 };
 
 export default function EntitlementsPage() {
+  const t = useT("entitlements");
   const { getIdToken } = useAuth();
   const [matrix, setMatrix] = useState<EntitlementMatrixDto | null>(null);
   const [drafts, setDrafts] = useState<Record<string, CellDraft>>({});
@@ -137,16 +141,16 @@ export default function EntitlementsPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("signInError"));
         return;
       }
       const m = await getEntitlementMatrix(token);
       setMatrix(m);
       seedDrafts(m);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load the entitlement matrix.");
+      setError(err instanceof Error ? err.message : t("loadError"));
     }
-  }, [getIdToken, seedDrafts]);
+  }, [getIdToken, seedDrafts, t]);
 
   useEffect(() => {
     void load();
@@ -214,7 +218,7 @@ export default function EntitlementsPage() {
       if (feature == null) {
         continue;
       }
-      const built = buildBody(feature, drafts[key]);
+      const built = buildBody(feature, drafts[key], t);
       if (typeof built === "string") {
         nextErrors[key] = built;
       } else {
@@ -230,7 +234,7 @@ export default function EntitlementsPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("signInError"));
         return;
       }
       const saved: EntitlementCellDto[] = [];
@@ -239,7 +243,7 @@ export default function EntitlementsPage() {
         try {
           saved.push(await updateEntitlementCell(token, job.planId, job.featureId, job.body));
         } catch (err) {
-          errors[job.key] = err instanceof Error ? err.message : "Save failed.";
+          errors[job.key] = err instanceof Error ? err.message : t("saveFailed");
         }
       }
 
@@ -256,12 +260,14 @@ export default function EntitlementsPage() {
       }
       setCellErrors(errors);
       if (Object.keys(errors).length === 0) {
-        setPublishNote(`Published ${saved.length} change${saved.length === 1 ? "" : "s"}.`);
+        setPublishNote(
+          t(saved.length === 1 ? "publishedOne" : "publishedOther", { count: saved.length }),
+        );
       }
     } finally {
       setPublishing(false);
     }
-  }, [matrix, dirtyKeys, drafts, getIdToken]);
+  }, [matrix, dirtyKeys, drafts, getIdToken, t]);
 
   // The top tier (highest sortOrder) is the visually-emphasized "Premium" column.
   const premiumPlanId = useMemo(() => {
@@ -275,11 +281,14 @@ export default function EntitlementsPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Configuration, not code</div>
-          <h1 className="h1">Plan &amp; entitlement matrix</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
           <p className="lede">
-            This table is the free-vs-paid definition. Edit a cell, hit publish — no deploy. One
-            guard (<code>@RequiresEntitlement</code>) reads it everywhere.
+            {t("lede")
+              .split("{guard}")
+              .flatMap((part, i) =>
+                i === 0 ? [part] : [<code key={i}>@RequiresEntitlement</code>, part],
+              )}
           </p>
         </div>
         <div className="row gap2">
@@ -288,7 +297,7 @@ export default function EntitlementsPage() {
             disabled={publishing || dirtyKeys.length === 0}
             onClick={discard}
           >
-            Discard changes
+            {t("discardChanges")}
           </Button>
           <Button
             variant="primary"
@@ -296,10 +305,12 @@ export default function EntitlementsPage() {
             onClick={() => void publish()}
           >
             {publishing
-              ? "Publishing…"
+              ? t("publishing")
               : dirtyKeys.length > 0
-                ? `Publish ${dirtyKeys.length} change${dirtyKeys.length === 1 ? "" : "s"}`
-                : "Publish changes"}
+                ? t(dirtyKeys.length === 1 ? "publishCountOne" : "publishCountOther", {
+                    count: dirtyKeys.length,
+                  })
+                : t("publishChanges")}
           </Button>
         </div>
       </div>
@@ -312,7 +323,7 @@ export default function EntitlementsPage() {
           <Table className="matrix-table">
             <thead>
               <tr>
-                <th>Feature</th>
+                <th>{t("colFeature")}</th>
                 {matrix.plans.map((plan) => (
                   <th
                     key={plan.id}
@@ -321,9 +332,9 @@ export default function EntitlementsPage() {
                     <span className="matrix-plan">
                       <span className="matrix-plan-name">
                         {plan.name}
-                        {!plan.active && " (inactive)"}
+                        {!plan.active && t("planInactive")}
                       </span>
-                      <span className="matrix-plan-price">{priceLabel(plan)}</span>
+                      <span className="matrix-plan-price">{priceLabel(plan, t)}</span>
                     </span>
                   </th>
                 ))}
@@ -336,7 +347,7 @@ export default function EntitlementsPage() {
                     <div className="col gap1">
                       <span className="matrix-feature-name">{feature.name}</span>
                       <Badge tone={feature.type === "metered" ? "info" : "ink"}>
-                        {feature.type}
+                        {t(`type.${feature.type}`)}
                       </Badge>
                     </div>
                   </td>
@@ -367,20 +378,14 @@ export default function EntitlementsPage() {
 
       <div className="matrix-foot">
         <Card pad>
-          <Badge tone="amber">Fair use</Badge>
-          <h3 className="h3 matrix-foot-title">Premium never hard-stops</h3>
-          <p className="muted">
-            Past the soft cap, the guard returns the answer on a lighter model instead of a 402 —
-            degrade, don&apos;t block. A hard limit is the only true wall.
-          </p>
+          <Badge tone="amber">{t("foot.fairUse")}</Badge>
+          <h3 className="h3 matrix-foot-title">{t("foot.fairUseTitle")}</h3>
+          <p className="muted">{t("foot.fairUseBody")}</p>
         </Card>
         <Card pad>
-          <Badge tone="info">Quota cells</Badge>
-          <h3 className="h3 matrix-foot-title">Numbers calibrated to unit economics</h3>
-          <p className="muted">
-            Open Decision #4 set cost-per-answer vs price before these quotas locked (M6.5). A
-            metered cell needs a window; a soft limit must sit below the hard limit to fire.
-          </p>
+          <Badge tone="info">{t("foot.quotaCells")}</Badge>
+          <h3 className="h3 matrix-foot-title">{t("foot.quotaCellsTitle")}</h3>
+          <p className="muted">{t("foot.quotaCellsBody")}</p>
         </Card>
       </div>
     </AdminFrame>
@@ -402,9 +407,10 @@ interface MatrixCellProps {
  * soft-limit input below. Edits are staged locally; the parent publishes dirty cells in a batch.
  */
 function MatrixCell({ feature, draft, dirty, error, disabled, onChange }: MatrixCellProps) {
+  const t = useT("entitlements");
   const metered = feature.type === "metered";
   const unit =
-    draft.window !== "" ? WINDOW_UNIT[draft.window as UsageWindowValue] : "";
+    draft.window !== "" ? t(`window.${WINDOW_UNIT_KEY[draft.window as UsageWindowValue]}`) : "";
 
   return (
     <div className="matrix-cell">
@@ -418,7 +424,7 @@ function MatrixCell({ feature, draft, dirty, error, disabled, onChange }: Matrix
           />
           <span className="track" />
         </span>
-        {metered ? "Granted" : draft.enabled ? "Included" : "Off"}
+        {metered ? t("cell.granted") : draft.enabled ? t("cell.included") : t("cell.off")}
       </label>
 
       {metered && draft.enabled && (
@@ -427,25 +433,25 @@ function MatrixCell({ feature, draft, dirty, error, disabled, onChange }: Matrix
             <Input
               type="number"
               min={0}
-              aria-label={`${feature.name} hard limit`}
+              aria-label={t("cell.hardLimitAria", { feature: feature.name })}
               placeholder="∞"
               value={draft.limit}
               disabled={disabled}
               onChange={(e) => onChange({ limit: e.target.value })}
             />
             {draft.limit.trim() === "" && draft.softLimit.trim() === "" ? (
-              <span className="matrix-unlimited">Unlimited</span>
+              <span className="matrix-unlimited">{t("cell.unlimited")}</span>
             ) : (
               <Select
-                aria-label={`${feature.name} window`}
+                aria-label={t("cell.windowAria", { feature: feature.name })}
                 value={draft.window}
                 disabled={disabled}
                 onChange={(e) => onChange({ window: e.target.value })}
               >
-                <option value="">window…</option>
+                <option value="">{t("cell.windowPlaceholder")}</option>
                 {WINDOWS.map((w) => (
                   <option key={w} value={w}>
-                    {WINDOW_UNIT[w]}
+                    {t(`window.${WINDOW_UNIT_KEY[w]}`)}
                   </option>
                 ))}
               </Select>
@@ -455,12 +461,12 @@ function MatrixCell({ feature, draft, dirty, error, disabled, onChange }: Matrix
             )}
           </div>
           <label className="matrix-quota-soft">
-            soft
+            {t("cell.softLabel")}
             <Input
               type="number"
               min={0}
-              aria-label={`${feature.name} soft limit`}
-              placeholder="none"
+              aria-label={t("cell.softLimitAria", { feature: feature.name })}
+              placeholder={t("cell.softPlaceholder")}
               value={draft.softLimit}
               disabled={disabled}
               onChange={(e) => onChange({ softLimit: e.target.value })}
@@ -471,7 +477,7 @@ function MatrixCell({ feature, draft, dirty, error, disabled, onChange }: Matrix
 
       {!metered && !draft.enabled && <span className="matrix-disabled">—</span>}
 
-      {dirty && error == null && <Badge tone="amber">Unsaved</Badge>}
+      {dirty && error == null && <Badge tone="amber">{t("cell.unsaved")}</Badge>}
       {error != null && <span className="matrix-cell-err">{error}</span>}
     </div>
   );

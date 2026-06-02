@@ -6,6 +6,7 @@ import type { AdminExpertSummaryDto, ExpertAnswerReviewDto } from "@expertos/sha
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
 import { getExpertAnswers, listExperts } from "../../src/lib/admin-client";
+import { useT } from "../../src/lib/i18n";
 
 /** Page size for the answer-review feed. */
 const PAGE_SIZE = 25;
@@ -17,6 +18,7 @@ const PAGE_SIZE = 25;
  */
 export default function AnswersPage() {
   const { getIdToken, role } = useAuth();
+  const t = useT("answers");
   const isAdmin = role === "admin";
   const [experts, setExperts] = useState<AdminExpertSummaryDto[]>([]);
   const [expertId, setExpertId] = useState("");
@@ -55,7 +57,7 @@ export default function AnswersPage() {
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to continue.");
+          setError(t("signIn"));
           return;
         }
         const page = await getExpertAnswers(token, {
@@ -66,10 +68,10 @@ export default function AnswersPage() {
         setHasMore(page.length === PAGE_SIZE);
         setRows((prev) => (offset === 0 || prev == null ? page : [...prev, ...page]));
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load answers.");
+        setError(err instanceof Error ? err.message : t("loadError"));
       }
     },
-    [getIdToken, role, isAdmin, expertId],
+    [getIdToken, role, isAdmin, expertId, t],
   );
 
   useEffect(() => {
@@ -86,13 +88,13 @@ export default function AnswersPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Quality</div>
-          <h1 className="h1">AI answers</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("heading")}</h1>
         </div>
         {isAdmin && (
-          <Field label="Expert">
+          <Field label={t("expertLabel")}>
             <Select value={expertId} onChange={(e) => setExpertId(e.target.value)}>
-              <option value="">Select an expert…</option>
+              <option value="">{t("selectExpert")}</option>
               {experts.map((ex) => (
                 <option key={ex.id} value={ex.id}>
                   {ex.displayName}
@@ -102,42 +104,37 @@ export default function AnswersPage() {
           </Field>
         )}
       </div>
-      <p className="muted">
-        Answers generated in this expert&rsquo;s voice, newest first — review them for fidelity and feed
-        weak ones back into knowledge.
-      </p>
+      <p className="muted">{t("intro")}</p>
 
       {error != null && <Badge tone="red">{error}</Badge>}
-      {isAdmin && expertId === "" && <p className="muted">Select an expert to review their answers.</p>}
-      {rows != null && rows.length === 0 && (
-        <p className="muted">No answers have been generated in this voice yet.</p>
-      )}
+      {isAdmin && expertId === "" && <p className="muted">{t("selectExpertPrompt")}</p>}
+      {rows != null && rows.length === 0 && <p className="muted">{t("noAnswers")}</p>}
 
       {rows != null && rows.length > 0 && (
         <div className="col gap3">
           {rows.map((row) => (
             <Card key={row.messageId} pad>
               <div className="row gap2">
-                {row.helpful === true && <Badge tone="green">Helpful</Badge>}
-                {row.helpful === false && <Badge tone="red">Unhelpful</Badge>}
-                {row.insufficientKnowledge && <Badge tone="amber">Insufficient knowledge</Badge>}
+                {row.helpful === true && <Badge tone="green">{t("helpful")}</Badge>}
+                {row.helpful === false && <Badge tone="red">{t("unhelpful")}</Badge>}
+                {row.insufficientKnowledge && <Badge tone="amber">{t("insufficient")}</Badge>}
                 {row.model != null && <Badge tone="info">{row.model}</Badge>}
                 {row.confidence != null && (
-                  <Badge tone="ink">confidence {row.confidence.toFixed(2)}</Badge>
+                  <Badge tone="ink">{t("confidence", { value: row.confidence.toFixed(2) })}</Badge>
                 )}
                 <span className="grow" />
                 <span className="muted mono">{new Date(row.createdAt).toLocaleString()}</span>
               </div>
 
-              <div className="label">Question</div>
-              <p>{row.question ?? <span className="muted">— (question not found)</span>}</p>
+              <div className="label">{t("question")}</div>
+              <p>{row.question ?? <span className="muted">{t("questionNotFound")}</span>}</p>
 
-              <div className="label">Answer</div>
+              <div className="label">{t("answer")}</div>
               <p>{row.answer}</p>
 
               {row.feedbackReason != null && (
                 <>
-                  <div className="label">Feedback</div>
+                  <div className="label">{t("feedback")}</div>
                   <p className="muted">{row.feedbackReason}</p>
                 </>
               )}
@@ -148,7 +145,7 @@ export default function AnswersPage() {
 
       {hasMore && (
         <Button variant="ghost" onClick={() => void loadMore()} disabled={loadingMore}>
-          {loadingMore ? "Loading…" : "Load more"}
+          {loadingMore ? t("loading") : t("loadMore")}
         </Button>
       )}
     </AdminFrame>

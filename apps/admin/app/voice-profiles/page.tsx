@@ -18,7 +18,8 @@ import {
   type VoiceProfileAction,
   type VoiceProfileAdminDto,
 } from "../../src/lib/admin-client";
-import { publishStatusTone, statusLabel } from "../../src/lib/status-tone";
+import { publishStatusTone } from "../../src/lib/status-tone";
+import { useStatusLabel, useT } from "../../src/lib/i18n";
 
 /** Actions offered for each lifecycle status (M2.3 sign-off state machine). */
 const ACTIONS: Record<PublishStatusValue, VoiceProfileAction[]> = {
@@ -29,13 +30,16 @@ const ACTIONS: Record<PublishStatusValue, VoiceProfileAction[]> = {
   archived: [],
 };
 
-const ACTION_LABEL: Record<VoiceProfileAction, string> = {
-  submit: "Submit",
-  approve: "Approve",
-  "request-changes": "Request changes",
+/** Maps each lifecycle action to its `actions` dictionary key. */
+const ACTION_LABEL_KEY: Record<VoiceProfileAction, string> = {
+  submit: "actions.submit",
+  approve: "actions.approve",
+  "request-changes": "actions.requestChanges",
 };
 
 export default function VoiceProfilesPage() {
+  const t = useT("voiceProfiles");
+  const statusLabel = useStatusLabel();
   const { getIdToken } = useAuth();
   const [rows, setRows] = useState<VoiceProfileAdminDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +61,7 @@ export default function VoiceProfilesPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("signInRequired"));
         return;
       }
       setRows(
@@ -67,9 +71,9 @@ export default function VoiceProfilesPage() {
         }),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load voice profiles.");
+      setError(err instanceof Error ? err.message : t("loadFailed"));
     }
-  }, [getIdToken, status, expertId]);
+  }, [getIdToken, status, expertId, t]);
 
   useEffect(() => {
     void load();
@@ -81,25 +85,22 @@ export default function VoiceProfilesPage() {
         const token = await getIdToken();
         if (!token) return;
         await voiceProfileAction(token, id, action);
-        setNotice(`${ACTION_LABEL[action]} done.`);
+        setNotice(t("actionDone", { action: t(ACTION_LABEL_KEY[action]) }));
         void load();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Action failed.");
+        setError(err instanceof Error ? err.message : t("actionFailed"));
       }
     },
-    [getIdToken, load],
+    [getIdToken, load, t],
   );
 
   return (
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Voice</div>
-          <h1 className="h1">Voice profiles</h1>
-          <p className="muted">
-            Author and sign off on each expert&apos;s voice. A profile becomes eligible to render
-            answers only once it is published (signed off).
-          </p>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
+          <p className="muted">{t("subtitle")}</p>
         </div>
       </div>
 
@@ -110,7 +111,7 @@ export default function VoiceProfilesPage() {
         defaultExpertId={expertId}
         getToken={getIdToken}
         onCreated={() => {
-          setNotice("Draft voice profile created.");
+          setNotice(t("draftCreated"));
           void load();
         }}
         onError={setError}
@@ -122,7 +123,7 @@ export default function VoiceProfilesPage() {
           getToken={getIdToken}
           onSaved={() => {
             setEditing(null);
-            setNotice("Voice profile updated.");
+            setNotice(t("profileUpdated"));
             void load();
           }}
           onCancel={() => setEditing(null)}
@@ -131,12 +132,12 @@ export default function VoiceProfilesPage() {
       )}
 
       <div className="row gap2">
-        <Field label="Status">
+        <Field label={t("filterStatus")}>
           <Select
             value={status}
             onChange={(e) => setStatus(e.target.value as PublishStatusValue | "")}
           >
-            <option value="">any</option>
+            <option value="">{t("filterStatusAny")}</option>
             {PUBLISH_STATUSES.map((s) => (
               <option key={s} value={s}>
                 {statusLabel(s)}
@@ -144,9 +145,9 @@ export default function VoiceProfilesPage() {
             ))}
           </Select>
         </Field>
-        <Field label="Expert id">
+        <Field label={t("filterExpertId")}>
           <Input
-            placeholder="expert uuid"
+            placeholder={t("filterExpertIdPlaceholder")}
             value={expertId}
             onChange={(e) => setExpertId(e.target.value)}
             onKeyDown={(e) => {
@@ -155,21 +156,21 @@ export default function VoiceProfilesPage() {
           />
         </Field>
         <Button variant="subtle" size="sm" onClick={() => void load()}>
-          Apply
+          {t("apply")}
         </Button>
       </div>
 
-      {rows != null && rows.length === 0 && <p className="muted">No voice profiles match.</p>}
+      {rows != null && rows.length === 0 && <p className="muted">{t("empty")}</p>}
 
       {rows != null && rows.length > 0 && (
         <Table>
           <thead>
             <tr>
-              <th>Profile</th>
-              <th>Expert</th>
-              <th>Lang</th>
-              <th>Status</th>
-              <th>Updated</th>
+              <th>{t("colProfile")}</th>
+              <th>{t("colExpert")}</th>
+              <th>{t("colLang")}</th>
+              <th>{t("colStatus")}</th>
+              <th>{t("colUpdated")}</th>
               <th />
             </tr>
           </thead>
@@ -187,7 +188,7 @@ export default function VoiceProfilesPage() {
                   <div className="row gap1">
                     {p.status === "draft" && (
                       <Button variant="ghost" size="sm" onClick={() => setEditing(p)}>
-                        Edit
+                        {t("edit")}
                       </Button>
                     )}
                     {ACTIONS[p.status].map((action) => (
@@ -197,7 +198,7 @@ export default function VoiceProfilesPage() {
                         size="sm"
                         onClick={() => void runAction(p.id, action)}
                       >
-                        {ACTION_LABEL[action]}
+                        {t(ACTION_LABEL_KEY[action])}
                       </Button>
                     ))}
                   </div>
@@ -220,6 +221,7 @@ interface EditVoiceProfileProps {
 }
 
 function EditVoiceProfile({ profile, getToken, onSaved, onCancel, onError }: EditVoiceProfileProps) {
+  const t = useT("voiceProfiles");
   const [name, setName] = useState(profile.name);
   const [description, setDescription] = useState(profile.description ?? "");
   const [guidelines, setGuidelines] = useState(profile.guidelines ?? "");
@@ -238,27 +240,27 @@ function EditVoiceProfile({ profile, getToken, onSaved, onCancel, onError }: Edi
       });
       onSaved();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to update voice profile.");
+      onError(err instanceof Error ? err.message : t("updateFailed"));
     } finally {
       setBusy(false);
     }
-  }, [name, description, guidelines, getToken, profile.id, onSaved, onError]);
+  }, [name, description, guidelines, getToken, profile.id, onSaved, onError, t]);
 
   return (
     <section className="card card-pad">
-      <div className="label">Edit draft — {profile.expertName}</div>
+      <div className="label">{t("editHeading", { expert: profile.expertName })}</div>
       <div className="col gap2">
-        <Field label="Name">
+        <Field label={t("fieldName")}>
           <Input value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field label="Description (blank to clear)">
+        <Field label={t("fieldDescriptionClear")}>
           <Input
             value={description}
             disabled={busy}
             onChange={(e) => setDescription(e.target.value)}
           />
         </Field>
-        <Field label="Guidelines (style-only, blank to clear)">
+        <Field label={t("fieldGuidelinesClear")}>
           <Textarea
             rows={4}
             value={guidelines}
@@ -273,10 +275,10 @@ function EditVoiceProfile({ profile, getToken, onSaved, onCancel, onError }: Edi
             disabled={busy || name.trim() === ""}
             onClick={() => void save()}
           >
-            {busy ? "Saving…" : "Save"}
+            {busy ? t("saving") : t("save")}
           </Button>
           <Button variant="ghost" size="sm" disabled={busy} onClick={onCancel}>
-            Cancel
+            {t("cancel")}
           </Button>
         </div>
       </div>
@@ -292,6 +294,7 @@ interface CreateVoiceProfileProps {
 }
 
 function CreateVoiceProfile({ defaultExpertId, getToken, onCreated, onError }: CreateVoiceProfileProps) {
+  const t = useT("voiceProfiles");
   const [open, setOpen] = useState(false);
   const [expertId, setExpertId] = useState(defaultExpertId);
   const [language, setLanguage] = useState<LanguageValue>("en");
@@ -324,17 +327,17 @@ function CreateVoiceProfile({ defaultExpertId, getToken, onCreated, onError }: C
       setOpen(false);
       onCreated();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to create voice profile.");
+      onError(err instanceof Error ? err.message : t("createFailed"));
     } finally {
       setBusy(false);
     }
-  }, [expertId, language, name, description, guidelines, getToken, onCreated, onError]);
+  }, [expertId, language, name, description, guidelines, getToken, onCreated, onError, t]);
 
   if (!open) {
     return (
       <div className="row">
         <Button variant="primary" size="sm" onClick={() => setOpen(true)}>
-          New voice profile
+          {t("newButton")}
         </Button>
       </div>
     );
@@ -342,18 +345,18 @@ function CreateVoiceProfile({ defaultExpertId, getToken, onCreated, onError }: C
 
   return (
     <section className="card card-pad">
-      <div className="label">New voice profile</div>
+      <div className="label">{t("newHeading")}</div>
       <div className="col gap2">
         <div className="row gap2">
-          <Field label="Expert id">
+          <Field label={t("fieldExpertId")}>
             <Input
-              placeholder="expert uuid"
+              placeholder={t("fieldExpertIdPlaceholder")}
               value={expertId}
               disabled={busy}
               onChange={(e) => setExpertId(e.target.value)}
             />
           </Field>
-          <Field label="Language">
+          <Field label={t("fieldLanguage")}>
             <Select
               value={language}
               disabled={busy}
@@ -366,23 +369,23 @@ function CreateVoiceProfile({ defaultExpertId, getToken, onCreated, onError }: C
               ))}
             </Select>
           </Field>
-          <Field label="Name">
+          <Field label={t("fieldName")}>
             <Input
-              placeholder="Dr. Lan — direct, practical"
+              placeholder={t("fieldNamePlaceholder")}
               value={name}
               disabled={busy}
               onChange={(e) => setName(e.target.value)}
             />
           </Field>
         </div>
-        <Field label="Description (optional)">
+        <Field label={t("fieldDescriptionOptional")}>
           <Input
             value={description}
             disabled={busy}
             onChange={(e) => setDescription(e.target.value)}
           />
         </Field>
-        <Field label="Guidelines (optional, style-only)">
+        <Field label={t("fieldGuidelinesOptional")}>
           <Textarea
             rows={4}
             value={guidelines}
@@ -397,10 +400,10 @@ function CreateVoiceProfile({ defaultExpertId, getToken, onCreated, onError }: C
             disabled={busy || expertId.trim() === "" || name.trim() === ""}
             onClick={() => void submit()}
           >
-            {busy ? "Creating…" : "Create draft"}
+            {busy ? t("creating") : t("createDraft")}
           </Button>
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => setOpen(false)}>
-            Cancel
+            {t("cancel")}
           </Button>
         </div>
       </div>

@@ -6,6 +6,7 @@ import type { RetentionPreviewDto, RetentionSweepResultDto } from "@expertos/sha
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
 import { getRetentionPreview, runRetentionSweep } from "../../src/lib/admin-client";
+import { useT } from "../../src/lib/i18n";
 
 /**
  * Admin data-retention surface (NT.3, PRD §"Non-Technical Requirements" → "Data Retention &
@@ -16,6 +17,7 @@ import { getRetentionPreview, runRetentionSweep } from "../../src/lib/admin-clie
  * surface (PRD §"No full infra Day 1": no in-app cron).
  */
 export default function RetentionPage() {
+  const t = useT("retention");
   const { getIdToken } = useAuth();
   const [preview, setPreview] = useState<RetentionPreviewDto | null>(null);
   const [result, setResult] = useState<RetentionSweepResultDto | null>(null);
@@ -27,14 +29,14 @@ export default function RetentionPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("signInError"));
         return;
       }
       setPreview(await getRetentionPreview(token));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load the retention preview.");
+      setError(err instanceof Error ? err.message : t("previewError"));
     }
-  }, [getIdToken]);
+  }, [getIdToken, t]);
 
   useEffect(() => {
     void loadPreview();
@@ -48,53 +50,50 @@ export default function RetentionPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("signInError"));
         return;
       }
       setResult(await runRetentionSweep(token));
       await loadPreview();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Retention sweep failed.");
+      setError(err instanceof Error ? err.message : t("sweepError"));
     } finally {
       setRunning(false);
     }
-  }, [getIdToken, loadPreview]);
+  }, [getIdToken, loadPreview, t]);
 
   return (
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Compliance</div>
-          <h1 className="h1">Data retention</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
         </div>
       </div>
-      <p className="muted">
-        Enforces the published retention policy. Past their window: temporary uploads, idle
-        conversation history, and aged usage logs are deleted; consultation transcripts are deleted
-        while the consultation record (revenue) is kept; concierge review records are anonymized in
-        place (answer text scrubbed, structural row kept for analytics). Preview is non-destructive;
-        running the sweep applies the changes and is recorded in the audit log.
-      </p>
+      <p className="muted">{t("intro")}</p>
 
       <Card pad>
-        <div className="label">Eligible now</div>
+        <div className="label">{t("eligibleNow")}</div>
         {preview != null ? (
           <div className="row gap1">
-            <Stat label="Temporary uploads" value={preview.temporaryUploads} />
-            <Stat label="Idle conversations" value={preview.expiredConversations} />
-            <Stat label="Old usage logs" value={preview.oldUsageLogs} />
-            <Stat label="Consultation transcripts" value={preview.consultationTranscripts} />
-            <Stat label="Concierge records" value={preview.conciergeRecords} />
+            <Stat label={t("preview.temporaryUploads")} value={preview.temporaryUploads} />
+            <Stat label={t("preview.expiredConversations")} value={preview.expiredConversations} />
+            <Stat label={t("preview.oldUsageLogs")} value={preview.oldUsageLogs} />
+            <Stat
+              label={t("preview.consultationTranscripts")}
+              value={preview.consultationTranscripts}
+            />
+            <Stat label={t("preview.conciergeRecords")} value={preview.conciergeRecords} />
           </div>
         ) : (
-          <p className="muted">Loading…</p>
+          <p className="muted">{t("loading")}</p>
         )}
         <div className="row gap2">
           <Button variant="ghost" onClick={() => void loadPreview()} disabled={running}>
-            Refresh preview
+            {t("refreshPreview")}
           </Button>
           <Button variant="primary" onClick={() => void runSweep()} disabled={running}>
-            {running ? "Sweeping…" : "Run sweep"}
+            {running ? t("sweeping") : t("runSweep")}
           </Button>
         </div>
       </Card>
@@ -104,15 +103,18 @@ export default function RetentionPage() {
       {result != null && (
         <Card pad>
           <div className="row gap2">
-            <Badge tone="green">Sweep complete</Badge>
+            <Badge tone="green">{t("sweepComplete")}</Badge>
             <span className="muted mono">{new Date(result.sweptAt).toLocaleString()}</span>
           </div>
           <div className="row gap1">
-            <Stat label="Uploads deleted" value={result.temporaryUploads} />
-            <Stat label="Conversations deleted" value={result.expiredConversations} />
-            <Stat label="Usage logs deleted" value={result.oldUsageLogs} />
-            <Stat label="Transcripts deleted" value={result.consultationTranscripts} />
-            <Stat label="Records anonymized" value={result.conciergeRecords} />
+            <Stat label={t("result.temporaryUploads")} value={result.temporaryUploads} />
+            <Stat label={t("result.expiredConversations")} value={result.expiredConversations} />
+            <Stat label={t("result.oldUsageLogs")} value={result.oldUsageLogs} />
+            <Stat
+              label={t("result.consultationTranscripts")}
+              value={result.consultationTranscripts}
+            />
+            <Stat label={t("result.conciergeRecords")} value={result.conciergeRecords} />
           </div>
         </Card>
       )}

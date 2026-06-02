@@ -7,12 +7,14 @@ import type { AdminExpertSummaryDto } from "@expertos/shared";
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
 import { createExpert, listExperts } from "../../src/lib/admin-client";
+import { useT } from "../../src/lib/i18n";
 
 const PAGE_SIZE = 50;
 
 type ActiveFilter = "" | "true" | "false";
 
 export default function ExpertsPage() {
+  const t = useT("experts");
   const { getIdToken } = useAuth();
   const [rows, setRows] = useState<AdminExpertSummaryDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +28,7 @@ export default function ExpertsPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("signInError"));
         return;
       }
       setRows(
@@ -37,9 +39,9 @@ export default function ExpertsPage() {
         }),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load experts.");
+      setError(err instanceof Error ? err.message : t("list.loadError"));
     }
-  }, [getIdToken, active, search]);
+  }, [getIdToken, active, search, t]);
 
   useEffect(() => {
     void load();
@@ -49,12 +51,9 @@ export default function ExpertsPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Roster</div>
-          <h1 className="h1">Experts</h1>
-          <p className="muted">
-            The experts whose voices and knowledge power the product. Create one here, then author a
-            voice profile and publish their knowledge.
-          </p>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("list.title")}</h1>
+          <p className="muted">{t("list.intro")}</p>
         </div>
       </div>
 
@@ -64,23 +63,23 @@ export default function ExpertsPage() {
       <CreateExpert
         getToken={getIdToken}
         onCreated={(name) => {
-          setNotice(`Created ${name}.`);
+          setNotice(t("list.created", { name }));
           void load();
         }}
         onError={setError}
       />
 
       <div className="row gap2">
-        <Field label="Active">
+        <Field label={t("list.activeLabel")}>
           <Select value={active} onChange={(e) => setActive(e.target.value as ActiveFilter)}>
-            <option value="">any</option>
-            <option value="true">active</option>
-            <option value="false">inactive</option>
+            <option value="">{t("list.activeAny")}</option>
+            <option value="true">{t("active")}</option>
+            <option value="false">{t("inactive")}</option>
           </Select>
         </Field>
-        <Field label="Search">
+        <Field label={t("list.searchLabel")}>
           <Input
-            placeholder="slug or name"
+            placeholder={t("list.searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => {
@@ -89,21 +88,21 @@ export default function ExpertsPage() {
           />
         </Field>
         <Button variant="subtle" size="sm" onClick={() => void load()}>
-          Apply
+          {t("list.apply")}
         </Button>
       </div>
 
-      {rows != null && rows.length === 0 && <p className="muted">No experts match.</p>}
+      {rows != null && rows.length === 0 && <p className="muted">{t("list.empty")}</p>}
 
       {rows != null && rows.length > 0 && (
         <Table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Slug</th>
-              <th>Title</th>
-              <th>State</th>
-              <th>Voices</th>
+              <th>{t("list.colName")}</th>
+              <th>{t("list.colSlug")}</th>
+              <th>{t("list.colTitle")}</th>
+              <th>{t("list.colState")}</th>
+              <th>{t("list.colVoices")}</th>
               <th />
             </tr>
           </thead>
@@ -114,12 +113,12 @@ export default function ExpertsPage() {
                 <td className="mono muted">{e.slug}</td>
                 <td>{e.title ?? <span className="muted">—</span>}</td>
                 <td>
-                  <Badge tone={e.active ? "green" : "ink"}>{e.active ? "active" : "inactive"}</Badge>
+                  <Badge tone={e.active ? "green" : "ink"}>{e.active ? t("active") : t("inactive")}</Badge>
                 </td>
                 <td className="mono">{e.voiceProfileCount}</td>
                 <td>
                   <Link href={`/experts/${e.id}`} className="navitem">
-                    Manage
+                    {t("list.manage")}
                   </Link>
                 </td>
               </tr>
@@ -138,6 +137,7 @@ interface CreateExpertProps {
 }
 
 function CreateExpert({ getToken, onCreated, onError }: CreateExpertProps) {
+  const t = useT("experts");
   const [open, setOpen] = useState(false);
   const [slug, setSlug] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -156,9 +156,9 @@ function CreateExpert({ getToken, onCreated, onError }: CreateExpertProps) {
     if (slug.trim() === "" || displayName.trim() === "") return;
     setBusy(true);
     try {
-      const t = await getToken();
-      if (!t) return;
-      await createExpert(t, {
+      const tok = await getToken();
+      if (!tok) return;
+      await createExpert(tok, {
         slug: slug.trim(),
         displayName: displayName.trim(),
         title: title.trim() === "" ? undefined : title.trim(),
@@ -168,17 +168,17 @@ function CreateExpert({ getToken, onCreated, onError }: CreateExpertProps) {
       setOpen(false);
       onCreated(displayName.trim());
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to create expert.");
+      onError(err instanceof Error ? err.message : t("create.createError"));
     } finally {
       setBusy(false);
     }
-  }, [slug, displayName, title, bio, getToken, reset, onCreated, onError]);
+  }, [slug, displayName, title, bio, getToken, reset, onCreated, onError, t]);
 
   if (!open) {
     return (
       <div className="row">
         <Button variant="primary" size="sm" onClick={() => setOpen(true)}>
-          New expert
+          {t("create.newExpert")}
         </Button>
       </div>
     );
@@ -186,35 +186,35 @@ function CreateExpert({ getToken, onCreated, onError }: CreateExpertProps) {
 
   return (
     <section className="card card-pad">
-      <div className="label">New expert</div>
+      <div className="label">{t("create.newExpert")}</div>
       <div className="col gap2">
         <div className="row gap2">
-          <Field label="Slug (lowercase, hyphens)">
+          <Field label={t("create.slugLabel")}>
             <Input
-              placeholder="dr-lan"
+              placeholder={t("create.slugPlaceholder")}
               value={slug}
               disabled={busy}
               onChange={(e) => setSlug(e.target.value)}
             />
           </Field>
-          <Field label="Display name">
+          <Field label={t("create.displayNameLabel")}>
             <Input
-              placeholder="Dr. Lan"
+              placeholder={t("create.displayNamePlaceholder")}
               value={displayName}
               disabled={busy}
               onChange={(e) => setDisplayName(e.target.value)}
             />
           </Field>
-          <Field label="Title (optional)">
+          <Field label={t("create.titleLabel")}>
             <Input
-              placeholder="Cardiologist"
+              placeholder={t("create.titlePlaceholder")}
               value={title}
               disabled={busy}
               onChange={(e) => setTitle(e.target.value)}
             />
           </Field>
         </div>
-        <Field label="Bio (optional)">
+        <Field label={t("create.bioLabel")}>
           <Textarea
             rows={3}
             value={bio}
@@ -229,10 +229,10 @@ function CreateExpert({ getToken, onCreated, onError }: CreateExpertProps) {
             disabled={busy || slug.trim() === "" || displayName.trim() === ""}
             onClick={() => void submit()}
           >
-            {busy ? "Creating…" : "Create"}
+            {busy ? t("create.creating") : t("create.create")}
           </Button>
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => setOpen(false)}>
-            Cancel
+            {t("create.cancel")}
           </Button>
         </div>
       </div>

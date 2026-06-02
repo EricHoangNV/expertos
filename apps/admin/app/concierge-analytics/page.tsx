@@ -15,7 +15,7 @@ import {
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
 import { getConciergeAnalytics } from "../../src/lib/admin-client";
-import { statusLabel } from "../../src/lib/status-tone";
+import { useStatusLabel, useT } from "../../src/lib/i18n";
 
 /** Trailing-window options the dashboard offers, in days (matches the other analytics dashboards). */
 const DAY_OPTIONS = [7, 30, 90, 365] as const;
@@ -23,10 +23,10 @@ const DAY_OPTIONS = [7, 30, 90, 365] as const;
 /** Display order for the breakdown tables/badges (the DTO record keys). */
 const VISIBILITIES: readonly ReviewVisibilityValue[] = ["visible", "silent"];
 
-/** Human label for a trigger mode (Mode A vs Mode B, the language the concierge config uses). */
-const TRIGGER_MODE_LABELS: Record<ReviewTriggerModeValue, string> = {
-  user_prompted: "User-prompted (Mode A)",
-  auto_silent: "Auto-silent (Mode B)",
+/** Dictionary keys for each trigger-mode label (Mode A vs Mode B, the concierge config language). */
+const TRIGGER_MODE_LABEL_KEYS: Record<ReviewTriggerModeValue, string> = {
+  user_prompted: "triggerModeUserPrompted",
+  auto_silent: "triggerModeAutoSilent",
 };
 
 /** Verdict tones: `great` reads as success (green), `bad` as a hard signal (red), `good` neutral (info). */
@@ -76,6 +76,8 @@ function shortDate(iso: string | null): string {
  * read; this page only renders the aggregates `/admin/analytics/concierge` returns.
  */
 export default function ConciergeAnalyticsPage() {
+  const t = useT("conciergeAnalytics");
+  const statusLabel = useStatusLabel();
   const { getIdToken } = useAuth();
   const [days, setDays] = useState<number>(30);
   const [report, setReport] = useState<ConciergeAnalyticsDto | null>(null);
@@ -87,14 +89,14 @@ export default function ConciergeAnalyticsPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("errorSignIn"));
         return;
       }
       setReport(await getConciergeAnalytics(token, days));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load concierge analytics.");
+      setError(err instanceof Error ? err.message : t("errorLoad"));
     }
-  }, [getIdToken, days]);
+  }, [getIdToken, days, t]);
 
   useEffect(() => {
     void load();
@@ -104,50 +106,47 @@ export default function ConciergeAnalyticsPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Analytics</div>
-          <h1 className="h1">Concierge ops</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
         </div>
-        <Field label="Window">
+        <Field label={t("window")}>
           <Select value={days} onChange={(e) => setDays(Number(e.target.value))}>
             {DAY_OPTIONS.map((d) => (
               <option key={d} value={d}>
-                Last {d} days
+                {t("windowOption", { days: d })}
               </option>
             ))}
           </Select>
         </Field>
       </div>
-      <p className="muted">
-        Platform-wide human-in-the-loop metrics. Request and verdict counts cover the window; the
-        knowledge-quality flag counts are cumulative.
-      </p>
+      <p className="muted">{t("intro")}</p>
 
       {error != null && <Badge tone="red">{error}</Badge>}
 
       {report != null && (
         <>
           <div className="row gap1">
-            <Stat label={`Requests · ${days}d`} value={count(report.totalRequests)} />
-            <Stat label={`Answered · ${days}d`} value={count(report.byStatus.answered)} />
-            <Stat label="SLA met" value={rate(report.sla.met, report.sla.tracked)} />
-            <Stat label="Avg response" value={responseTime(report.sla.avgResponseMinutes)} />
-            <Stat label={`Verdicts · ${days}d`} value={count(report.verdicts.total)} />
+            <Stat label={t("requests", { days })} value={count(report.totalRequests)} />
+            <Stat label={t("answered", { days })} value={count(report.byStatus.answered)} />
+            <Stat label={t("slaMet")} value={rate(report.sla.met, report.sla.tracked)} />
+            <Stat label={t("avgResponse")} value={responseTime(report.sla.avgResponseMinutes)} />
+            <Stat label={t("verdicts", { days })} value={count(report.verdicts.total)} />
           </div>
 
-          <h3 className="h3">SLA adherence</h3>
+          <h3 className="h3">{t("slaAdherence")}</h3>
           <div className="row gap2">
-            <Badge tone="info">Tracked: {count(report.sla.tracked)}</Badge>
-            <Badge tone="green">Met: {count(report.sla.met)}</Badge>
-            <Badge tone="red">Breached: {count(report.sla.breached)}</Badge>
-            <Badge tone="amber">Open &amp; overdue: {count(report.sla.openOverdue)}</Badge>
+            <Badge tone="info">{t("slaTracked", { count: count(report.sla.tracked) })}</Badge>
+            <Badge tone="green">{t("slaMetBadge", { count: count(report.sla.met) })}</Badge>
+            <Badge tone="red">{t("slaBreached", { count: count(report.sla.breached) })}</Badge>
+            <Badge tone="amber">{t("slaOpenOverdue", { count: count(report.sla.openOverdue) })}</Badge>
           </div>
 
-          <h3 className="h3">Requests by status</h3>
+          <h3 className="h3">{t("byStatus")}</h3>
           <Table>
             <thead>
               <tr>
-                <th>Status</th>
-                <th>Requests</th>
+                <th>{t("colStatus")}</th>
+                <th>{t("colRequests")}</th>
               </tr>
             </thead>
             <tbody>
@@ -160,50 +159,53 @@ export default function ConciergeAnalyticsPage() {
             </tbody>
           </Table>
 
-          <h3 className="h3">Requests by trigger mode</h3>
+          <h3 className="h3">{t("byTriggerMode")}</h3>
           <div className="row gap2">
             {REVIEW_TRIGGER_MODES.map((m) => (
               <Badge key={m} tone="ink">
-                {TRIGGER_MODE_LABELS[m]}: {count(report.byTriggerMode[m])}
+                {t("triggerModeBadge", {
+                  label: t(TRIGGER_MODE_LABEL_KEYS[m]),
+                  count: count(report.byTriggerMode[m]),
+                })}
               </Badge>
             ))}
           </div>
 
-          <h3 className="h3">Requests by visibility</h3>
+          <h3 className="h3">{t("byVisibility")}</h3>
           <div className="row gap2">
             {VISIBILITIES.map((v) => (
               <Badge key={v} tone={v === "visible" ? "info" : "ink"}>
-                {statusLabel(v)}: {count(report.byVisibility[v])}
+                {t("visibilityBadge", { label: statusLabel(v), count: count(report.byVisibility[v]) })}
               </Badge>
             ))}
           </div>
 
-          <h3 className="h3">Reviewer verdicts</h3>
+          <h3 className="h3">{t("reviewerVerdicts")}</h3>
           <div className="row gap2">
             {REVIEW_VERDICTS.map((v) => (
               <Badge key={v} tone={verdictTone(v)}>
-                {statusLabel(v)}: {count(report.verdicts.byVerdict[v])}
+                {t("verdictBadge", { label: statusLabel(v), count: count(report.verdicts.byVerdict[v]) })}
               </Badge>
             ))}
           </div>
           <div className="row gap2">
-            <Badge tone="info">Edited: {count(report.verdicts.edited)}</Badge>
-            <Badge tone="info">Delivered: {count(report.verdicts.delivered)}</Badge>
+            <Badge tone="info">{t("edited", { count: count(report.verdicts.edited) })}</Badge>
+            <Badge tone="info">{t("delivered", { count: count(report.verdicts.delivered) })}</Badge>
           </div>
 
-          <h3 className="h3">Knowledge quality (cumulative)</h3>
+          <h3 className="h3">{t("knowledgeQuality")}</h3>
           <div className="row gap1">
-            <Stat label="Flagged chunks" value={count(report.knowledge.flaggedChunks)} />
-            <Stat label="Total flags" value={count(report.knowledge.totalFlags)} />
-            <Stat label={`Flagged · ${days}d`} value={count(report.knowledge.recentlyFlagged)} />
+            <Stat label={t("flaggedChunks")} value={count(report.knowledge.flaggedChunks)} />
+            <Stat label={t("totalFlags")} value={count(report.knowledge.totalFlags)} />
+            <Stat label={t("recentlyFlagged", { days })} value={count(report.knowledge.recentlyFlagged)} />
           </div>
           {report.knowledge.topFlagged.length > 0 && (
             <Table>
               <thead>
                 <tr>
-                  <th>Flagged source chunk</th>
-                  <th>Flags</th>
-                  <th>Last flagged</th>
+                  <th>{t("colFlaggedSourceChunk")}</th>
+                  <th>{t("colFlags")}</th>
+                  <th>{t("colLastFlagged")}</th>
                 </tr>
               </thead>
               <tbody>

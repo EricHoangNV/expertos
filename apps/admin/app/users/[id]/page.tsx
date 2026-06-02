@@ -21,9 +21,11 @@ import {
   updateFairUseFlag,
   updateUserRole,
 } from "../../../src/lib/admin-client";
-import { fairUseFlagTone, roleTone, statusLabel } from "../../../src/lib/status-tone";
+import { fairUseFlagTone, roleTone } from "../../../src/lib/status-tone";
+import { useStatusLabel, useT } from "../../../src/lib/i18n";
 
 export default function UserDetailPage() {
+  const t = useT("users");
   const params = useParams<{ id: string }>();
   const userId = params.id;
   const router = useRouter();
@@ -34,24 +36,24 @@ export default function UserDetailPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const token = useCallback(async () => {
-    const t = await getIdToken();
-    if (!t) {
-      setError("Please sign in to continue.");
+    const tok = await getIdToken();
+    if (!tok) {
+      setError(t("signInError"));
       return null;
     }
-    return t;
-  }, [getIdToken]);
+    return tok;
+  }, [getIdToken, t]);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const t = await token();
-      if (!t) return;
-      setUser(await getUser(t, userId));
+      const tok = await token();
+      if (!tok) return;
+      setUser(await getUser(tok, userId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load the user.");
+      setError(err instanceof Error ? err.message : t("detail.loadError"));
     }
-  }, [token, userId]);
+  }, [token, userId, t]);
 
   useEffect(() => {
     void load();
@@ -61,8 +63,8 @@ export default function UserDetailPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">People</div>
-          <h1 className="h1">{user?.email ?? "User"}</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{user?.email ?? t("detail.fallbackTitle")}</h1>
         </div>
       </div>
 
@@ -72,17 +74,19 @@ export default function UserDetailPage() {
       {user != null && (
         <div className="col gap3">
           <div className="row gap2">
-            <Badge tone={roleTone(user.role)}>{user.role}</Badge>
+            <Badge tone={roleTone(user.role)}>{t(`roles.${user.role}`)}</Badge>
             <span className="muted">{user.displayName ?? "—"}</span>
             <span className="grow" />
-            <span className="muted mono">locale {user.locale}</span>
-            <span className="muted mono">joined {new Date(user.createdAt).toLocaleDateString()}</span>
+            <span className="muted mono">{t("detail.localePrefix", { locale: user.locale })}</span>
+            <span className="muted mono">
+              {t("detail.joinedPrefix", { date: new Date(user.createdAt).toLocaleDateString() })}
+            </span>
           </div>
 
           <div className="row gap3">
-            <Stat label="Conversations" value={String(user.activity.conversationCount)} />
-            <Stat label="Uploads" value={String(user.activity.uploadCount)} />
-            <Stat label="Consultations" value={String(user.activity.consultationCount)} />
+            <Stat label={t("detail.statConversations")} value={String(user.activity.conversationCount)} />
+            <Stat label={t("detail.statUploads")} value={String(user.activity.uploadCount)} />
+            <Stat label={t("detail.statConsultations")} value={String(user.activity.consultationCount)} />
           </div>
 
           <Subscription user={user} />
@@ -92,7 +96,7 @@ export default function UserDetailPage() {
             getToken={token}
             onSaved={(role) => {
               setUser((prev) => (prev ? { ...prev, role } : prev));
-              setNotice("Role updated.");
+              setNotice(t("detail.roleUpdated"));
             }}
             onError={setError}
           />
@@ -109,7 +113,7 @@ export default function UserDetailPage() {
             user={user}
             getToken={token}
             onRequested={() => {
-              setNotice("Deletion request recorded.");
+              setNotice(t("detail.deletionRequested"));
               void load();
             }}
             onDeleted={() => router.push("/users")}
@@ -122,33 +126,36 @@ export default function UserDetailPage() {
 }
 
 function Subscription({ user }: { user: AdminUserDetailDto }) {
+  const t = useT("users");
+  const statusLabel = useStatusLabel();
   const sub = user.subscription;
   return (
     <section className="card card-pad">
-      <div className="label">Subscription</div>
+      <div className="label">{t("detail.subscription.label")}</div>
       {sub == null ? (
-        <p className="muted">No subscription — effectively on the Free plan.</p>
+        <p className="muted">{t("detail.subscription.none")}</p>
       ) : (
         <div className="col gap1">
           <div className="row gap2">
             <strong>{sub.planName}</strong>
             <Badge tone="info">{statusLabel(sub.status)}</Badge>
-            <span className="muted">/ {sub.interval}</span>
+            <span className="muted">{t("detail.subscription.intervalPrefix", { interval: sub.interval })}</span>
           </div>
           {sub.currentPeriodEnd != null && (
             <span className="muted mono">
-              renews {new Date(sub.currentPeriodEnd).toLocaleDateString()}
+              {t("detail.subscription.renews", {
+                date: new Date(sub.currentPeriodEnd).toLocaleDateString(),
+              })}
             </span>
           )}
           {sub.cancelAt != null && (
             <span className="muted mono">
-              cancels {new Date(sub.cancelAt).toLocaleDateString()}
+              {t("detail.subscription.cancels", {
+                date: new Date(sub.cancelAt).toLocaleDateString(),
+              })}
             </span>
           )}
-          <p className="muted">
-            Plan and billing are managed by the payment provider — change them through Stripe, not
-            here.
-          </p>
+          <p className="muted">{t("detail.subscription.managed")}</p>
         </div>
       )}
     </section>
@@ -163,32 +170,33 @@ interface RoleEditorProps {
 }
 
 function RoleEditor({ user, getToken, onSaved, onError }: RoleEditorProps) {
+  const t = useT("users");
   const [role, setRole] = useState<Role>(user.role);
   const [saving, setSaving] = useState(false);
 
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      const t = await getToken();
-      if (!t) return;
-      const saved = await updateUserRole(t, user.id, { role });
+      const tok = await getToken();
+      if (!tok) return;
+      const saved = await updateUserRole(tok, user.id, { role });
       onSaved(saved.role);
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to update role.");
+      onError(err instanceof Error ? err.message : t("detail.role.saveError"));
     } finally {
       setSaving(false);
     }
-  }, [getToken, user.id, role, onSaved, onError]);
+  }, [getToken, user.id, role, onSaved, onError, t]);
 
   return (
     <section className="card card-pad">
-      <div className="label">Role</div>
+      <div className="label">{t("detail.role.label")}</div>
       <div className="row gap2">
-        <Field label="RBAC role">
+        <Field label={t("detail.role.fieldLabel")}>
           <Select value={role} disabled={saving} onChange={(e) => setRole(e.target.value as Role)}>
             {ROLES.map((r) => (
               <option key={r} value={r}>
-                {r}
+                {t(`roles.${r}`)}
               </option>
             ))}
           </Select>
@@ -199,7 +207,7 @@ function RoleEditor({ user, getToken, onSaved, onError }: RoleEditorProps) {
           disabled={saving || role === user.role}
           onClick={() => void save()}
         >
-          {saving ? "Saving…" : "Save role"}
+          {saving ? t("detail.role.saving") : t("detail.role.save")}
         </Button>
       </div>
     </section>
@@ -215,6 +223,7 @@ interface FairUseFlagsProps {
 }
 
 function FairUseFlags({ userId, flags, getToken, onChanged, onError }: FairUseFlagsProps) {
+  const t = useT("users");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -222,36 +231,36 @@ function FairUseFlags({ userId, flags, getToken, onChanged, onError }: FairUseFl
     if (reason.trim() === "") return;
     setBusy(true);
     try {
-      const t = await getToken();
-      if (!t) return;
-      await flagFairUse(t, userId, { reason: reason.trim() });
+      const tok = await getToken();
+      if (!tok) return;
+      await flagFairUse(tok, userId, { reason: reason.trim() });
       setReason("");
       onChanged();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to raise flag.");
+      onError(err instanceof Error ? err.message : t("detail.fairUse.raiseError"));
     } finally {
       setBusy(false);
     }
-  }, [reason, getToken, userId, onChanged, onError]);
+  }, [reason, getToken, userId, onChanged, onError, t]);
 
   const setStatus = useCallback(
     async (flagId: string, status: FairUseFlagStatusValue) => {
       try {
-        const t = await getToken();
-        if (!t) return;
-        await updateFairUseFlag(t, flagId, { status });
+        const tok = await getToken();
+        if (!tok) return;
+        await updateFairUseFlag(tok, flagId, { status });
         onChanged();
       } catch (err) {
-        onError(err instanceof Error ? err.message : "Failed to update flag.");
+        onError(err instanceof Error ? err.message : t("detail.fairUse.updateError"));
       }
     },
-    [getToken, onChanged, onError],
+    [getToken, onChanged, onError, t],
   );
 
   return (
     <section className="card card-pad">
-      <div className="label">Fair-use flags</div>
-      {flags.length === 0 && <p className="muted">No flags raised.</p>}
+      <div className="label">{t("detail.fairUse.label")}</div>
+      {flags.length === 0 && <p className="muted">{t("detail.fairUse.empty")}</p>}
       <div className="col gap2">
         {flags.map((flag) => (
           <div key={flag.id} className="row gap2">
@@ -272,16 +281,16 @@ function FairUseFlags({ userId, flags, getToken, onChanged, onError }: FairUseFl
         ))}
       </div>
       <div className="row gap2">
-        <Field label="New flag reason">
+        <Field label={t("detail.fairUse.newReasonLabel")}>
           <Input
-            placeholder="e.g. automated abuse, account sharing"
+            placeholder={t("detail.fairUse.newReasonPlaceholder")}
             value={reason}
             disabled={busy}
             onChange={(e) => setReason(e.target.value)}
           />
         </Field>
         <Button variant="subtle" size="sm" disabled={busy || reason.trim() === ""} onClick={() => void raise()}>
-          Raise flag
+          {t("detail.fairUse.raise")}
         </Button>
       </div>
     </section>
@@ -297,65 +306,67 @@ interface DeletionPanelProps {
 }
 
 function DeletionPanel({ user, getToken, onRequested, onDeleted, onError }: DeletionPanelProps) {
+  const t = useT("users");
+  const statusLabel = useStatusLabel();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const request = useCallback(async () => {
     setBusy(true);
     try {
-      const t = await getToken();
-      if (!t) return;
-      await requestUserDeletion(t, user.id);
+      const tok = await getToken();
+      if (!tok) return;
+      await requestUserDeletion(tok, user.id);
       onRequested();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to record request.");
+      onError(err instanceof Error ? err.message : t("detail.deletion.recordError"));
     } finally {
       setBusy(false);
     }
-  }, [getToken, user.id, onRequested, onError]);
+  }, [getToken, user.id, onRequested, onError, t]);
 
   const execute = useCallback(async () => {
     setBusy(true);
     try {
-      const t = await getToken();
-      if (!t) return;
-      await deleteUser(t, user.id);
+      const tok = await getToken();
+      if (!tok) return;
+      await deleteUser(tok, user.id);
       onDeleted();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to delete user.");
+      onError(err instanceof Error ? err.message : t("detail.deletion.deleteError"));
       setBusy(false);
     }
-  }, [getToken, user.id, onDeleted, onError]);
+  }, [getToken, user.id, onDeleted, onError, t]);
 
   return (
     <section className="card card-pad">
-      <div className="label">Data deletion</div>
+      <div className="label">{t("detail.deletion.label")}</div>
       {user.deletion != null && (
         <p className="muted">
-          Last request: <Badge tone="amber">{statusLabel(user.deletion.status)}</Badge> on{" "}
-          {new Date(user.deletion.requestedAt).toLocaleString()}
+          {t("detail.deletion.lastRequestPrefix")}{" "}
+          <Badge tone="amber">{statusLabel(user.deletion.status)}</Badge>{" "}
+          {t("detail.deletion.lastRequestOn", {
+            date: new Date(user.deletion.requestedAt).toLocaleString(),
+          })}
         </p>
       )}
-      <p className="muted">
-        Deleting a user permanently removes their account and all owned data (conversations,
-        uploads, subscriptions, usage) — this cannot be undone. An audit entry is kept.
-      </p>
+      <p className="muted">{t("detail.deletion.warning")}</p>
       <div className="row gap2">
         <Button variant="ghost" size="sm" disabled={busy} onClick={() => void request()}>
-          Record deletion request
+          {t("detail.deletion.recordRequest")}
         </Button>
         {!confirming ? (
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(true)}>
-            Delete data…
+            {t("detail.deletion.deleteData")}
           </Button>
         ) : (
           <>
-            <Badge tone="red">Permanently delete {user.email}?</Badge>
+            <Badge tone="red">{t("detail.deletion.confirmQuestion", { email: user.email })}</Badge>
             <Button variant="primary" size="sm" disabled={busy} onClick={() => void execute()}>
-              {busy ? "Deleting…" : "Confirm delete"}
+              {busy ? t("detail.deletion.deleting") : t("detail.deletion.confirmDelete")}
             </Button>
             <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(false)}>
-              Cancel
+              {t("detail.deletion.cancel")}
             </Button>
           </>
         )}

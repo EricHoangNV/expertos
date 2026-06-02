@@ -11,9 +11,12 @@ import {
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
 import { listDrafts } from "../../src/lib/admin-client";
-import { draftStatusTone, statusLabel } from "../../src/lib/status-tone";
+import { draftStatusTone } from "../../src/lib/status-tone";
+import { useStatusLabel, useT } from "../../src/lib/i18n";
 
 export default function DraftQueuePage() {
+  const t = useT("knowledgeDrafts");
+  const statusLabel = useStatusLabel();
   const { getIdToken } = useAuth();
   const [status, setStatus] = useState<KnowledgeDraftStatusValue | "">("");
   const [drafts, setDrafts] = useState<KnowledgeDraftSummaryDto[] | null>(null);
@@ -25,14 +28,14 @@ export default function DraftQueuePage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("errors.signIn"));
         return;
       }
       setDrafts(await listDrafts(token, status || undefined));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load drafts.");
+      setError(err instanceof Error ? err.message : t("errors.loadDrafts"));
     }
-  }, [getIdToken, status]);
+  }, [getIdToken, status, t]);
 
   useEffect(() => {
     void load();
@@ -42,15 +45,15 @@ export default function DraftQueuePage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Drafts</div>
-          <h1 className="h1">Conversation-to-knowledge</h1>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
         </div>
-        <Field label="Status">
+        <Field label={t("statusFilter")}>
           <Select
             value={status}
             onChange={(e) => setStatus(e.target.value as KnowledgeDraftStatusValue | "")}
           >
-            <option value="">All</option>
+            <option value="">{t("statusAll")}</option>
             {KNOWLEDGE_DRAFT_STATUSES.map((s) => (
               <option key={s} value={s}>
                 {statusLabel(s)}
@@ -61,16 +64,16 @@ export default function DraftQueuePage() {
       </div>
 
       {error != null && <Badge tone="red">{error}</Badge>}
-      {drafts != null && drafts.length === 0 && <p className="muted">No drafts in this view.</p>}
+      {drafts != null && drafts.length === 0 && <p className="muted">{t("empty")}</p>}
       {drafts != null && drafts.length > 0 && (
         <Table>
           <thead>
             <tr>
-              <th>Title</th>
-              <th>Status</th>
-              <th>Lang</th>
-              <th>From chat</th>
-              <th>Updated</th>
+              <th>{t("colTitle")}</th>
+              <th>{t("colStatus")}</th>
+              <th>{t("colLang")}</th>
+              <th>{t("colFromChat")}</th>
+              <th>{t("colUpdated")}</th>
             </tr>
           </thead>
           <tbody>
@@ -83,7 +86,9 @@ export default function DraftQueuePage() {
                   <Badge tone={draftStatusTone(draft.status)}>{statusLabel(draft.status)}</Badge>
                 </td>
                 <td className="mono">{draft.language}</td>
-                <td className="muted">{draft.conversationId ? "yes" : "—"}</td>
+                <td className="muted">
+                  {draft.conversationId ? t("fromChatYes") : t("fromChatNo")}
+                </td>
                 <td className="muted">{new Date(draft.updatedAt).toLocaleDateString()}</td>
               </tr>
             ))}

@@ -6,6 +6,7 @@ import type { AdminAuditLogDto } from "@expertos/shared";
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
 import { getAuditLogs } from "../../src/lib/admin-client";
+import { useT } from "../../src/lib/i18n";
 
 const PAGE_SIZE = 50;
 
@@ -18,6 +19,7 @@ function renderMetadata(metadata: Record<string, unknown> | null): string {
 }
 
 export default function AuditPage() {
+  const t = useT("audit");
   const { getIdToken } = useAuth();
   const [rows, setRows] = useState<AdminAuditLogDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,17 +32,17 @@ export default function AuditPage() {
       try {
         const token = await getIdToken();
         if (!token) {
-          setError("Please sign in to continue.");
+          setError(t("signInError"));
           return;
         }
         const page = await getAuditLogs(token, { limit: PAGE_SIZE, offset });
         setHasMore(page.length === PAGE_SIZE);
         setRows((prev) => (offset === 0 || prev == null ? page : [...prev, ...page]));
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load the audit log.");
+        setError(err instanceof Error ? err.message : t("loadError"));
       }
     },
-    [getIdToken],
+    [getIdToken, t],
   );
 
   useEffect(() => {
@@ -57,34 +59,31 @@ export default function AuditPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Security</div>
-          <h1 className="h1">Audit log</h1>
-          <p className="muted">
-            Every admin mutation — role changes, fair-use flags, deletions — newest first. Immutable
-            and append-only.
-          </p>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
+          <p className="muted">{t("subtitle")}</p>
         </div>
       </div>
 
       {error != null && <Badge tone="red">{error}</Badge>}
-      {rows != null && rows.length === 0 && <p className="muted">No admin actions recorded yet.</p>}
+      {rows != null && rows.length === 0 && <p className="muted">{t("empty")}</p>}
 
       {rows != null && rows.length > 0 && (
         <Table>
           <thead>
             <tr>
-              <th>When</th>
-              <th>Actor</th>
-              <th>Action</th>
-              <th>Target</th>
-              <th>Detail</th>
+              <th>{t("col.when")}</th>
+              <th>{t("col.actor")}</th>
+              <th>{t("col.action")}</th>
+              <th>{t("col.target")}</th>
+              <th>{t("col.detail")}</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.id}>
                 <td className="muted mono">{new Date(row.createdAt).toLocaleString()}</td>
-                <td>{row.actorEmail ?? <span className="muted">(deleted)</span>}</td>
+                <td>{row.actorEmail ?? <span className="muted">{t("actorDeleted")}</span>}</td>
                 <td>
                   <Badge tone="ink">{row.action}</Badge>
                 </td>
@@ -100,7 +99,7 @@ export default function AuditPage() {
 
       {hasMore && (
         <Button variant="ghost" onClick={() => void loadMore()} disabled={loadingMore}>
-          {loadingMore ? "Loading…" : "Load more"}
+          {loadingMore ? t("loading") : t("loadMore")}
         </Button>
       )}
     </AdminFrame>

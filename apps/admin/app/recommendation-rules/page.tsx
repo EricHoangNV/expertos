@@ -11,28 +11,18 @@ import type {
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
 import { getRecommendationRules, updateRecommendationRule } from "../../src/lib/admin-client";
+import { useT } from "../../src/lib/i18n";
 
-/** Human label + one-line explanation per trigger, for the editor's left column. */
-const TRIGGER_META: Record<RecommendationRuleDto["trigger"], { label: string; help: string }> = {
-  high_intent: {
-    label: "High intent",
-    help: "A keyword in the user's question shows they want to engage (book, hire, work with you).",
-  },
-  topic: {
-    label: "High-stakes topic",
-    help: "A keyword in the question or answer flags a topic best handled by a human (legal, tax, medical).",
-  },
-  low_confidence: {
-    label: "Low confidence",
-    help: "The answer was ungrounded, or cited at most this many sources — offer the human path.",
-  },
-  depth: {
-    label: "Conversation depth",
-    help: "The conversation has reached this many assistant turns — an engaged user is a strong candidate.",
-  },
+/** Maps each trigger to its dictionary key fragment, for the editor's left column. */
+const TRIGGER_KEY: Record<RecommendationRuleDto["trigger"], string> = {
+  high_intent: "highIntent",
+  topic: "topic",
+  low_confidence: "lowConfidence",
+  depth: "depth",
 };
 
 export default function RecommendationRulesPage() {
+  const t = useT("recommendationRules");
   const { getIdToken } = useAuth();
   const [data, setData] = useState<RecommendationRulesDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,14 +33,14 @@ export default function RecommendationRulesPage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("signInError"));
         return;
       }
       setData(await getRecommendationRules(token));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load the recommendation rules.");
+      setError(err instanceof Error ? err.message : t("loadError"));
     }
-  }, [getIdToken]);
+  }, [getIdToken, t]);
 
   useEffect(() => {
     void load();
@@ -69,12 +59,9 @@ export default function RecommendationRulesPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">Consultation funnel</div>
-          <h1 className="h1">Recommendation rules</h1>
-          <p className="muted">
-            When to surface an in-chat “book a consultation” prompt. Changes take effect on the next
-            chat turn — no deploy. Higher priority wins when several rules fire on one answer.
-          </p>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("title")}</h1>
+          <p className="muted">{t("subtitle")}</p>
         </div>
       </div>
 
@@ -84,8 +71,8 @@ export default function RecommendationRulesPage() {
         <Table>
           <thead>
             <tr>
-              <th>Trigger</th>
-              <th>Configuration</th>
+              <th>{t("col.trigger")}</th>
+              <th>{t("col.configuration")}</th>
             </tr>
           </thead>
           <tbody>
@@ -93,9 +80,9 @@ export default function RecommendationRulesPage() {
               <tr key={rule.trigger}>
                 <td>
                   <div className="col gap1">
-                    <strong>{TRIGGER_META[rule.trigger].label}</strong>
+                    <strong>{t(`trigger.${TRIGGER_KEY[rule.trigger]}.label`)}</strong>
                     <Badge tone={rule.kind === "keyword" ? "info" : "ink"}>{rule.kind}</Badge>
-                    <span className="muted">{TRIGGER_META[rule.trigger].help}</span>
+                    <span className="muted">{t(`trigger.${TRIGGER_KEY[rule.trigger]}.help`)}</span>
                   </div>
                 </td>
                 <td>
@@ -150,6 +137,7 @@ function parseThreshold(raw: string): number | null | undefined {
  * field and rejects an enabled rule that could never fire (surfaced inline).
  */
 function RuleEditor({ rule, consultationTypes, getToken, onSaved }: RuleEditorProps) {
+  const t = useT("recommendationRules");
   const isKeyword = rule.kind === "keyword";
   const [enabled, setEnabled] = useState(rule.enabled);
   const [keywords, setKeywords] = useState(rule.keywords.join("\n"));
@@ -166,7 +154,7 @@ function RuleEditor({ rule, consultationTypes, getToken, onSaved }: RuleEditorPr
 
     const parsedPriority = parseThreshold(priority);
     if (parsedPriority === undefined || parsedPriority === null) {
-      setError("Priority must be a whole number ≥ 0.");
+      setError(t("priorityError"));
       return;
     }
 
@@ -182,7 +170,7 @@ function RuleEditor({ rule, consultationTypes, getToken, onSaved }: RuleEditorPr
     } else {
       const parsedThreshold = parseThreshold(threshold);
       if (parsedThreshold === undefined) {
-        setError("Threshold must be a whole number ≥ 0.");
+        setError(t("thresholdError"));
         return;
       }
       body = {
@@ -198,17 +186,17 @@ function RuleEditor({ rule, consultationTypes, getToken, onSaved }: RuleEditorPr
     try {
       const token = await getToken();
       if (!token) {
-        setError("Please sign in to continue.");
+        setError(t("signInError"));
         return;
       }
       onSaved(await updateRecommendationRule(token, rule.trigger, body));
       setSaved(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed.");
+      setError(err instanceof Error ? err.message : t("saveFailed"));
     } finally {
       setSaving(false);
     }
-  }, [isKeyword, enabled, keywords, threshold, priority, typeKey, getToken, onSaved, rule.trigger]);
+  }, [isKeyword, enabled, keywords, threshold, priority, typeKey, getToken, onSaved, rule.trigger, t]);
 
   /** Clear the just-saved confirmation as soon as the admin edits again. */
   const touched = useCallback(() => setSaved(false), []);
@@ -225,11 +213,11 @@ function RuleEditor({ rule, consultationTypes, getToken, onSaved }: RuleEditorPr
             touched();
           }}
         />
-        Enabled
+        {t("enabled")}
       </label>
 
       {isKeyword ? (
-        <Field label="Keywords (one per line)">
+        <Field label={t("keywordsLabel")}>
           <Textarea
             rows={4}
             placeholder="legal&#10;tax&#10;contract"
@@ -242,11 +230,11 @@ function RuleEditor({ rule, consultationTypes, getToken, onSaved }: RuleEditorPr
           />
         </Field>
       ) : (
-        <Field label="Threshold">
+        <Field label={t("thresholdLabel")}>
           <Input
             type="number"
             min={0}
-            placeholder="none"
+            placeholder={t("thresholdPlaceholder")}
             value={threshold}
             disabled={saving}
             onChange={(e) => {
@@ -257,7 +245,7 @@ function RuleEditor({ rule, consultationTypes, getToken, onSaved }: RuleEditorPr
         </Field>
       )}
 
-      <Field label="Priority">
+      <Field label={t("priorityLabel")}>
         <Input
           type="number"
           min={0}
@@ -270,7 +258,7 @@ function RuleEditor({ rule, consultationTypes, getToken, onSaved }: RuleEditorPr
         />
       </Field>
 
-      <Field label="Recommend">
+      <Field label={t("recommendLabel")}>
         <Select
           value={typeKey}
           disabled={saving}
@@ -279,20 +267,20 @@ function RuleEditor({ rule, consultationTypes, getToken, onSaved }: RuleEditorPr
             touched();
           }}
         >
-          <option value="">default consultation</option>
-          {consultationTypes.map((t) => (
-            <option key={t.key} value={t.key}>
-              {t.name}
-              {!t.active && " (inactive)"}
+          <option value="">{t("defaultConsultation")}</option>
+          {consultationTypes.map((ct) => (
+            <option key={ct.key} value={ct.key}>
+              {ct.name}
+              {!ct.active && t("inactiveSuffix")}
             </option>
           ))}
         </Select>
       </Field>
 
       <Button variant="subtle" size="sm" disabled={saving} onClick={() => void save()}>
-        {saving ? "Saving…" : "Save"}
+        {saving ? t("saving") : t("save")}
       </Button>
-      {saved && <Badge tone="green">Saved</Badge>}
+      {saved && <Badge tone="green">{t("saved")}</Badge>}
       {error != null && <Badge tone="red">{error}</Badge>}
     </div>
   );
