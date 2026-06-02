@@ -3,6 +3,8 @@
 import { useAuth } from "../src/lib/auth-context";
 import "./login.css";
 
+/* eslint-disable no-restricted-syntax -- Google's "G" mark must use its exact
+   brand hex colors; these are a third-party logo asset, not theme tokens. */
 function GoogleIcon() {
   return (
     <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -25,6 +27,7 @@ function GoogleIcon() {
     </svg>
   );
 }
+/* eslint-enable no-restricted-syntax */
 
 export default function LoginPage() {
   const { user, loading, signInWithGoogle } = useAuth();
@@ -68,7 +71,7 @@ export default function LoginPage() {
         <div className="login-actions">
           <button
             type="button"
-            className="btn-google"
+            className="btn btn-ghost btn-google"
             onClick={() => void signInWithGoogle()}
           >
             <GoogleIcon />

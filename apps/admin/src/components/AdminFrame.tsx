@@ -87,6 +87,8 @@ function Sidebar({ pathname, role }: { pathname: string; role: Role | null }) {
   );
 }
 
+/* eslint-disable no-restricted-syntax -- Google's "G" mark must use its exact
+   brand hex colors; these are a third-party logo asset, not theme tokens. */
 function GoogleIcon() {
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
@@ -97,6 +99,7 @@ function GoogleIcon() {
     </svg>
   );
 }
+/* eslint-enable no-restricted-syntax */
 
 const ROLES = [
   {

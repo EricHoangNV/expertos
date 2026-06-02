@@ -2583,3 +2583,32 @@ Append-only task history. One entry per completed task, newest at the bottom. Se
 - Remaining M11.1 fixme legs are still external/seed-gated: publish→retrieval round-trip (needs a Draft doc seed), deletion cascade (throwaway user), Stripe-hosted checkout (external surface).
 
 **Gates:** typecheck ✅, test ✅ (1037, unchanged — e2e excluded from default test), lint ✅ (incl. e2e + stylelint), deadcode ✅, build ✅ (7/7).
+
+---
+
+## M12.1.1 — `.chat-layout` three-pane grid CSS (+ pre-existing lint-gate remediation)
+**Date:** 2026-06-02
+**Ref:** PRD §"M12 — Frontend UI Overhaul" / `requirements/ui-reference-spec.md` §"Layout: Three-Pane Studio"
+
+**What was done:**
+- Added `.chat-layout` to `packages/ui/src/ds.css`: a viewport-height CSS grid with named areas (`sidebar`/`main`/`rail`) at `248px minmax(0,1fr) 320px`, plus child hooks `.chat-sidebar` / `.chat-main` / `.chat-rail`. Responsive per the spec: `@media (width < 1280px)` drops the sources rail (re-lists the template to `sidebar main`), `@media (width < 900px)` drops the sidebar too (`main` only). Range-notation media queries (stylelint-standard requires it).
+- Fixed the **pre-existing red lint gate** the M12.8 login commit (`1d228a3`) left on `main` — `pnpm lint` was failing but went unnoticed because turbo (which runs the per-workspace eslint half) SIGILLs in this sandbox, so only `lint:css` actually ran:
+  - `apps/web/app/login.css` used raw `px` for every dimension (34 stylelint errors). Converted to ds.css spacing tokens where they hit the 4px grid and rem otherwise (root font-size is 15px, so `1rem = 15px` — pixel-faithful + a11y-scalable). Media breakpoint → `@media (width < 60rem)`. The Google button now reuses `.btn .btn-ghost` (border/radius/hover) with a bespoke padding override so it keeps its ≥44px hit target.
+  - The Google "G" `<svg>` brand-hex fills in `apps/web/app/page.tsx` and `apps/admin/src/components/AdminFrame.tsx` tripped the eslint `no-restricted-syntax` hardcoded-hex guard. Wrapped each `GoogleIcon` in a scoped `/* eslint-disable no-restricted-syntax -- third-party brand logo */ … /* eslint-enable */` (brand colors are mandated, not theme tokens). `page.tsx` button className updated to `btn btn-ghost btn-google`.
+
+**Key decisions:**
+- ds.css is the correct home for `.chat-layout` (it's the shared visual source-of-truth, exempt from the px/hex guards). Used named grid-areas (not column-only) so each breakpoint drops a column by re-listing the template without re-parenting children — cleaner than `display:none` alone and keeps M12.1.2's `ChatLayout` markup stable.
+- Remediated the login lint break rather than committing on a red gate (directive step 5). Chose rem-over-15px-root for bespoke sizes (pixel-faithful, zero visual change) instead of snapping everything to the 4px token scale (would have shifted the approved mockup). Reused `.btn-ghost` to avoid a raw `border:1px` while preserving the hit target via a padding override.
+
+**Files changed:**
+- `packages/ui/src/ds.css` — new `.chat-layout` section (grid + child hooks + two responsive breakpoints).
+- `apps/web/app/login.css` — rewrote dimensions as ds.css tokens + rem; button reuses `.btn .btn-ghost`.
+- `apps/web/app/page.tsx` — button className → `btn btn-ghost btn-google`; scoped eslint-disable around `GoogleIcon`.
+- `apps/admin/src/components/AdminFrame.tsx` — scoped eslint-disable around `GoogleIcon`.
+- `project-mds/LEARNINGS.MD` — added #13 (app-CSS px ban → rem/tokens; brand-hex disable; turbo-SIGILL hides the lint half).
+- `project-mds/PRD.md`, `progress-state.md` — manifest + state.
+
+**Notes for next iteration:**
+- `turbo` arm64 binary SIGILLs here — run gates per-workspace directly (`tsc --noEmit`, `next lint --max-warnings 0`, `jest`). Verified: web tsc ✅, admin tsc ✅, ui jest 29 ✅, css/web/admin lint ✅, knip ✅. web/admin have no unit tests (`--passWithNoTests`); shared/db/ai/api untouched.
+- `.chat-layout` is CSS only — no consumer yet. M12.1.2 extracts the `ChatLayout` React component and wires it into `/chat` (currently a single `.card`). The current chat page still uses the old single-card layout.
+- Coverage gap noted in LEARNINGS #13: `apps/admin/src/components/admin-login.css` is outside the `apps/**/app/**` lint:css glob, so it isn't stylelinted. Widen the glob if admin CSS grows.

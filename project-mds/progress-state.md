@@ -2,12 +2,11 @@
 
 ## Current State
 - Completed:
-  - M11.1 (voice seed): `e2e/global-setup.ts` now seeds an active expert + published `en` voice profile (idempotent, linked to e2e-expert@), un-skipping the M2.2 "AI rendition" voice E2E leg → E2E now **16 pass / 3 skip (3 fixme) / 0 fail**. Validated against a live pgvector DB: picker + chat-resolution SQL both return the seed
-  - M11.1 (executed green): Playwright E2E vs a live in-sandbox stack; `e2e/global-setup.ts` (mirror users, promote roles + member→Plus), programmatic emulator sign-in, CORS + a11y-label + harness-selector fixes (LEARNINGS #10/#11/#12)
-  - M11.1 (enabler fix): API Firebase init emulator-aware (`createFirebaseApp` inits with just `projectId` when `FIREBASE_AUTH_EMULATOR_HOST` set); fixes E2E boot. Prod no-op
-  - M11 (harness): `infra/local-test-db.sh` + `pnpm test:integration` — pgvector in Docker; **50 live-DB tests green (15 RLS + 35 api)**
+  - M12.1.1: `.chat-layout` three-pane grid in ds.css (named areas; rail<1280px, sidebar<900px) + fixed pre-existing red lint gate from M12.8 login commit (login.css raw-px→rem/tokens, brand-hex SVGs eslint-disabled) — LEARNINGS #13
+  - M11.1: Playwright E2E green vs live in-sandbox stack (16 pass/3 fixme/0 fail) — global-setup seeds users+roles+expert-voice, programmatic emulator sign-in, emulator-aware API Firebase init; CORS/a11y/selector fixes (LEARNINGS #9/#10/#11/#12)
+  - M11 (harness): `infra/local-test-db.sh` + `pnpm test:integration` — pgvector in Docker; 50 live-DB tests green (15 RLS + 35 api)
   - M6.2 (web): Self-serve checkout CTA — `GET /me/plans` + account-page Upgrade/Manage-billing
-  - NT.3 (technical): Data-retention sweeper (`RetentionService`) — preview/sweep deletes expired uploads/idle convos/old logs, deletes consultation transcripts, anonymizes concierge records (PM approval pending)
+  - NT.3 (technical): Data-retention sweeper (`RetentionService`) — preview/sweep expired uploads/idle convos/old logs + transcripts + anonymizes concierge records (PM approval pending)
   - M11.3: Cache hit/miss instrumentation + dependency-free `load/smoke.mjs` smoke harness (opt-in)
   - NT.4 (technical): High-stakes detector → disclaimer + topic-trigger CTA (PM/legal sign-off pending)
   - M10.4: Validation scorecard (activation/engagement/willingness-to-pay/funnel) — admin analytics
@@ -18,51 +17,21 @@
   - M9.1: Admin concierge trigger config
   - M10.2: Consultation funnel + attribution
   - M10.1: Usage & cost analytics
-  - M11.5: Design-system conformance audit
-  - M11.2: /cso security audit + per-IP rate limiter + prompt-injection hardening + live-DB authz/RLS tests
+  - M11.5: Design-system conformance audit; M11.2: /cso audit + rate limiter + prompt-injection hardening + live-DB authz/RLS tests
   - Consumer-web: upload UI, history+search+saved, answer affordances, plan & usage page
-  - Admin: TidyCal reconciliation, audit + user mgmt + data deletion
-  - M8.5: Expert portal; M8.4: expert-roster + voice-profile admin UI
-  - M8.3: Failed-query inspector, rec-rules editor, entitlement matrix editor, revenue reports
-  - Publish-time cache invalidation
-  - M8.1 + M8.2: Knowledge management (API + admin UI)
-  - M7.3: Booking provider + reconciliation
-  - M7.2: Recommendation actions (book/maybe_later/ask_another)
-  - M7.1: Recommendation evaluation engine
-  - M6.5: Model pricing + usage cost tracking
-  - M6.4: Response caching (in-process LRU + persistent + semantic)
-  - M6.3: Fair-use entitlement enforcement + tier degradation
-  - M6.2: Billing (Stripe integration + offline provider)
-  - M6.1: Entitlements engine + guard
-  - M5.4: Upload retrieval + citation
-  - M5.3: Upload processing pipeline
-  - M5.2: Upload storage + conversation scoping
-  - M5.1: Upload API + file validation
-  - M4.3: Citation UI rendering
-  - M4.2: Citation persistence + resolution
-  - M4.1: Citation extraction from LLM responses
-  - M3.5: Conversation context window
-  - M3.4: Answer stream affordances
-  - M3.3: Conversation history + search
-  - M3.2: Conversation persistence
-  - M3.1: Chat controller + SSE streaming
-  - M2.4: Voice fidelity evaluation
-  - M2.3: Voice profile CRUD
-  - M2.2: Answer prompt assembly
-  - M2.1: LLM provider abstraction
-  - P0.1: Monorepo + workspace setup
-  - P0.2: Postgres + pgvector + RLS
-  - P0.3: Firebase Auth + RBAC
-  - P0.4: Manual build & deploy (Dockerfiles + Terraform + Cloud Run)
-  - P0.5: Observability (structured logging, tracing, Sentry, usage logs)
-  - P0.6: Design system foundation
-  - M1.3: Vietnamese retrieval quality + NFC normalization
-  - M1.2: Hybrid retrieval (vector + keyword RRF fusion)
-  - M1.1: Versioned ingestion pipeline
+  - M8 (admin/expert): knowledge mgmt API+UI, failed-query/rec-rules/matrix/revenue, expert-roster+voice-profile UI, expert portal, TidyCal reconcile, audit+user mgmt+data deletion, publish-time cache invalidation
+  - M7 (funnel): rec engine, book/maybe/ask actions, booking provider + reconciliation
+  - M6 (subscriptions): entitlements+guard, Stripe billing, fair-use degradation, response caching, model pricing/cost
+  - M5 (uploads): API+validation, storage+conversation-scoping, processing pipeline, retrieval+citation
+  - M4 (citations): extraction, persistence+resolution, UI rendering
+  - M3 (chat): SSE streaming, persistence, history+search, stream affordances, context window
+  - M2 (voice): LLM provider abstraction, answer-prompt assembly, voice-profile CRUD, fidelity eval
+  - M1 (knowledge): ingestion pipeline, hybrid retrieval (RRF), VI quality + NFC normalization
+  - P0 (foundation): monorepo, Postgres+pgvector+RLS, Firebase Auth+RBAC, build/deploy, observability, design system
 - Tests: 1037 pass / 0 fail / 0 skip (shared 179, ui 29, db 9, ai 161, api 659)
-- Build: passing — `pnpm build` builds all 7 workspaces. (Note: admin's standalone build flakily truncates `.next/server/pages-manifest.json` to 0 bytes [`Unexpected end of JSON input`] — only matters for `next start`; copy web's manifest or rebuild. Not a code error.)
-- Gates: typecheck ✅, test ✅ (coverage gate ≥90% met), lint ✅ (incl. stylelint), build ✅, deadcode (knip) ✅
+- Build: `pnpm build` builds all 7 workspaces (turbo-orchestrated — see SIGILL note below; build via turbo also affected in this sandbox). Admin standalone build flakily zeroes `.next/server/pages-manifest.json` — only matters for `next start`.
+- Gates: typecheck ✅, test ✅ (coverage gate ≥90% met), lint ✅ (incl. stylelint), deadcode (knip) ✅. NOTE: `turbo` arm64 binary SIGILLs in this sandbox — run gates per-workspace (`tsc --noEmit`, `next lint`, `jest`) directly; `pnpm`-level turbo aggregation fails. (LEARNINGS #2/#13)
 - Next tasks (priority order):
-  1. **M11.1 fixme legs** — un-skip when their surface lands: a Draft doc (publish→retrieval round-trip), a throwaway user (deletion cascade), a Stripe test harness (hosted checkout). All currently `test.fixme` by design. (Voice leg now seeded → un-skipped.)
-  2. **M11.4 / NT** — remaining sign-offs are now human gates (NT.3 PM approval, NT.4 copy/ToS, NT.5/6 deferred)
-  3. Phase-0 Open Decisions (#3, product halves of #2/#6)
+  1. **M12 (Frontend UI Overhaul)** — `.chat-layout` shell landed (M12.1.1). Next: M12.1.2 extract `ChatLayout` component + integrate into `/chat`; then M12.2 sidebar, M12.3 topbar, etc. Read `requirements/ui-reference-spec.md` first.
+  2. **M13 (Admin Portal UI Overhaul)** — sidebar/dashboard/kanban/matrix/voice/concierge rebuilds.
+  3. **M11.1 fixme legs** / **NT human gates** — await external surfaces / PM sign-off.

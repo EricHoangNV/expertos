@@ -319,3 +319,37 @@ button { font-family: inherit; cursor: pointer; }
 
 /* tooltip-ish kbd */
 kbd { font-family: var(--font-mono); font-size: 11px; background: var(--paper-2); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--ink-600); }
+
+/* ============================================================
+   Chat layout (consumer web — three-pane "studio") — M12.1
+   Sidebar 248px · chat (flex) · sources rail 320px on a viewport-
+   height grid. Named areas so a breakpoint can drop a column by
+   re-listing the template without re-flowing the children.
+
+   Responsive (ui-reference-spec §"Responsive Behavior"):
+     >= 1280px  full three-pane
+     900–1279px sidebar + chat (sources move to a drawer)
+     < 900px    chat only (sidebar becomes an overlay)
+   ============================================================ */
+.chat-layout {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr) 320px;
+  grid-template-areas: "sidebar main rail";
+  height: 100vh;
+  min-height: 100vh;
+}
+.chat-layout > .chat-sidebar { grid-area: sidebar; min-width: 0; }
+.chat-layout > .chat-main { grid-area: main; min-width: 0; display: flex; flex-direction: column; height: 100vh; }
+.chat-layout > .chat-rail { grid-area: rail; min-width: 0; }
+
+/* < 1280px — drop the sources rail; it reopens as a slide-over drawer (M12.5.4). */
+@media (width < 1280px) {
+  .chat-layout { grid-template-columns: 248px minmax(0, 1fr); grid-template-areas: "sidebar main"; }
+  .chat-layout > .chat-rail { display: none; }
+}
+
+/* < 900px — drop the sidebar too; it reopens as an overlay (M12.9.1). */
+@media (width < 900px) {
+  .chat-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main"; }
+  .chat-layout > .chat-sidebar { display: none; }
+}

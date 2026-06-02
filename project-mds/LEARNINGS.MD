@@ -148,3 +148,16 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Fix: pass matching `htmlFor`/`id` (`<Field label="Status" htmlFor="status-filter"><Select id="status-filter">`). Selecting by option **value** (not the humanized label) is also more robust for `selectOption`, since `statusLabel()` lowercases the enum.
 
 **Rule:** Whenever a form control uses the DS `Field` (or any label-renders-separately component), pass `htmlFor` + a matching control `id` — an unassociated label is an invisible a11y defect that visual review won't catch but accessibility-first tests (and screen readers) will.
+
+---
+
+## 13. App-level CSS/JSX must avoid raw `px` and hardcoded hex — bespoke sizes use rem (root = 15px), brand logos need a scoped disable
+
+**Context:** M12.1.1 — the M12.8.1 login pages were committed with a red lint gate that went unnoticed (`pnpm lint` is `turbo run lint && pnpm lint:css`, and turbo's arm64 binary SIGILLs in this sandbox — see #2's sibling — so the per-workspace eslint step never actually ran; only `lint:css` did). Two distinct guard violations had slipped in:
+
+- `apps/web/app/login.css` used raw `px` for every dimension. The stylelint `unit-disallowed-list: ["px"]` (and `media-feature-range-notation`) is enabled for all app CSS — only `**/ds.css` is exempt (it *defines* the token scale). ds.css sets `html { font-size: 15px }`, so **`1rem = 15px`**: converting bespoke `Npx → (N/15)rem` is pixel-faithful *and* lint-clean *and* a11y-scalable; spacing that lands on the 4px grid uses `var(--sN)` tokens; media breakpoints use rem (`@media (width < 60rem)` = 900px) in range notation. Reuse a DS component class (`.btn .btn-ghost`) instead of re-declaring `border:1px`/padding/font, but keep a bespoke padding override when the component's default height would drop the control under the 44px hit target.
+- The Google "G" `<svg>` in `page.tsx` and `AdminFrame.tsx` tripped the eslint `no-restricted-syntax` hardcoded-hex guard. Google's brand colors are *mandated* and can't be theme tokens — wrap the icon in `/* eslint-disable no-restricted-syntax -- third-party brand logo */ … /* eslint-enable */` with a justification.
+
+- Caveat: the `lint:css` glob is `apps/**/app/**/*.css`, so `apps/admin/src/components/admin-login.css` (under `src/`, not `app/`) escapes CSS linting entirely — a coverage gap to widen if admin CSS proliferates.
+
+**Rule:** New M12/M13 UI must pass the design-system guards: app CSS expresses size as ds.css spacing tokens or rem (never raw `px`; root is 15px so rem is pixel-faithful), and the only hardcoded hex permitted in JSX is a third-party brand asset behind a scoped, commented eslint-disable. When `pnpm lint` looks green, confirm `turbo run lint` actually ran (it SIGILLs here) — otherwise run each workspace's `next lint`/`eslint` directly.
