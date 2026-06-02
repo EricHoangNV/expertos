@@ -3681,3 +3681,26 @@ linux/arm64 SWC binary (environmental).
 
 **Tests:** 1225 pass / 0 fail / 0 skip (shared 179, ui 217, db 9, ai 161, api 661). Gates green:
 shared/ui/api build+lint+jest, admin tsc + next lint, web tsc, root lint:css (stylelint), root knip.
+
+## M13.2.4 — Dashboard Consultation Funnel card
+**Date:** 2026-06-02
+**Ref:** PRD Task Manifest M13.2.4; requirements/ui-reference-spec.md "Consultation Funnel Card"
+
+**What was done:**
+- Added a `FunnelCard` to `apps/admin/app/page.tsx` rendering the question→recommendation→booking→revenue chain as four horizontal proportional `.bar` rows (Questions / Recommend / Booked / Revenue), each row a label + mono value head over a `Bar`.
+- Bottom summary line: "{recommend→book rate} recommend→book. Each booking averages {avg}." computed from `byResponse.book / recommendations` and `bookedRevenueCents / book`.
+- Wired to the existing `/admin/analytics/funnel` report already fetched by the dashboard (`data.funnel`) — no new API call.
+- New ds.css `.funnel-*` block (card + rows + head + ink-fill bar override + summary).
+
+**Key decisions:**
+- Reused the existing `Bar` primitive instead of a new component — the spec calls for a `.bar` with proportional fill, which `Bar` already provides (NaN/Infinity-guarded, clamped).
+- Bar fills are proportional to the funnel top (conversations = 100%); the Revenue row tracks the Booked row's width (revenue is produced by the booked consultations — there's no count denominator for dollars), documented in the component doc-comment.
+- Overrode `.funnel-card .bar > i` to ink fill (`--ink-900`) so the funnel reads as "dark shades" per the mockup and is visually distinct from the crimson quota meter.
+- Inlined `FunnelCard` in page.tsx mirroring the existing `QuestionsCard` pattern (admin has no jest suite; these dashboard cards are page-local, not shared ui primitives).
+
+**Files changed:**
+- `apps/admin/app/page.tsx` — `FunnelCard` component + `ratePct` helper + wiring + `Bar` import.
+- `packages/ui/src/ds.css` — `.funnel-*` block after `.qa-empty`.
+
+**Tests:** 1225 pass / 0 fail / 0 skip (shared 179, ui 217, db 9, ai 161, api 661). Gates green:
+ui build, admin tsc + next lint, root lint:css (stylelint), root knip.
