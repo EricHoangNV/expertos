@@ -1,6 +1,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { cx } from "./cx";
 import { DEFAULT_LAYOUT_DIRECTION, layoutPanes, type LayoutDirection } from "./layout";
+import { DEFAULT_DENSITY, type Density } from "./prefs";
 
 export interface ChatLayoutProps extends HTMLAttributes<HTMLDivElement> {
   /** Left conversation rail (M12.2) — rendered into `.chat-sidebar`; collapses < 900px. */
@@ -14,6 +15,12 @@ export interface ChatLayoutProps extends HTMLAttributes<HTMLDivElement> {
    * grid here and handed to the drawer/overlay in the later tasks.
    */
   direction?: LayoutDirection;
+  /**
+   * Display density (M12.7.3) — adds a `chat-density-{density}` modifier so the
+   * message thread's vertical rhythm tightens (`compact`) or loosens (`comfy`)
+   * around the default (`regular`).
+   */
+  density?: Density;
 }
 
 /**
@@ -29,6 +36,7 @@ export function ChatLayout({
   sidebar,
   rail,
   direction = DEFAULT_LAYOUT_DIRECTION,
+  density = DEFAULT_DENSITY,
   className,
   children,
   ...rest
@@ -37,7 +45,10 @@ export function ChatLayout({
   const showSidebar = sidebar != null && panes.sidebar;
   const showRail = rail != null && panes.rail;
   return (
-    <div className={cx("chat-layout", `chat-layout-${direction}`, className)} {...rest}>
+    <div
+      className={cx("chat-layout", `chat-layout-${direction}`, `chat-density-${density}`, className)}
+      {...rest}
+    >
       {showSidebar && <aside className="chat-sidebar">{sidebar}</aside>}
       <div className="chat-main">{children}</div>
       {showRail && <aside className="chat-rail">{rail}</aside>}

@@ -66,6 +66,8 @@ export { TweaksPanel } from "./TweaksPanel";
 export type { TweaksPanelProps } from "./TweaksPanel";
 export { TweaksLayoutControl } from "./TweaksLayoutControl";
 export type { TweaksLayoutControlProps } from "./TweaksLayoutControl";
+export { TweaksDensityControl } from "./TweaksDensityControl";
+export type { TweaksDensityControlProps } from "./TweaksDensityControl";
 export {
   ChatConversationList,
   AVATAR_TONES,
@@ -86,3 +88,10 @@ export {
   isLayoutDirection,
 } from "./layout";
 export type { LayoutDirection, LayoutPanes } from "./layout";
+export {
+  DENSITIES,
+  DEFAULT_DENSITY,
+  DENSITY_INFO,
+  isDensity,
+} from "./prefs";
+export type { Density } from "./prefs";

@@ -385,6 +385,13 @@ kbd { font-family: var(--font-mono); font-size: 11px; background: var(--paper-2)
   overflow-y: auto;
 }
 
+/* Message thread vertical rhythm — the Tweaks density preference (M12.7.3)
+   tightens/loosens the gap between turns via a `chat-density-*` modifier on the
+   `.chat-layout` root; `regular` is the default. */
+.chat-thread { display: flex; flex-direction: column; gap: var(--s4); }
+.chat-density-compact .chat-thread { gap: var(--s2); }
+.chat-density-comfy .chat-thread { gap: var(--s6); }
+
 /* ============================================================
    Sources rail (consumer web — right panel) — M12.5
    The content container that fills the 320px `.chat-rail` grid area: a
@@ -759,3 +766,9 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
 .tweaks-section > .seg { display: flex; }
 .tweaks-section > .seg button { flex: 1; }
 .tweaks-section-desc { font-style: italic; }
+/* M12.7.3 density `.switch` option rows */
+.tweaks-toggles { display: flex; flex-direction: column; gap: var(--s2); }
+.tweaks-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s3); cursor: pointer; font-size: 14px; color: var(--ink-700);
+}

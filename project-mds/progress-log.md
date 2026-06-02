@@ -3337,3 +3337,31 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 - M12.7.3 (density `.seg` compact/regular/comfy + "Verified trust badge"/"Concierge review offer" `.switch` toggles): mount another `.tweaks-section` into the `TweaksPanel` children below `TweaksLayoutControl`. There is no `.switch` ds.css component yet — add one (crimson-when-on) per the Design System.
 - M12.7.4: the `/chat` `tweaksOpen` state already gates the panel — add a topbar toolbar button ("Hide tweaks"/"Show tweaks") that toggles it; consider flipping the default to closed at that point.
 - Reminder: rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing it — `apps/web` typechecks against `dist/`.
+
+## M12.7.3 — Tweaks density options (`.seg` + `.switch` toggles)
+**Date:** 2026-06-02
+**Ref:** PRD §"M12.7 — Tweaks panel" / requirements/ui-reference-spec.md §7 (Tweaks Panel)
+
+**What was done:**
+- New `packages/ui/src/prefs.ts` — display-density model mirroring `layout.ts`: `Density` (`compact`/`regular`/`comfy`), `DENSITIES`, `DEFAULT_DENSITY` (regular), `DENSITY_INFO` (label + one-line description), `isDensity` guard.
+- New `packages/ui/src/TweaksDensityControl.tsx` — presentational "DENSITY & OPTIONS" section: `.label` over a full-width `.seg` density control (active option `.active`+`aria-pressed`, description as `title`), then a `.tweaks-toggles` group of two `.switch` rows ("Verified trust badge", "Concierge review offer"). Pure function (no hooks) per the suite's direct-invoke convention.
+- `ChatLayout` gained a `density` prop → adds `chat-density-{density}` to the grid root (default regular).
+- ds.css: `.tweaks-toggles`/`.tweaks-toggle` rows; `.chat-thread` thread wrapper with density-modifier gaps (`compact`→s2, `regular`→s4, `comfy`→s6).
+- Wired into `/chat`: density + both toggle prefs are own-the-state + restore-after-mount + persist to localStorage (`expertos:chat-density`, `:show-verified-badge`, `:show-concierge-offer`); density passed to both `ChatLayout` renders; messages wrapper is now `.chat-thread`; `AssistantTurn` gained `showVerifiedBadge` that ANDs the existing `verified` condition; `TweaksDensityControl` mounted in `TweaksPanel` below `TweaksLayoutControl`.
+- Tests: +11 ui (3 density-model, 7 control, 1 ChatLayout density modifier) + updated 4 existing ChatLayout class assertions for the new modifier. ui suite 180→191, all green, 100% coverage on new files.
+
+**Key decisions:**
+- Mirrored the M12.7.2 direction pattern exactly (model module + pure control + page-owned localStorage state) for consistency.
+- Density implemented as a root-class modifier driving only the thread gap (low-risk, visible) rather than restyling every component's internal padding.
+- "Verified trust badge" toggle wired to a real effect (gates the M12.4.2 badge). "Concierge review offer" has no user-facing surface yet (concierge is admin/expert-side, M9/M13.6), so it's persisted as a forward-looking preference — documented as such.
+
+**Files changed:**
+- `packages/ui/src/prefs.ts` — new density model.
+- `packages/ui/src/TweaksDensityControl.tsx` — new control component.
+- `packages/ui/src/ChatLayout.tsx` — `density` prop + `chat-density-*` modifier.
+- `packages/ui/src/ds.css` — `.tweaks-toggles`/`.tweaks-toggle` + `.chat-thread` density gaps.
+- `packages/ui/src/index.ts` — export prefs + `TweaksDensityControl`.
+- `packages/ui/src/primitives.test.ts` — +11 tests; updated 4 ChatLayout assertions.
+- `apps/web/app/chat/page.tsx` — density + toggle state/persistence; wired control into `TweaksPanel`; `.chat-thread` wrapper; `AssistantTurn` `showVerifiedBadge`.
+
+**Gates:** ui jest 191 pass / 100% cov; tsc (ui + web, after `pnpm --filter @expertos/ui build`) clean; eslint (ui + web) clean; stylelint clean; knip clean. (turbo arm64 SIGILLs in sandbox — ran per-workspace per LEARNINGS #2/#13.)

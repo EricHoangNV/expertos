@@ -42,6 +42,13 @@ import {
   LAYOUT_DIRECTIONS,
   layoutPanes,
 } from "./layout";
+import {
+  DEFAULT_DENSITY,
+  DENSITIES,
+  DENSITY_INFO,
+  isDensity,
+} from "./prefs";
+import { TweaksDensityControl } from "./TweaksDensityControl";
 import { Field, Input, Select, Textarea } from "./Field";
 import { Stat } from "./Stat";
 import { Table } from "./Table";
@@ -335,8 +342,8 @@ describe("Shell / Topbar / Content — the shared app frame", () => {
 describe("ChatLayout — three-pane studio grid (M12.1)", () => {
   it("renders only the `.chat-main` column when no sidebar or rail is given", () => {
     const bare = ChatLayout({ children: "chat" }) as ReactElement;
-    // Defaults to the studio direction's grid modifier.
-    expect(cls(bare)).toBe("chat-layout chat-layout-studio");
+    // Defaults to the studio direction + regular density grid modifiers.
+    expect(cls(bare)).toBe("chat-layout chat-layout-studio chat-density-regular");
     const [sidebar, main, rail] = kids(bare) as ReactElement[];
     // Omitted panes short-circuit to `false` so focus/classic directions drop them.
     expect(sidebar).toBe(false);
@@ -361,7 +368,7 @@ describe("ChatLayout — three-pane studio grid (M12.1)", () => {
       direction: "classic",
       children: "chat",
     }) as ReactElement;
-    expect(cls(el)).toBe("chat-layout chat-layout-classic");
+    expect(cls(el)).toBe("chat-layout chat-layout-classic chat-density-regular");
     const [sidebar, , rail] = kids(el) as ReactElement[];
     expect(cls(sidebar)).toBe("chat-sidebar");
     // Rail content is supplied but suppressed from the grid for this direction.
@@ -375,7 +382,7 @@ describe("ChatLayout — three-pane studio grid (M12.1)", () => {
       direction: "focus",
       children: "chat",
     }) as ReactElement;
-    expect(cls(el)).toBe("chat-layout chat-layout-focus");
+    expect(cls(el)).toBe("chat-layout chat-layout-focus chat-density-regular");
     const [sidebar, main, rail] = kids(el) as ReactElement[];
     expect(sidebar).toBe(false);
     expect(cls(main)).toBe("chat-main");
@@ -384,7 +391,12 @@ describe("ChatLayout — three-pane studio grid (M12.1)", () => {
 
   it("merges a caller className onto the grid container", () => {
     const el = ChatLayout({ className: "z", children: "chat" }) as ReactElement;
-    expect(cls(el)).toBe("chat-layout chat-layout-studio z");
+    expect(cls(el)).toBe("chat-layout chat-layout-studio chat-density-regular z");
+  });
+
+  it("applies the chosen density modifier (M12.7.3)", () => {
+    const el = ChatLayout({ density: "comfy", children: "chat" }) as ReactElement;
+    expect(cls(el)).toBe("chat-layout chat-layout-studio chat-density-comfy");
   });
 });
 
@@ -2039,6 +2051,126 @@ describe("TweaksLayoutControl — chat-layout direction `.seg` (M12.7.2)", () =>
       onChange: noop,
       className: "x",
     }) as ReactElement;
+    expect(cls(el)).toBe("tweaks-section x");
+  });
+});
+
+describe("display density — Tweaks options state (M12.7.3)", () => {
+  it("lists the three densities in `.seg` order with regular as the default", () => {
+    expect(DENSITIES).toEqual(["compact", "regular", "comfy"]);
+    expect(DEFAULT_DENSITY).toBe("regular");
+  });
+
+  it("exposes a label + one-line description for every density", () => {
+    for (const d of DENSITIES) {
+      expect(DENSITY_INFO[d].label.length).toBeGreaterThan(0);
+      expect(DENSITY_INFO[d].description.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("guards persisted values (only the three densities are valid)", () => {
+    expect(isDensity("compact")).toBe(true);
+    expect(isDensity("regular")).toBe(true);
+    expect(isDensity("comfy")).toBe(true);
+    expect(isDensity("dense")).toBe(false);
+    expect(isDensity(null)).toBe(false);
+    expect(isDensity(3)).toBe(false);
+  });
+});
+
+describe("TweaksDensityControl — density `.seg` + option `.switch` toggles (M12.7.3)", () => {
+  const noop = () => {};
+  const base = {
+    density: "regular" as const,
+    onDensityChange: noop,
+    verifiedBadge: true,
+    onVerifiedBadgeChange: noop,
+    conciergeOffer: true,
+    onConciergeOfferChange: noop,
+  };
+  /** Section children: [label, seg, togglesGroup]. */
+  const parts = (el: ReactElement): unknown[] => kids(el) as unknown[];
+  const toggles = (el: ReactElement): ReactElement[] =>
+    kids(parts(el)[2] as ReactElement) as ReactElement[];
+
+  it("renders a `.tweaks-section` with the `.label` header", () => {
+    const el = TweaksDensityControl(base) as ReactElement;
+    expect(cls(el)).toBe("tweaks-section");
+    const label = parts(el)[0] as ReactElement;
+    expect(cls(label)).toBe("label");
+  });
+
+  it("renders the `.seg` control with one button per density, in display order", () => {
+    const el = TweaksDensityControl(base) as ReactElement;
+    const seg = parts(el)[1] as ReactElement;
+    expect(cls(seg)).toBe("seg");
+    const buttons = kids(seg) as ReactElement[];
+    expect(buttons.map((b) => kids(b))).toEqual(DENSITIES.map((d) => DENSITY_INFO[d].label));
+  });
+
+  it("marks only the active density with `.active` + aria-pressed", () => {
+    const el = TweaksDensityControl({ ...base, density: "comfy" }) as ReactElement;
+    const buttons = kids(parts(el)[1] as ReactElement) as ReactElement[];
+    buttons.forEach((b, i) => {
+      const active = DENSITIES[i] === "comfy";
+      const props = b.props as { className?: unknown; "aria-pressed"?: unknown };
+      expect(props.className).toBe(active ? "active" : "");
+      expect(props["aria-pressed"]).toBe(active);
+    });
+  });
+
+  it("fires onDensityChange with the chosen density", () => {
+    const onDensityChange = jest.fn();
+    const el = TweaksDensityControl({ ...base, onDensityChange }) as ReactElement;
+    const buttons = kids(parts(el)[1] as ReactElement) as ReactElement[];
+    (buttons[0].props as { onClick: () => void }).onClick();
+    expect(onDensityChange).toHaveBeenCalledWith(DENSITIES[0]);
+  });
+
+  it("renders the two option `.switch` toggles reflecting their checked state", () => {
+    const el = TweaksDensityControl({
+      ...base,
+      verifiedBadge: true,
+      conciergeOffer: false,
+    }) as ReactElement;
+    const rows = toggles(el);
+    expect(rows).toHaveLength(2);
+    expect(cls(rows[0])).toBe("tweaks-toggle");
+    // each row is [labelSpan, switchSpan]; switch holds [input, track]
+    const checkedOf = (row: ReactElement): unknown => {
+      const switchSpan = (kids(row) as ReactElement[])[1];
+      const input = (kids(switchSpan) as ReactElement[])[0];
+      return (input.props as { checked?: unknown }).checked;
+    };
+    expect(checkedOf(rows[0])).toBe(true); // verified badge on
+    expect(checkedOf(rows[1])).toBe(false); // concierge offer off
+  });
+
+  it("fires the matching toggle callback on change", () => {
+    const onVerifiedBadgeChange = jest.fn();
+    const onConciergeOfferChange = jest.fn();
+    const el = TweaksDensityControl({
+      ...base,
+      onVerifiedBadgeChange,
+      onConciergeOfferChange,
+    }) as ReactElement;
+    const rows = toggles(el);
+    const inputOf = (row: ReactElement): ReactElement => {
+      const switchSpan = (kids(row) as ReactElement[])[1];
+      return (kids(switchSpan) as ReactElement[])[0];
+    };
+    (inputOf(rows[0]).props as { onChange: (e: unknown) => void }).onChange({
+      target: { checked: false },
+    });
+    (inputOf(rows[1]).props as { onChange: (e: unknown) => void }).onChange({
+      target: { checked: true },
+    });
+    expect(onVerifiedBadgeChange).toHaveBeenCalledWith(false);
+    expect(onConciergeOfferChange).toHaveBeenCalledWith(true);
+  });
+
+  it("merges a caller className", () => {
+    const el = TweaksDensityControl({ ...base, className: "x" }) as ReactElement;
     expect(cls(el)).toBe("tweaks-section x");
   });
 });

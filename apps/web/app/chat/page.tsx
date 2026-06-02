@@ -24,9 +24,12 @@ import {
   type ChatLanguage,
   ChatUserMessage,
   ChatVoicePicker,
+  DEFAULT_DENSITY,
   DEFAULT_LAYOUT_DIRECTION,
+  type Density,
   Field,
   Input,
+  isDensity,
   isLayoutDirection,
   type LayoutDirection,
   layoutPanes,
@@ -35,6 +38,7 @@ import {
   SourcesDrawer,
   SourcesRail,
   SourcesRailHeader,
+  TweaksDensityControl,
   TweaksLayoutControl,
   TweaksPanel,
 } from "@expertos/ui";
@@ -69,6 +73,12 @@ import { useMediaQuery } from "../../src/lib/use-media-query";
 
 /** localStorage key for the persisted chat layout direction (M12.7.2). */
 const LAYOUT_DIRECTION_STORAGE_KEY = "expertos:chat-layout-direction";
+/** localStorage key for the persisted display density (M12.7.3). */
+const DENSITY_STORAGE_KEY = "expertos:chat-density";
+/** localStorage key for the "Verified trust badge" toggle (M12.7.3). */
+const VERIFIED_BADGE_STORAGE_KEY = "expertos:show-verified-badge";
+/** localStorage key for the "Concierge review offer" toggle (M12.7.3). */
+const CONCIERGE_OFFER_STORAGE_KEY = "expertos:show-concierge-offer";
 
 interface UiMessage {
   role: "user" | "assistant";
@@ -397,9 +407,12 @@ function AnswerActions({
 function AssistantTurn({
   message,
   onOpenSourcesDrawer,
+  showVerifiedBadge = true,
 }: {
   message: UiMessage;
   onOpenSourcesDrawer?: (citations: ChatCitationDto[]) => void;
+  /** When false, the "Verified" trust badge is suppressed (Tweaks toggle, M12.7.3). */
+  showVerifiedBadge?: boolean;
 }) {
   const [sourcesOpen, setSourcesOpen] = useState(false);
   // When the drawer is the sources surface, the inline list stays closed and the
@@ -412,7 +425,12 @@ function AssistantTurn({
       expertName={message.expertName}
       aiRendition={Boolean(message.expertName)}
       sourceLabel={message.done ? answerSourceLabel(message.citations) : undefined}
-      verified={message.done && message.citations.length > 0 && !message.insufficientKnowledge}
+      verified={
+        showVerifiedBadge &&
+        message.done &&
+        message.citations.length > 0 &&
+        !message.insufficientKnowledge
+      }
     >
       <AssistantAnswer message={message} sourcesOpen={inlineOpen} />
       {message.done && message.degraded && (
@@ -595,6 +613,35 @@ export default function ChatPage() {
   const changeDirection = useCallback((next: LayoutDirection) => {
     setDirection(next);
     window.localStorage.setItem(LAYOUT_DIRECTION_STORAGE_KEY, next);
+  }, []);
+  // Display density + the two `.switch` options (M12.7.3) — same own-the-state +
+  // restore-after-mount + persist pattern as the direction above. Density drives
+  // the chat-thread vertical rhythm (ChatLayout); the verified toggle gates the
+  // M12.4.2 "Verified" badge; the concierge toggle is a forward-looking pref.
+  const [density, setDensity] = useState<Density>(DEFAULT_DENSITY);
+  const [showVerifiedBadge, setShowVerifiedBadge] = useState(true);
+  const [showConciergeOffer, setShowConciergeOffer] = useState(true);
+  useEffect(() => {
+    const storedDensity = window.localStorage.getItem(DENSITY_STORAGE_KEY);
+    if (isDensity(storedDensity)) setDensity(storedDensity);
+    if (window.localStorage.getItem(VERIFIED_BADGE_STORAGE_KEY) === "false") {
+      setShowVerifiedBadge(false);
+    }
+    if (window.localStorage.getItem(CONCIERGE_OFFER_STORAGE_KEY) === "false") {
+      setShowConciergeOffer(false);
+    }
+  }, []);
+  const changeDensity = useCallback((next: Density) => {
+    setDensity(next);
+    window.localStorage.setItem(DENSITY_STORAGE_KEY, next);
+  }, []);
+  const changeVerifiedBadge = useCallback((on: boolean) => {
+    setShowVerifiedBadge(on);
+    window.localStorage.setItem(VERIFIED_BADGE_STORAGE_KEY, String(on));
+  }, []);
+  const changeConciergeOffer = useCallback((on: boolean) => {
+    setShowConciergeOffer(on);
+    window.localStorage.setItem(CONCIERGE_OFFER_STORAGE_KEY, String(on));
   }, []);
   // Sources surface (M12.5.4): the persistent rail is on screen only when the
   // direction keeps it (studio) AND the viewport is wide enough (≥1280px — below
@@ -960,7 +1007,7 @@ export default function ChatPage() {
 
   if (!user) {
     return (
-      <ChatLayout direction={direction}>
+      <ChatLayout direction={direction} density={density}>
         <main className="card card-pad">
           <h1>Chat</h1>
           <Badge tone="info">Please sign in on the home page to start chatting.</Badge>
@@ -972,6 +1019,7 @@ export default function ChatPage() {
   return (
     <ChatLayout
       direction={direction}
+      density={density}
       rail={
         <SourcesRail header={<SourcesRailHeader count={railCitations.length} />}>
           {sourceCards(railCitations)}
@@ -1039,7 +1087,7 @@ export default function ChatPage() {
         />
       </ChatTopbar>
       <main className="card card-pad chat-content">
-        <div>
+        <div className="chat-thread">
           {messages.map((m, i) =>
             m.role === "user" ? (
               <ChatUserMessage key={i} content={m.content} />
@@ -1048,6 +1096,7 @@ export default function ChatPage() {
                 <AssistantTurn
                   message={m}
                   onOpenSourcesDrawer={railVisible ? undefined : setDrawerCitations}
+                  showVerifiedBadge={showVerifiedBadge}
                 />
               </Card>
             ),
@@ -1083,6 +1132,14 @@ export default function ChatPage() {
       {tweaksOpen && (
         <TweaksPanel onClose={() => setTweaksOpen(false)}>
           <TweaksLayoutControl value={direction} onChange={changeDirection} />
+          <TweaksDensityControl
+            density={density}
+            onDensityChange={changeDensity}
+            verifiedBadge={showVerifiedBadge}
+            onVerifiedBadgeChange={changeVerifiedBadge}
+            conciergeOffer={showConciergeOffer}
+            onConciergeOfferChange={changeConciergeOffer}
+          />
         </TweaksPanel>
       )}
     </ChatLayout>
