@@ -4256,3 +4256,22 @@ Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:
 
 **Notes for next iteration:**
 - M15.1.5 (i18n) + M15.1.6 (shared hooks/lib) are next. M15.1.5: `LocaleProvider` EN→VI switching + persistence (localStorage `expertos:locale` + `PATCH /me/locale`), dictionary key completeness (every `useT` key resolves, EN/VI lockstep), locale-aware formatters. M15.1.6: `useMediaQuery`, `useLocale`/`useT`, account/chat/history client fns, firebase emulator-aware init. The sign-out flow naturally lands in M15.1.6 (auth-context `signOutUser` → firebase `signOut` mock).
+
+## M15.1.5 — Web i18n jest suite (9 tests)
+
+**What:** Added `apps/web/src/lib/i18n/i18n.test.tsx` — exercises the real `LocaleProvider`/`useLocale`/`useT` (M13.1) through the M15.1.1 harness, plus pure-data assertions over the EN/VI dictionaries. Three groups:
+  - **LocaleProvider switching** (5 tests): defaults to EN + resolves EN strings + `{name}` interpolation; missing dot-path key falls back to the greppable token; `setLocale` flips UI language (EN→VI) and writes through to localStorage (`expertos:locale`, synchronous) + `PATCH /me/locale` (cross-device, body `{locale:"vi"}`); a same-device localStorage VI preference is restored over the EN profile (GET /me seed skipped); the user profile locale seeds the default when no local pref exists (GET /me `{locale:"vi"}` flips EN→VI after sign-in).
+  - **Dictionary key completeness** (3 tests): EN and VI have the identical leaf-key set (lockstep); every key resolves to a non-empty string in both locales; `{placeholder}` tokens are in lockstep per key (so interpolation never silently drops in one language).
+  - **Locale-aware formatting** (1 test): a probe formatting `formatCurrency`/`formatDateTime` through the active locale shows EN "$4.99" → VI "4,99…" + "thg 6" after `setLocale("vi")`, proving the formatters track the provider, not the ambient system locale.
+
+**Key decisions:**
+- Dictionary completeness is a pure recursive walk over the imported `MESSAGES` map (no rendering) — cheap, deterministic, and the canonical guard against EN/VI drift as copy grows. Added a placeholder-parity check beyond bare key-set parity because a `{name}` present in EN but absent in VI is a silent interpolation bug the key-set test wouldn't catch.
+- Async `setLocale` clicks are wrapped in `act(async () => …)` so the state update + best-effort `PATCH` settle inside React's act() window (no warnings); the cross-device PATCH is asserted via `apiCalls()` under `waitFor`.
+
+**Files changed:**
+- `apps/web/src/lib/i18n/i18n.test.tsx` — NEW: the 9-test suite (test-only).
+
+**Gates:** web `tsc` clean, `next lint` clean, `jest` 42/42 pass (5 harness + 10 chat + 10 history + 8 account + 9 i18n), root `knip` clean. Test-only change → other workspaces unaffected (1313 → 1322 total tests).
+
+**Notes for next iteration:**
+- M15.1.6 (shared hooks/lib) is next: `useMediaQuery` (the matchMedia stub in jest.setup returns matches:true with no-op listeners — a controllable matchMedia per-test is needed to exercise the change-event path), the account/chat/history/upload client fns (assert request shape + error throwing via the manual fetch mock), and `firebase.ts` emulator-aware init (note: firebase.ts is excluded from `collectCoverageFrom`, and `firebase/*` is mocked — testing it means asserting `getFirebaseAuth` caches + the emulator branch runs under `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST`). Sign-out (`auth-context` `signOutUser` → firebase `signOut` mock) also lands here.
