@@ -24,6 +24,7 @@ import { SourcesRailHeader } from "./SourcesRailHeader";
 import { SourceCard } from "./SourceCard";
 import { SourcesDrawer } from "./SourcesDrawer";
 import { TweaksPanel } from "./TweaksPanel";
+import { TweaksLayoutControl } from "./TweaksLayoutControl";
 import { AnswerProse } from "./AnswerProse";
 import { ChatTopbar } from "./ChatTopbar";
 import {
@@ -1975,5 +1976,69 @@ describe("TweaksPanel — floating layout-preferences panel (M12.7.1)", () => {
   it("merges a caller className", () => {
     const el = TweaksPanel({ onClose: noop, className: "extra" }) as ReactElement;
     expect(cls(el)).toBe("tweaks-panel extra");
+  });
+});
+
+describe("TweaksLayoutControl — chat-layout direction `.seg` (M12.7.2)", () => {
+  const noop = () => {};
+  /** Section children: [label, seg, description]. */
+  const parts = (el: ReactElement): unknown[] => kids(el) as unknown[];
+
+  it("renders a `.tweaks-section` with the `.label` header", () => {
+    const el = TweaksLayoutControl({ value: "studio", onChange: noop }) as ReactElement;
+    expect(cls(el)).toBe("tweaks-section");
+    const label = parts(el)[0] as ReactElement;
+    expect(cls(label)).toBe("label");
+    expect(kids(label)).toBe("Chat layout — 3 directions");
+  });
+
+  it("renders the `.seg` control with one button per direction, in display order", () => {
+    const el = TweaksLayoutControl({ value: "studio", onChange: noop }) as ReactElement;
+    const seg = parts(el)[1] as ReactElement;
+    expect(cls(seg)).toBe("seg");
+    const buttons = kids(seg) as ReactElement[];
+    expect(buttons.map((b) => kids(b))).toEqual(
+      LAYOUT_DIRECTIONS.map((d) => LAYOUT_DIRECTION_INFO[d].label),
+    );
+  });
+
+  it("marks only the active direction with `.active` + aria-pressed, with each option's description as a title", () => {
+    const el = TweaksLayoutControl({ value: "focus", onChange: noop }) as ReactElement;
+    const buttons = kids(parts(el)[1] as ReactElement) as ReactElement[];
+    buttons.forEach((b, i) => {
+      const active = LAYOUT_DIRECTIONS[i] === "focus";
+      const props = b.props as {
+        className?: unknown;
+        "aria-pressed"?: unknown;
+        title?: unknown;
+      };
+      expect(props.className).toBe(active ? "active" : "");
+      expect(props["aria-pressed"]).toBe(active);
+      expect(props.title).toBe(LAYOUT_DIRECTION_INFO[LAYOUT_DIRECTIONS[i]].description);
+    });
+  });
+
+  it("fires onChange with the chosen direction", () => {
+    const onChange = jest.fn();
+    const el = TweaksLayoutControl({ value: "studio", onChange }) as ReactElement;
+    const buttons = kids(parts(el)[1] as ReactElement) as ReactElement[];
+    (buttons[0].props as { onClick: () => void }).onClick();
+    expect(onChange).toHaveBeenCalledWith(LAYOUT_DIRECTIONS[0]);
+  });
+
+  it("renders the active direction's description as `.muted` italic copy", () => {
+    const el = TweaksLayoutControl({ value: "classic", onChange: noop }) as ReactElement;
+    const desc = parts(el)[2] as ReactElement;
+    expect(cls(desc)).toBe("muted tweaks-section-desc");
+    expect(kids(desc)).toBe(LAYOUT_DIRECTION_INFO.classic.description);
+  });
+
+  it("merges a caller className", () => {
+    const el = TweaksLayoutControl({
+      value: "studio",
+      onChange: noop,
+      className: "x",
+    }) as ReactElement;
+    expect(cls(el)).toBe("tweaks-section x");
   });
 });

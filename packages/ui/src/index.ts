@@ -64,6 +64,8 @@ export { SourcesDrawer } from "./SourcesDrawer";
 export type { SourcesDrawerProps } from "./SourcesDrawer";
 export { TweaksPanel } from "./TweaksPanel";
 export type { TweaksPanelProps } from "./TweaksPanel";
+export { TweaksLayoutControl } from "./TweaksLayoutControl";
+export type { TweaksLayoutControlProps } from "./TweaksLayoutControl";
 export {
   ChatConversationList,
   AVATAR_TONES,

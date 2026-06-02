@@ -754,3 +754,8 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
 .tweaks-panel .tweaks-panel-head {
   display: flex; align-items: center; justify-content: space-between; gap: var(--s2);
 }
+/* Tweaks preference section (M12.7.2 direction `.seg`, M12.7.3 density) */
+.tweaks-section { display: flex; flex-direction: column; gap: var(--s2); }
+.tweaks-section > .seg { display: flex; }
+.tweaks-section > .seg button { flex: 1; }
+.tweaks-section-desc { font-style: italic; }

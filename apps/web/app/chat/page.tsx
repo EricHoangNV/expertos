@@ -27,6 +27,7 @@ import {
   DEFAULT_LAYOUT_DIRECTION,
   Field,
   Input,
+  isLayoutDirection,
   type LayoutDirection,
   layoutPanes,
   Select,
@@ -34,6 +35,8 @@ import {
   SourcesDrawer,
   SourcesRail,
   SourcesRailHeader,
+  TweaksLayoutControl,
+  TweaksPanel,
 } from "@expertos/ui";
 import type {
   ChatCitationDto,
@@ -63,6 +66,9 @@ import {
 import { fetchEntitlements } from "../../src/lib/account-client";
 import { uploadFile, UPLOAD_ACCEPT } from "../../src/lib/upload-client";
 import { useMediaQuery } from "../../src/lib/use-media-query";
+
+/** localStorage key for the persisted chat layout direction (M12.7.2). */
+const LAYOUT_DIRECTION_STORAGE_KEY = "expertos:chat-layout-direction";
 
 interface UiMessage {
   role: "user" | "assistant";
@@ -573,10 +579,23 @@ export default function ChatPage() {
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Layout direction (M12.1.3) — the page owns the switcher state; the Tweaks
-  // panel (M12.7.2) will toggle it + persist to localStorage. Studio = default
-  // three-pane; classic/focus drop panes (handled by ChatLayout + ds.css).
-  const [direction] = useState<LayoutDirection>(DEFAULT_LAYOUT_DIRECTION);
+  // Layout direction (M12.1.3 + M12.7.2) — the page owns the switcher state; the
+  // Tweaks panel toggles it and persists the choice to localStorage. Studio =
+  // default three-pane; classic/focus drop panes (handled by ChatLayout + ds.css).
+  // Initialize with the default for a stable SSR render; restore the stored value
+  // after mount (avoids a hydration mismatch).
+  const [direction, setDirection] = useState<LayoutDirection>(DEFAULT_LAYOUT_DIRECTION);
+  // The Tweaks panel is open by default so the layout control is reachable; the
+  // close (X) hides it. The topbar "Show tweaks" reopen affordance is M12.7.4.
+  const [tweaksOpen, setTweaksOpen] = useState(true);
+  useEffect(() => {
+    const stored = window.localStorage.getItem(LAYOUT_DIRECTION_STORAGE_KEY);
+    if (isLayoutDirection(stored)) setDirection(stored);
+  }, []);
+  const changeDirection = useCallback((next: LayoutDirection) => {
+    setDirection(next);
+    window.localStorage.setItem(LAYOUT_DIRECTION_STORAGE_KEY, next);
+  }, []);
   // Sources surface (M12.5.4): the persistent rail is on screen only when the
   // direction keeps it (studio) AND the viewport is wide enough (≥1280px — below
   // that ds.css collapses it). Otherwise sources route to the slide-over drawer.
@@ -1061,6 +1080,11 @@ export default function ChatPage() {
       >
         {drawerCitations ? sourceCards(drawerCitations) : undefined}
       </SourcesDrawer>
+      {tweaksOpen && (
+        <TweaksPanel onClose={() => setTweaksOpen(false)}>
+          <TweaksLayoutControl value={direction} onChange={changeDirection} />
+        </TweaksPanel>
+      )}
     </ChatLayout>
   );
 }

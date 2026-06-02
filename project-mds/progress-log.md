@@ -3308,3 +3308,32 @@ Extracted the inline `ConsultationPrompt` styling from `apps/web/app/chat/page.t
 
 **Notes for next iteration:**
 - M12.7.2 (direction `.seg` control) is the natural next leg: render a `.seg` segmented control of `LAYOUT_DIRECTIONS` inside `TweaksPanel` (option copy from `LAYOUT_DIRECTION_INFO`), lift the chat page's `direction` from a const `useState` to a settable one, persist to localStorage (use `isLayoutDirection` to validate on restore). M12.7.4 then adds the topbar "Hide/Show tweaks" button that mounts/unmounts `TweaksPanel`.
+
+## M12.7.2 — Chat layout direction `.seg` control (Tweaks panel)
+**Date:** 2026-06-02
+**Ref:** PRD §"UI Reference Spec" #7 (Tweaks Panel); Task Manifest M12.7.2
+
+**What was done:**
+- New `packages/ui/src/TweaksLayoutControl.tsx` `TweaksLayoutControl` — the "CHAT LAYOUT — 3 DIRECTIONS" section of the Tweaks panel: a `.label` header over a full-width `.seg` segmented control (classic / studio / focus, sourced from `LAYOUT_DIRECTIONS` + `LAYOUT_DIRECTION_INFO`), the active option getting `.active` + `aria-pressed`, each button carrying its one-line description as a `title` tooltip, and the chosen direction's description rendered below as `.muted` italic copy. Presentational only (`value`/`onChange`/`className`).
+- ds.css: `.tweaks-section` (flex column, gap) + `.tweaks-section > .seg { display:flex }` / button `flex:1` (full-width seg) + `.tweaks-section-desc { font-style: italic }`. All tokens; lint clean.
+- Exported from `packages/ui/src/index.ts`.
+- Wired into `apps/web/app/chat/page.tsx`: `direction` lifted from a const `useState` to a settable one; restored from localStorage after mount (key `expertos:chat-layout-direction`, validated via `isLayoutDirection` — default-then-restore to avoid a hydration mismatch), persisted on change via a `changeDirection` callback. The `TweaksPanel` (M12.7.1) is now mounted at the end of the chat layout with `TweaksLayoutControl` as its child, gated by a new `tweaksOpen` state (default true; dismissed by the panel's close X).
+- +6 ui tests in `primitives.test.ts` (section/label, seg buttons + order, active/aria/title, onChange, active description, className merge); ui suite 174→180, 100% coverage preserved.
+
+**Key decisions:**
+- Showed the **active** direction's description below the seg (plus every option's description as a button `title`) rather than three stacked italic lines — keeps the 320px panel compact while still satisfying "one-line descriptions per option".
+- Mounted `TweaksPanel` **open by default** (gated by `tweaksOpen`, dismissed by its close X) so M12.7.2 is independently demonstrable without M12.7.4's topbar reopen button; M12.7.4 will add the proper "Show tweaks" affordance (and can flip the default).
+- localStorage restore runs in a mount `useEffect` (not lazy `useState` init) so the SSR/first-client render is the stable default — avoids a React hydration mismatch.
+
+**Files changed:**
+- `packages/ui/src/TweaksLayoutControl.tsx` — new component.
+- `packages/ui/src/ds.css` — `.tweaks-section`/`.tweaks-section-desc` block.
+- `packages/ui/src/index.ts` — export.
+- `packages/ui/src/primitives.test.ts` — +6 tests.
+- `apps/web/app/chat/page.tsx` — settable+persisted `direction`, `tweaksOpen`, mounted `TweaksPanel` + `TweaksLayoutControl`.
+- `project-mds/PRD.md`, `project-mds/progress-state.md`, `project-mds/progress-log.md` — manifest + state + log.
+
+**Notes for next iteration:**
+- M12.7.3 (density `.seg` compact/regular/comfy + "Verified trust badge"/"Concierge review offer" `.switch` toggles): mount another `.tweaks-section` into the `TweaksPanel` children below `TweaksLayoutControl`. There is no `.switch` ds.css component yet — add one (crimson-when-on) per the Design System.
+- M12.7.4: the `/chat` `tweaksOpen` state already gates the panel — add a topbar toolbar button ("Hide tweaks"/"Show tweaks") that toggles it; consider flipping the default to closed at that point.
+- Reminder: rebuild `packages/ui` (`tsc -p tsconfig.build.json`) after editing it — `apps/web` typechecks against `dist/`.
