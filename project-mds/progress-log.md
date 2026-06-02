@@ -4200,3 +4200,32 @@ Badge-tone conformance verified clean: `status-tone.ts` `PUBLISH_TONES` = draft:
 **Notes for next iteration:**
 - M15.1.3 (history page) can reuse the same harness; conversation detail uses `GET /conversations/:id` (path with id — mock the exact `/conversations/<id>` pathname), saved answers `POST /saved-answers`.
 - The SSE mock helper is reusable for any future streaming-endpoint test.
+
+## M15.1.3 — Web history page jest suite
+**Date:** 2026-06-02
+**Ref:** PRD Task Manifest M15.1.3 (Test Coverage — web app jest suite)
+
+**What was done:**
+- Added `apps/web/app/history/page.test.tsx` (10 tests) driving the real `/history` page through the M15.1.1 harness (real Auth + Locale providers over firebase + manual-`fetch` mocks):
+  - signed-out sign-in prompt; empty-state ("No conversations yet").
+  - recent-conversation list rendering from `GET /conversations`.
+  - full-text search: type → click Search → `GET /conversations/search` results render with guillemet snippet + the query reached the endpoint (`q=cash`); plus the no-match path.
+  - open a conversation → `GET /conversations/:id` → transcript replay (user bubble + assistant prose with the `[1]` marker split out by `AnswerView`).
+  - save-from-transcript: click "Save answer" → `POST /saved-answers` (carries `messageId`) → "Saved" badge.
+  - inline rename: Rename → edit field → Save → `PATCH /conversations/:id` (carries new title) → heading updates.
+  - saved-answers panel: load from `GET /saved-answers`, Remove → `DELETE /saved-answers/:id` → row gone.
+  - list-load error path (`GET /conversations` 500 → localized error).
+
+**Key decisions:**
+- The PRD line says "rename, delete" but the history page has no conversation-delete affordance — "delete" maps to removing a saved-answer bookmark (`DELETE /saved-answers/:id`), which is the only destructive action on the page. Tested that instead of inventing a missing feature.
+- Reused the harness as-is — no new harness primitives needed (history is all plain JSON endpoints, no SSE).
+- Scoped the saved-panel remove assertion to the page-unique "Remove" button (waited for it to load) rather than `.closest(".card")`, which raced the panel's "Loading…" state.
+
+**Files changed:**
+- `apps/web/app/history/page.test.tsx` — NEW: the 10-test suite (test-only).
+
+**Gates:** web `tsc` clean, `next lint` clean, `jest` 25/25 pass (5 harness + 10 chat + 10 history), root `knip` clean. Test-only change → other workspaces unaffected (1295 → 1305 total tests).
+
+**Notes for next iteration:**
+- M15.1.4 (account page) is next: plan display + usage meter (`GET /me/entitlements`), locale toggle persistence (`PATCH /me/locale` + localStorage `expertos:locale`), sign-out (firebase `signOut` mock). Self-serve checkout uses `GET /me/plans` + `POST /billing/checkout`/`/portal`.
+- Same harness applies; account page reads entitlements like the chat sidebar meter (see chat test's `entitlements()` helper for the metered `ask_question` shape).
