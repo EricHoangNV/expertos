@@ -340,6 +340,67 @@ export interface ValidationAnalyticsDto {
   funnel: ValidationFunnelDto;
 }
 
+/**
+ * Questions-answered analytics wire types (M13.2.3, PRD §M13 Dashboard "Questions Answered Card"). The
+ * dashboard's answer-quality card: how many questions the platform answered in a trailing window, split
+ * into a three-way grounding partition, plus a trailing daily stacked series for the chart.
+ *
+ * The partition is a documented heuristic over each assistant answer's **citation count** — the system
+ * stores no per-answer confidence score (`messages.confidence` is always null), so the real grounding
+ * signal is how many published-knowledge chunks the answer cited:
+ *  - **grounded** — cited ≥{@link QUESTIONS_GROUNDED_MIN_CITATIONS} sources (corroborated);
+ *  - **lowConfidence** — cited exactly one source (answered, but thinly grounded);
+ *  - **insufficient** — cited no sources (the insufficient-knowledge path, M3.4).
+ *
+ * Read-only and OD#1-independent (pure instrumentation), same admin cross-tenant read pattern as the
+ * other analytics reports ({@link UsageAnalyticsDto}). Windowed by `windowDays`.
+ */
+export const questionsAnalyticsQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(30),
+});
+export type QuestionsAnalyticsQueryInput = z.infer<typeof questionsAnalyticsQuerySchema>;
+
+/**
+ * Citation-count threshold for the grounding partition: an answer citing this many sources or more is
+ * "grounded"; exactly one source is "low confidence"; none is "insufficient". Documented here so the
+ * dashboard copy and the server SQL agree on the boundary.
+ */
+export const QUESTIONS_GROUNDED_MIN_CITATIONS = 2;
+
+/** A three-way grounding partition of answered questions (the three counts sum to the total). */
+export interface QuestionsBreakdownDto {
+  /** Answers citing ≥{@link QUESTIONS_GROUNDED_MIN_CITATIONS} sources. */
+  grounded: number;
+  /** Answers citing exactly one source. */
+  lowConfidence: number;
+  /** Answers citing no sources (insufficient-knowledge path). */
+  insufficient: number;
+}
+
+/** One calendar day of answered questions, partitioned (only days with at least one answer). */
+export interface QuestionsPeriodDto extends QuestionsBreakdownDto {
+  /** Day bucket, `YYYY-MM-DD` (UTC). */
+  period: string;
+}
+
+/**
+ * The admin questions-answered report (`GET /admin/analytics/questions`, M13.2.3). The total +
+ * breakdown cover the trailing `windowDays`; `periods` is the trailing daily stacked series (only days
+ * with activity, oldest first) that feeds the card's stacked-bar chart.
+ */
+export interface QuestionsAnalyticsDto {
+  /** Days covered by the totals + series. */
+  windowDays: number;
+  /** Start of the window (UTC ISO; start-of-day of the earliest day covered). */
+  since: string;
+  /** Assistant answers produced in the window (sum of the breakdown). */
+  total: number;
+  /** Window-wide grounding partition (sums to `total`). */
+  breakdown: QuestionsBreakdownDto;
+  /** Trailing daily series (only days with activity), oldest first. */
+  periods: QuestionsPeriodDto[];
+}
+
 // Cache effectiveness (M11.3) ────────────────────────────────────────────────
 
 /**

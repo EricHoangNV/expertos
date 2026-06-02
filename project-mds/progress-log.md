@@ -3631,3 +3631,53 @@ linux/arm64 SWC binary (environmental).
 - M13.2.4 (funnel card → `.bar` rows), M13.2.5 (low-confidence list → `/admin/failed-queries`),
   M13.2.6 (knowledge pipeline rows → `/knowledge` by status) and M13.2.7 (Concierge SLA dark card →
   `/admin/analytics/concierge`, also exercises the M13.7.2 `.dark-card`) are the clean next picks.
+
+## M13.2.3 — Dashboard "Questions Answered" card (+ questions-answered analytics endpoint)
+**Date:** 2026-06-02
+**Ref:** PRD §M13 Dashboard (M13.2.3); requirements/ui-reference-spec.md "Questions Answered Card"
+
+**What was done:**
+- New backend rollup: `AnalyticsService.questions` → `GET /admin/analytics/questions`
+  (`@Roles("admin")`, cross-tenant admin RLS like the other analytics reports). One raw aggregate
+  over `messages`: each assistant answer is bucketed by `date_trunc('day', created_at)` and classified
+  by its citation count — grounded (≥2 cites), low-confidence (exactly 1), insufficient (0). Returns a
+  window total + breakdown + a trailing daily series (oldest first). Window totals summed from the
+  series (mirrors how `usage()` derives totals from its rollup).
+- Shared wire types: `questionsAnalyticsQuerySchema`, `QuestionsAnalyticsDto` /
+  `QuestionsBreakdownDto` / `QuestionsPeriodDto`, and the documented
+  `QUESTIONS_GROUNDED_MIN_CITATIONS = 2` boundary constant; re-exported from `@expertos/shared`.
+- New `StackedBar` ui primitive rendering ds.css `.progress-bar-stacked` — proportional segments
+  (tones grounded=crimson / lowconf=red / insufficient=light), drops non-positive/non-finite segments
+  and never divides by zero. +4 ui tests, 100% coverage.
+- ds.css: `.progress-bar-stacked` (+ `.seg-*` fills) and the `.qa-*` card block (big total,
+  badge row, overall proportional bar, and a `.qa-chart`/`.qa-col` vertical stacked-column daily trend).
+- Wired into `apps/admin/app/page.tsx`: `getQuestionsAnalytics` added to admin-client; the dashboard
+  now fetches questions alongside revenue/funnel/validation and renders `QuestionsCard` (total + the
+  three badge tones with whole-number shares + overall `StackedBar` + the daily trend) under the KPI
+  grid, driven by the same 7d/30d/QTD window.
+
+**Key decisions:**
+- The spec said "wire to `/admin/analytics/usage`", but `usage_logs` carries no grounding signal — and
+  `messages.confidence` is always null (the chat service never sets it). The only real grounding signal
+  the system stores is **citation count**, so I added a dedicated questions endpoint over `messages`
+  and partition by cite count. Documented the heuristic (≥2 grounded / =1 low-conf / =0 insufficient)
+  in the shared DTO + a shared constant so copy and SQL agree.
+- Rendered BOTH an overall proportional `.progress-bar-stacked` (the at-a-glance mix the class name
+  implies) AND a daily stacked-column trend (the spec's "14-day trailing" chart, here windowed to the
+  dashboard's selected range so it's consistent with the rest of the page). This consumes the returned
+  `periods` rather than leaving them unused.
+- Raw SQL kept constant with a single bound `$1` param (the security-review pattern); citation literals
+  (2/1/0) match the documented `QUESTIONS_GROUNDED_MIN_CITATIONS`.
+
+**Files changed:**
+- `packages/shared/src/analytics.ts`, `packages/shared/src/index.ts` — questions analytics wire types + exports.
+- `apps/api/src/analytics/analytics.service.ts` — `questions()` method + `QUESTIONS_SQL` + row type.
+- `apps/api/src/analytics/analytics.controller.ts` — `GET /admin/analytics/questions` route.
+- `apps/api/src/analytics/analytics.service.test.ts` — +2 tests (populated partition + empty platform).
+- `packages/ui/src/StackedBar.tsx`, `packages/ui/src/index.ts`, `packages/ui/src/ds.css` — `StackedBar` primitive + `.progress-bar-stacked`/`.qa-*` styles.
+- `packages/ui/src/primitives.test.ts` — +4 StackedBar tests.
+- `apps/admin/src/lib/admin-client.ts` — `getQuestionsAnalytics`.
+- `apps/admin/app/page.tsx` — `QuestionsCard` + wiring.
+
+**Tests:** 1225 pass / 0 fail / 0 skip (shared 179, ui 217, db 9, ai 161, api 661). Gates green:
+shared/ui/api build+lint+jest, admin tsc + next lint, web tsc, root lint:css (stylelint), root knip.

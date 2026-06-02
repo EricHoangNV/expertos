@@ -4,11 +4,14 @@ import {
   funnelAnalyticsQuerySchema,
   conciergeAnalyticsQuerySchema,
   validationAnalyticsQuerySchema,
+  questionsAnalyticsQuerySchema,
   type CacheAnalyticsDto,
   type ConciergeAnalyticsDto,
   type ConciergeAnalyticsQueryInput,
   type FunnelAnalyticsDto,
   type FunnelAnalyticsQueryInput,
+  type QuestionsAnalyticsDto,
+  type QuestionsAnalyticsQueryInput,
   type UsageAnalyticsDto,
   type UsageAnalyticsQueryInput,
   type ValidationAnalyticsDto,
@@ -73,6 +76,16 @@ export class AnalyticsController {
     query: ValidationAnalyticsQueryInput,
   ): Promise<ValidationAnalyticsDto> {
     return this.service.validation(user, query);
+  }
+
+  /** Questions answered, partitioned grounded / low-confidence / insufficient + a daily series (M13.2.3). */
+  @Get("questions")
+  questions(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(questionsAnalyticsQuerySchema))
+    query: QuestionsAnalyticsQueryInput,
+  ): Promise<QuestionsAnalyticsDto> {
+    return this.service.questions(user, query);
   }
 
   /**

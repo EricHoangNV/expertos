@@ -6,6 +6,9 @@ import type {
   ConsultationStatusValue,
   FunnelAnalyticsDto,
   FunnelAnalyticsQueryInput,
+  QuestionsAnalyticsDto,
+  QuestionsAnalyticsQueryInput,
+  QuestionsPeriodDto,
   RecommendationFunnelResponse,
   RecommendationTriggerValue,
   ReviewRequestStatusValue,
@@ -94,6 +97,14 @@ interface PeriodRow {
 /** Raw window-wide distinct-active-users row. */
 interface ActiveUsersRow {
   active_users: bigint | number;
+}
+
+/** Raw daily questions-breakdown row (M13.2.3): FILTERed counts come back as `BigInt` → coerced. */
+interface QuestionsPeriodRow {
+  period: string;
+  grounded: bigint | number;
+  low_confidence: bigint | number;
+  insufficient: bigint | number;
 }
 
 /** Raw new-user-cohort row (M10.4): cohort size + activated/returned FILTERed counts. */
@@ -245,6 +256,53 @@ export class AnalyticsService {
         consultations,
         byConsultationStatus,
         bookedRevenueCents,
+      };
+    });
+  }
+
+  /**
+   * Build the platform questions-answered report for the trailing `query.days` window (M13.2.3, PRD
+   * §M13 Dashboard "Questions Answered Card"). Partitions each assistant answer by its citation count
+   * (grounded ≥2 / low-confidence =1 / insufficient =0 — `messages.confidence` is unused, so citation
+   * count is the only grounding signal). Same admin cross-tenant read pattern as {@link usage} /
+   * {@link funnel} (the `is_admin` GUC inside {@link RlsService.run} grants the platform-wide read, so
+   * no `tenant_id` predicate appears).
+   *
+   * One raw aggregate over `messages` (the per-message `count() FILTER` on a citation-count subquery
+   * has no Prisma Client expression): a trailing daily series, from which the window totals are summed
+   * (mirroring how {@link usage} derives its totals from the per-feature rollup).
+   */
+  async questions(
+    user: AuthUser,
+    query: QuestionsAnalyticsQueryInput,
+  ): Promise<QuestionsAnalyticsDto> {
+    const since = windowStart(query.days, new Date());
+
+    return this.rls.run(user, async (tx) => {
+      const rows = await tx.$queryRawUnsafe<QuestionsPeriodRow[]>(QUESTIONS_SQL, since);
+      const periods: QuestionsPeriodDto[] = rows.map((row) => ({
+        period: row.period,
+        grounded: Number(row.grounded),
+        lowConfidence: Number(row.low_confidence),
+        insufficient: Number(row.insufficient),
+      }));
+
+      const breakdown = periods.reduce(
+        (acc, p) => ({
+          grounded: acc.grounded + p.grounded,
+          lowConfidence: acc.lowConfidence + p.lowConfidence,
+          insufficient: acc.insufficient + p.insufficient,
+        }),
+        { grounded: 0, lowConfidence: 0, insufficient: 0 },
+      );
+      const total = breakdown.grounded + breakdown.lowConfidence + breakdown.insufficient;
+
+      return {
+        windowDays: query.days,
+        since: since.toISOString(),
+        total,
+        breakdown,
+        periods,
       };
     });
   }
@@ -608,6 +666,31 @@ const ACTIVE_USERS_SQL = `
   SELECT count(DISTINCT user_id) AS active_users
   FROM usage_logs
   WHERE occurred_at >= $1`;
+
+/**
+ * Trailing daily questions-answered series, partitioned by grounding (M13.2.3). `$1` = window start
+ * (inclusive). Each assistant answer is bucketed by `date_trunc('day', created_at)` and classified by
+ * its citation count: grounded (≥2 cites — must match `QUESTIONS_GROUNDED_MIN_CITATIONS`), low-confidence
+ * (exactly 1), insufficient (0). The per-message citation count + `count() FILTER (WHERE …)` have no
+ * Prisma Client expression, so this is raw (constant SQL, `$1` bound). RLS scopes the tables (admin GUC
+ * → all tenants); no `tenant_id` predicate appears. `count`s are `bigint` → coerced in the mapper.
+ */
+const QUESTIONS_SQL = `
+  WITH answers AS (
+    SELECT
+      date_trunc('day', m.created_at) AS day,
+      (SELECT count(*) FROM citations ci WHERE ci.message_id = m.id) AS cites
+    FROM messages m
+    WHERE m.role = 'assistant' AND m.created_at >= $1
+  )
+  SELECT
+    to_char(day, 'YYYY-MM-DD') AS period,
+    count(*) FILTER (WHERE cites >= 2) AS grounded,
+    count(*) FILTER (WHERE cites = 1) AS low_confidence,
+    count(*) FILTER (WHERE cites = 0) AS insufficient
+  FROM answers
+  GROUP BY 1
+  ORDER BY 1`;
 
 /**
  * Concierge SLA adherence over the requests created in the window. `$1` = window start (inclusive),

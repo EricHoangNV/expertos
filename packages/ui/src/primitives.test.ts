@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { Badge } from "./Badge";
 import { Bar } from "./Bar";
+import { StackedBar } from "./StackedBar";
 import { Button } from "./Button";
 import { Card } from "./Card";
 import { Chip } from "./Chip";
@@ -202,6 +203,51 @@ describe("Bar — quota meter is clamped and NaN-guarded", () => {
   it("applies the amber `.bar.warn` treatment when warned", () => {
     expect(cls(Bar({ value: 50 }) as ReactElement)).toBe("bar");
     expect(cls(Bar({ value: 50, warn: true }) as ReactElement)).toBe("bar warn");
+  });
+});
+
+describe("StackedBar — proportional grounding mix (M13.2.3)", () => {
+  const segs = (el: ReactElement): ReactElement[] => kids(el) as ReactElement[];
+  const widthOf = (s: ReactElement): unknown => (s.props as { style?: { width?: unknown } }).style?.width;
+
+  it("renders the ds.css `.progress-bar-stacked` track", () => {
+    const el = StackedBar({ segments: [{ value: 1, tone: "grounded" }] }) as ReactElement;
+    expect(cls(el)).toBe("progress-bar-stacked");
+  });
+
+  it("widths are each segment's share of the total, with the tone class", () => {
+    const el = StackedBar({
+      segments: [
+        { value: 3, tone: "grounded" },
+        { value: 1, tone: "lowconf" },
+        { value: 0, tone: "insufficient" }, // dropped — non-positive contributes nothing
+      ],
+    }) as ReactElement;
+    const children = segs(el);
+    expect(children).toHaveLength(2);
+    expect(cls(children[0])).toBe("seg-grounded");
+    expect(widthOf(children[0])).toBe("75%");
+    expect(cls(children[1])).toBe("seg-lowconf");
+    expect(widthOf(children[1])).toBe("25%");
+  });
+
+  it("drops non-finite segments and never divides by zero", () => {
+    const empty = StackedBar({
+      segments: [
+        { value: Number.NaN, tone: "grounded" },
+        { value: 0, tone: "insufficient" },
+      ],
+    }) as ReactElement;
+    expect(segs(empty)).toHaveLength(0);
+  });
+
+  it("carries an accessible label onto each segment", () => {
+    const el = StackedBar({
+      segments: [{ value: 1, tone: "grounded", label: "Grounded 1" }],
+    }) as ReactElement;
+    const seg = segs(el)[0];
+    expect((seg.props as { ["aria-label"]?: unknown })["aria-label"]).toBe("Grounded 1");
+    expect((seg.props as { title?: unknown }).title).toBe("Grounded 1");
   });
 });
 

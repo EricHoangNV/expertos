@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Stat, cx } from "@expertos/ui";
+import { Badge, Card, Stat, StackedBar, cx } from "@expertos/ui";
 import type {
   FunnelAnalyticsDto,
+  QuestionsAnalyticsDto,
   RevenueReportDto,
   ValidationAnalyticsDto,
 } from "@expertos/shared";
@@ -11,6 +12,7 @@ import { AdminFrame } from "../src/components/AdminFrame";
 import { useAuth } from "../src/lib/auth-context";
 import {
   getFunnelAnalytics,
+  getQuestionsAnalytics,
   getRevenueReport,
   getValidationAnalytics,
 } from "../src/lib/admin-client";
@@ -63,6 +65,12 @@ function pct(fraction: number): string {
   return `${(fraction * 100).toFixed(1)}%`;
 }
 
+/** A part/whole share as a whole-number percentage (0% when the whole is empty). */
+function share(part: number, whole: number): string {
+  if (whole <= 0) return "0%";
+  return `${Math.round((part / whole) * 100)}%`;
+}
+
 /** Integer cents as a whole-dollar USD amount (KPI display — no cents shown). */
 function usd(cents: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -92,6 +100,70 @@ interface DashboardData {
   revenue: RevenueReportDto;
   funnel: FunnelAnalyticsDto;
   validation: ValidationAnalyticsDto;
+  questions: QuestionsAnalyticsDto;
+}
+
+/**
+ * Questions Answered card (M13.2.3): the window's total answers, a grounded / low-confidence /
+ * insufficient badge row, an overall proportional `.progress-bar-stacked`, and a daily stacked-column
+ * trend. The partition is by citation count (the only grounding signal the system stores) — see
+ * {@link QuestionsAnalyticsDto}.
+ */
+function QuestionsCard({ data }: { data: QuestionsAnalyticsDto }) {
+  const { total, breakdown, periods } = data;
+  const maxDay = periods.reduce(
+    (max, p) => Math.max(max, p.grounded + p.lowConfidence + p.insufficient),
+    0,
+  );
+  const height = (c: number): string =>
+    maxDay > 0 && Number.isFinite(c) ? `${(c / maxDay) * 100}%` : "0%";
+
+  return (
+    <Card pad className="qa-card">
+      <div className="label">Questions answered</div>
+      <div className="qa-total">{count(total)}</div>
+      <div className="qa-badges">
+        <Badge tone="green">Grounded {share(breakdown.grounded, total)}</Badge>
+        <Badge tone="red">Low-conf {share(breakdown.lowConfidence, total)}</Badge>
+        <Badge tone="ink">Insufficient {share(breakdown.insufficient, total)}</Badge>
+      </div>
+      <StackedBar
+        className="qa-overall"
+        segments={[
+          { value: breakdown.grounded, tone: "grounded", label: `Grounded: ${count(breakdown.grounded)}` },
+          {
+            value: breakdown.lowConfidence,
+            tone: "lowconf",
+            label: `Low confidence: ${count(breakdown.lowConfidence)}`,
+          },
+          {
+            value: breakdown.insufficient,
+            tone: "insufficient",
+            label: `Insufficient: ${count(breakdown.insufficient)}`,
+          },
+        ]}
+      />
+      {periods.length > 0 ? (
+        <div className="qa-chart" aria-hidden>
+          {periods.map((p) => (
+            <div
+              className="qa-col"
+              key={p.period}
+              title={`${p.period}: ${count(
+                p.grounded + p.lowConfidence + p.insufficient,
+              )} answered`}
+            >
+              <i className="seg-insufficient" style={{ height: height(p.insufficient) }} />
+              <i className="seg-lowconf" style={{ height: height(p.lowConfidence) }} />
+              <i className="seg-grounded" style={{ height: height(p.grounded) }} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="muted qa-empty">No answers in this window yet.</p>
+      )}
+    </Card>
+  );
 }
 
 export default function AdminHomePage() {
@@ -111,12 +183,13 @@ export default function AdminHomePage() {
         setError("Please sign in to continue.");
         return;
       }
-      const [revenue, funnel, validation] = await Promise.all([
+      const [revenue, funnel, validation, questions] = await Promise.all([
         getRevenueReport(token, 3),
         getFunnelAnalytics(token, days),
         getValidationAnalytics(token, days),
+        getQuestionsAnalytics(token, days),
       ]);
-      setData({ revenue, funnel, validation });
+      setData({ revenue, funnel, validation, questions });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard.");
     }
@@ -186,6 +259,8 @@ export default function AdminHomePage() {
           />
         </div>
       )}
+
+      {data != null && <QuestionsCard data={data.questions} />}
     </AdminFrame>
   );
 }

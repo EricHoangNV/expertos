@@ -20,6 +20,7 @@ import type {
   FunnelAnalyticsDto,
   ConciergeAnalyticsDto,
   ValidationAnalyticsDto,
+  QuestionsAnalyticsDto,
   FailedQueryDto,
   AdminAuditLogDto,
   AdminFairUseFlagDto,
@@ -222,6 +223,17 @@ export function getValidationAnalytics(
 ): Promise<ValidationAnalyticsDto> {
   const query = days != null ? `?days=${days}` : "";
   return request<ValidationAnalyticsDto>(`/admin/analytics/validation${query}`, token);
+}
+
+// M13.2.3 — Admin questions-answered analytics
+
+/** Platform-wide questions-answered report (grounded / low-confidence / insufficient + daily series). */
+export function getQuestionsAnalytics(
+  token: string,
+  days?: number,
+): Promise<QuestionsAnalyticsDto> {
+  const query = days != null ? `?days=${days}` : "";
+  return request<QuestionsAnalyticsDto>(`/admin/analytics/questions${query}`, token);
 }
 
 // M8.3 — Admin plan-entitlement matrix editor

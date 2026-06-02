@@ -20,6 +20,8 @@ export { Stat } from "./Stat";
 export type { StatProps, StatTrend } from "./Stat";
 export { Bar } from "./Bar";
 export type { BarProps } from "./Bar";
+export { StackedBar } from "./StackedBar";
+export type { StackedBarProps, StackedBarSegment, StackedBarTone } from "./StackedBar";
 export { UsageMeter } from "./UsageMeter";
 export type { UsageMeterProps } from "./UsageMeter";
 export { ChatUsageMeter } from "./ChatUsageMeter";

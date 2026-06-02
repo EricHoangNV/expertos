@@ -130,6 +130,8 @@ export {
   funnelAnalyticsQuerySchema,
   conciergeAnalyticsQuerySchema,
   validationAnalyticsQuerySchema,
+  questionsAnalyticsQuerySchema,
+  QUESTIONS_GROUNDED_MIN_CITATIONS,
 } from "./analytics";
 export type {
   UsageAnalyticsQueryInput,
@@ -151,6 +153,10 @@ export type {
   ValidationWtpDto,
   ValidationFunnelDto,
   ValidationAnalyticsDto,
+  QuestionsAnalyticsQueryInput,
+  QuestionsBreakdownDto,
+  QuestionsPeriodDto,
+  QuestionsAnalyticsDto,
   CacheLayerStatsDto,
   CacheAnalyticsDto,
 } from "./analytics";

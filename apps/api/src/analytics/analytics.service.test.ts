@@ -604,3 +604,39 @@ describe("AnalyticsService.validation", () => {
     });
   });
 });
+
+describe("AnalyticsService.questions", () => {
+  it("sums the daily grounding partition into the window total + breakdown", async () => {
+    const tx = makeTx();
+    // One raw read: the trailing daily series (counts come back as BigInt from Postgres).
+    tx.$queryRawUnsafe.mockResolvedValueOnce([
+      { period: "2026-05-30", grounded: 10n, low_confidence: 2n, insufficient: 1n },
+      { period: "2026-05-31", grounded: 7n, low_confidence: 0n, insufficient: 3n },
+    ]);
+    const { service, run } = makeService(tx);
+
+    const report = await service.questions(ADMIN, { days: 14 });
+
+    expect(run).toHaveBeenCalledWith(ADMIN, expect.any(Function));
+    expect(report.windowDays).toBe(14);
+    expect(report.total).toBe(23); // 10+2+1 + 7+0+3
+    expect(report.breakdown).toEqual({ grounded: 17, lowConfidence: 2, insufficient: 4 });
+    // The series is returned oldest-first with BigInt counts coerced to numbers.
+    expect(report.periods).toEqual([
+      { period: "2026-05-30", grounded: 10, lowConfidence: 2, insufficient: 1 },
+      { period: "2026-05-31", grounded: 7, lowConfidence: 0, insufficient: 3 },
+    ]);
+  });
+
+  it("returns zeros for an empty platform (no answers in the window)", async () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+
+    const report = await service.questions(ADMIN, { days: 7 });
+
+    expect(report.windowDays).toBe(7);
+    expect(report.total).toBe(0);
+    expect(report.breakdown).toEqual({ grounded: 0, lowConfidence: 0, insufficient: 0 });
+    expect(report.periods).toEqual([]);
+  });
+});

@@ -316,6 +316,19 @@ button { font-family: inherit; cursor: pointer; }
 .stat .d { font-size: 12.5px; margin-top: 4px; }
 .up { color: var(--ok-600); } .down { color: var(--red-600); }
 
+/* Questions Answered card (M13.2.3) — total + grounding badge row + overall stacked bar + daily trend. */
+.qa-card { margin-bottom: 24px; }
+.qa-total { font-family: var(--font-display); font-weight: 700; font-size: 38px; color: var(--ink-900); letter-spacing: -.02em; margin-top: 6px; }
+.qa-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.qa-overall { margin-top: 14px; }
+.qa-chart { display: flex; align-items: flex-end; gap: 3px; height: 72px; margin-top: 16px; }
+.qa-chart .qa-col { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; background: var(--paper-2); border-radius: var(--r-sm); overflow: hidden; }
+.qa-chart .qa-col > i { display: block; width: 100%; }
+.qa-chart .qa-col > i.seg-grounded { background: var(--red-600); }
+.qa-chart .qa-col > i.seg-lowconf { background: var(--red-300); }
+.qa-chart .qa-col > i.seg-insufficient { background: var(--line-2); }
+.qa-empty { margin-top: 14px; }
+
 /* segmented control */
 .seg { display: inline-flex; background: var(--paper-2); border-radius: var(--r-sm); padding: 3px; gap: 2px; }
 .seg button { border: none; background: transparent; padding: 6px 14px; border-radius: 5px; font-size: 13px; font-weight: 600; color: var(--ink-500); }
@@ -325,6 +338,14 @@ button { font-family: inherit; cursor: pointer; }
 .bar { height: 7px; background: var(--paper-2); border-radius: var(--r-pill); overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--red-600); border-radius: inherit; }
 .bar.warn > i { background: var(--amber-600); }
+
+/* stacked proportional bar (M13.2.3) — answer grounding mix.
+   crimson = grounded, red = low-confidence, light = insufficient (PRD §M13 Dashboard). */
+.progress-bar-stacked { display: flex; height: 10px; background: var(--paper-2); border-radius: var(--r-pill); overflow: hidden; }
+.progress-bar-stacked > i { display: block; height: 100%; }
+.progress-bar-stacked > i.seg-grounded { background: var(--red-600); }
+.progress-bar-stacked > i.seg-lowconf { background: var(--red-300); }
+.progress-bar-stacked > i.seg-insufficient { background: var(--line-2); }
 
 /* usage / quota meter (transparent usage indicator) */
 .meter { display: flex; flex-direction: column; gap: 7px; }
