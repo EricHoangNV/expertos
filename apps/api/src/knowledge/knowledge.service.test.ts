@@ -151,6 +151,9 @@ describe("KnowledgeService.submit", () => {
     const result = await h.service.submit(ACTOR, VERSION_ID);
 
     expect(h.tx.documentVersion.update.mock.calls[0][0].data).toEqual({ status: "expert_review" });
+    // The parent document's status must move in lockstep — the board lists/counts by
+    // document.status, so a card only leaves the Draft column if this is kept in sync.
+    expect(h.tx.document.update.mock.calls[0][0].data).toEqual({ status: "expert_review" });
     expect(result.status).toBe("expert_review");
   });
 
@@ -176,6 +179,7 @@ describe("KnowledgeService.requestChanges", () => {
     const result = await h.service.requestChanges(ACTOR, VERSION_ID);
 
     expect(h.tx.documentVersion.update.mock.calls[0][0].data).toEqual({ status: "draft" });
+    expect(h.tx.document.update.mock.calls[0][0].data).toEqual({ status: "draft" });
     expect(result.status).toBe("draft");
   });
 

@@ -50,8 +50,10 @@ const COLUMNS: { status: PublishStatusValue; label: string; tone: BadgeTone }[] 
   { status: "published", label: "Published", tone: "green" },
 ];
 
-/** The numbered status-pipeline step indicator; Expert Review is the admin's active stage. */
-const STEPS = COLUMNS.map((c, i) => ({ n: i + 1, label: c.label, active: c.status === "expert_review" }));
+/** The status-pipeline steps, in pipeline order. The active highlight and the click-to-filter
+ *  behaviour are computed at render from live data (M13.3.2), so the highlight tracks where the
+ *  work actually is rather than a hardcoded stage. */
+const STEPS = COLUMNS.map((c) => ({ status: c.status, label: c.label }));
 
 interface BoardData {
   pipeline: KnowledgePipelineDto;
@@ -140,6 +142,8 @@ export default function KnowledgeApprovalPage() {
   const [data, setData] = useState<BoardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** null = show all columns; a status = filter the board to that column. */
+  const [focused, setFocused] = useState<PublishStatusValue | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -198,6 +202,15 @@ export default function KnowledgeApprovalPage() {
     [getIdToken, load],
   );
 
+  // The highlighted step tracks where the work is: the selected filter, or — when nothing is
+  // filtered — the first column that actually has documents (so an all-Draft board lights Draft,
+  // not a hardcoded stage). Falls back to "draft" before data loads.
+  const counts = data?.pipeline.byStatus;
+  const firstNonEmpty =
+    COLUMNS.find((c) => (counts?.[c.status] ?? 0) > 0)?.status ?? "draft";
+  const activeStatus: PublishStatusValue = focused ?? firstNonEmpty;
+  const visibleColumns = focused == null ? COLUMNS : COLUMNS.filter((c) => c.status === focused);
+
   return (
     <AdminFrame>
       <div className="pagehead">
@@ -210,13 +223,21 @@ export default function KnowledgeApprovalPage() {
         </Link>
       </div>
 
-      {/* M13.3.2 — status pipeline step indicator */}
+      {/* M13.3.2 — status pipeline step indicator. Each step is a filter toggle: click to show
+          only that column, click again to show all. The highlight tracks the active filter, or
+          the first non-empty stage when nothing is filtered. */}
       <div className="kanban-steps">
         {STEPS.map((s) => (
-          <span key={s.n} className={cx("kanban-step", s.active && "is-active")}>
-            <span className="kanban-step-n">{s.n}</span>
+          <button
+            key={s.status}
+            type="button"
+            className={cx("kanban-step", s.status === activeStatus && "is-active")}
+            aria-pressed={focused === s.status}
+            title={focused === s.status ? "Show all columns" : `Show only ${s.label}`}
+            onClick={() => setFocused((f) => (f === s.status ? null : s.status))}
+          >
             {s.label}
-          </span>
+          </button>
         ))}
         <span className="kanban-step-note">
           → Archived / Deprecated · every answer records which published version produced it
@@ -228,7 +249,7 @@ export default function KnowledgeApprovalPage() {
       {/* M13.3.3 / M13.3.4 — kanban board */}
       {data != null && (
         <div className="kanban">
-          {COLUMNS.map((col) => {
+          {visibleColumns.map((col) => {
             const docs = data.docs[col.status];
             return (
               <div className="kanban-col" key={col.status}>

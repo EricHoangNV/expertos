@@ -276,6 +276,13 @@ export class KnowledgeService {
         data: { status: spec.to },
         select: VERSION_SELECT,
       })) as VersionRow;
+      // Keep the parent document's status in lockstep with its latest version (as approve/archive
+      // do) — the board lists/counts documents by `document.status`, so without this the card
+      // never leaves the Draft column after a submit.
+      await tx.document.update({
+        where: { id: version.documentId },
+        data: { status: spec.to },
+      });
 
       this.logger.info(spec.event, { versionId, status: spec.to });
       return toVersionDto(updated, document.publishedVersionId);

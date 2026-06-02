@@ -39,3 +39,6 @@ requirements/
 *.tfstate.backup
 .terraform.lock.hcl
 .gstack/
+
+# temporary files
+tmp/
