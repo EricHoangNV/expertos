@@ -4644,3 +4644,19 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 **Notes for next iteration:**
 - The project's Phase 1 is functionally launch-ready. To make further progress a human must: (a) start the host dev stack AND allowlist `host.docker.internal:3000-3002,9099` (or add it to `no_proxy`) so the M15.3.3/.4/.5 E2E specs can be run, OR (b) approve the voice-profile schema model so M13.5.3/.4/.5 + M13.7.4 can be built, OR (c) clear the NT human sign-off gates. None is an autonomous coding task.
 - Tree is clean as of 128748f.
+
+## Login-page jest coverage + verification of pending M15.3.3/.4 E2E specs
+**Date:** 2026-06-03
+**Ref:** M15.1 (web jest suite) coverage closure; M15.3.3/.4 verification
+
+**What was done:**
+- Added `apps/web/app/page.test.tsx` (+3 tests) covering the login/landing route (`/`) — the one `apps/web` page the M15.1 suite had left untested. Asserts: (1) signed-out visitor sees the "Continue with Google" form + headline + Terms/Privacy links and is NOT redirected; (2) returning signed-in user is redirected to `/chat` via `router.replace` and only the loading view renders (M12.8.2 — login form never flashes); (3) clicking the Continue button invokes `signInWithPopup`. Web jest 96 → 99.
+- Verification pass (no code change) over the two pending E2E specs `concierge-review.spec.ts` (M15.3.3) and `knowledge-approval.spec.ts` (M15.3.4): cross-checked every selector against the real page DOM (`apps/admin/app/concierge-reviews/page.tsx`, `.../knowledge/page.tsx`), every literal against the EN dictionaries (`conciergeReviews`/`knowledge` namespaces), and the seeded fixtures in `e2e/global-setup.ts` (concierge `requested` review case + Expert-Review knowledge doc). All match — the specs are correct and will pass on a host Playwright run; they remain `[ ]` only because the live stack is not runnable in this 4GB / `host.docker.internal`-blocked sandbox (DIRECTIVES §3.4.1).
+
+**Key decisions:**
+- Reused the existing M15.1.1 harness (`renderWithProviders` over the real `AuthProvider`/`LocaleProvider`, firebase + next/navigation manual mocks). Spied on the auto-mocked `firebase/auth#signInWithPopup` via the established `require`-the-mock-module pattern from `firebase.test.ts` (M15.1.6) rather than a fresh mock, so the page's real sign-in wiring is exercised.
+- Did NOT flip any manifest checkbox: M15.1 is already COMPLETE and this is in-scope coverage closure, not a new milestone item. M15.3.3/.4 stay `[ ]` — flipping them would falsely claim host-validated passing tests.
+
+**Files changed:**
+- `apps/web/app/page.test.tsx` — new (+3 tests) login/landing page coverage.
+- `project-mds/progress-state.md` — test counts (web 99, total 1519), M15 note, last-task line.
