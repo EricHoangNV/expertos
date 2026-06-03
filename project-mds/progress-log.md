@@ -4797,3 +4797,24 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 - Production GCS driver still to be written behind `createDefaultStorageProvider`; it must implement `delete` as a bucket object delete on the `gs://…` URI. The seam + callers are ready.
 - Re-review needed to flip the Security Cycle 2 data-exposure category (now both its issues — expert-voice boundary + raw-object deletion — are remediated; auth & access-control's whitelist-role-sync remediation is the remaining category gating the cycle).
 - Remaining Security Cycle 2 High: TidyCal fallback idempotency skips cancel/reschedule (fallback id = ref+type+timestamp) — next in-sandbox FAIL to work.
+
+---
+
+## 2026-06-03 — Security Cycle 2 High: TidyCal fallback idempotency can skip later cancel/reschedule lifecycle events (REMEDIATED, pending re-review)
+
+**Task:** Last open in-sandbox-codeable Security Cycle 2 FAIL. A TidyCal webhook with no delivery-unique `id` fell back to `eventId = bookingRef`, so `BookingService`'s `[provider, eventId]` idempotency collapsed a booking's whole lifecycle (`created`→`rescheduled`→`cancelled`) into one key and dropped every event after the first — freezing consultation status/schedule/revenue attribution.
+
+**Fix:** fallback eventId is now per-transition, not per-booking: `fallback:<bookingRef>:<eventType>:<lifecycleStamp>`.
+- `apps/api/src/consultation/http-tidycal-provider.ts` — `parseEvent` prefers a non-empty `rawEvent.id`, else `fallbackEventId(booking, normalized)`; new `lifecycleStamp` picks the timestamp advancing on that transition (cancel→`cancelled_at`/`updated_at`; reschedule→`rescheduled_at`/`updated_at`; create→`created_at`/`updated_at`), backstops on the new `scheduledAt` (moves on reschedule), then `na`.
+- `apps/api/src/consultation/offline-tidycal-provider.ts` — `parseOfflineBookingEvent` mirrors the shape (`fallback:<ref>:<type>:<scheduledMs|na>`) so drivers can't drift; explicit envelope `eventId` still wins.
+- `apps/api/src/consultation/tidycal-provider.ts` — `BookingEvent.eventId` doc updated. `BookingService` unchanged (key is correct at source).
+
+**Key decisions:**
+- Synthesize a distinct key rather than reject timestamp-less events (the reviewer's alt) — dropping a cancel would defeat the OD#10 no-vanish guarantee. The only residual collision (two timestamp-less same-type transitions) is one TidyCal doesn't emit (a reschedule always carries a new `starts_at`).
+- Determinism preserved: a redelivery of the *same* transition produces a byte-identical key, so idempotency holds.
+
+**Tests:** `http-tidycal-provider.test.ts` (+5): 3-distinct-id lifecycle with no webhook id, same-transition redelivery byte-identical, two reschedules differ via scheduled time, `na` backstop, delivery-unique id wins; updated the prior bookingRef-fallback case. `offline-tidycal-provider.test.ts` (+1, 1 updated). api 716→722; consultation files 100% stmts/funcs/lines. Gates: api build + eslint + jest (coverage) + root knip green.
+
+**Docs:** FEEDBACKS remediation note + verdict line; LEARNINGS #31; DIRECTIVES #47.
+
+**Status:** All 5 Security Cycle 2 findings (3 Critical + 2 High) are now REMEDIATED in-sandbox, pending reviewer re-verification. No open in-sandbox-codeable Security FAILs remain.

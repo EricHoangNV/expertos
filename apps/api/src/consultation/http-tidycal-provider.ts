@@ -89,8 +89,15 @@ export class HttpTidyCalProvider implements TidyCalProvider {
     if (!normalized) {
       return null;
     }
-    // Prefer a delivery-unique webhook id; fall back to the booking id (still stable per booking).
-    const eventId = typeof rawEvent.id === "string" ? rawEvent.id : normalized.bookingRef;
+    // Prefer a delivery-unique webhook id. When TidyCal omits it, the fallback MUST stay unique per
+    // lifecycle transition — keying it on `bookingRef` alone collapses a later reschedule/cancel into
+    // the create's idempotency key, so `BookingService` would skip it as a duplicate and the
+    // consultation status/schedule would go stale (Security Cycle 2 High). Synthesize from booking
+    // ref + event type + the transition's lifecycle timestamp instead.
+    const eventId =
+      typeof rawEvent.id === "string" && rawEvent.id.length > 0
+        ? rawEvent.id
+        : fallbackEventId(booking, normalized);
     return { ...normalized, eventId };
   }
 
@@ -138,6 +145,48 @@ function toBookingEvent(
     scheduledAt: toDate(booking.starts_at),
     status: statusForBookingEvent(eventType),
   };
+}
+
+/**
+ * Synthesize an idempotency key for a webhook with no provider `id`. It must be **deterministic** (a
+ * redelivery of the *same* transition is still a no-op against the ledger) yet **distinct per
+ * transition** (a later reschedule/cancel for the same booking is not collapsed into the create). We
+ * combine the booking ref, the normalized event type, and the lifecycle timestamp of *this*
+ * transition (cancel time / reschedule time / create time, depending on the event).
+ */
+function fallbackEventId(
+  booking: Record<string, unknown>,
+  normalized: Omit<BookingEvent, "eventId">,
+): string {
+  const stamp = lifecycleStamp(booking, normalized.eventType, normalized.scheduledAt);
+  return `fallback:${normalized.bookingRef}:${normalized.eventType}:${stamp}`;
+}
+
+/**
+ * The epoch-ms timestamp of the lifecycle transition this event represents, used to disambiguate
+ * repeated transitions (e.g. two reschedules) when the provider gives no delivery-unique id. Prefers
+ * the field that actually advances on that transition, then the new scheduled time (which moves on a
+ * reschedule), and finally `na` when the payload carries no usable timestamp.
+ */
+function lifecycleStamp(
+  booking: Record<string, unknown>,
+  eventType: BookingEventType,
+  scheduledAt: Date | null,
+): string {
+  const candidates =
+    eventType === "booking.cancelled"
+      ? [booking.cancelled_at, booking.updated_at]
+      : eventType === "booking.rescheduled"
+        ? [booking.rescheduled_at, booking.updated_at]
+        : [booking.created_at, booking.updated_at];
+  for (const candidate of candidates) {
+    const date = toDate(candidate);
+    if (date) {
+      return String(date.getTime());
+    }
+  }
+  // The scheduled time changes on a reschedule, so it keeps distinct transitions apart as a backstop.
+  return scheduledAt ? String(scheduledAt.getTime()) : "na";
 }
 
 /** TidyCal ids may arrive as a number or string — coerce to a non-empty string, else null. */

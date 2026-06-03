@@ -49,7 +49,12 @@ export type BookingEventType = "booking.created" | "booking.cancelled" | "bookin
  * {@link email}) and idempotently records it in `booking_webhook_events` keyed on {@link eventId}.
  */
 export interface BookingEvent {
-  /** Provider event id (webhook) or synthetic `reconcile:<bookingRef>:<type>` (poll) — idempotency key. */
+  /**
+   * Idempotency key. A delivery-unique provider event id when present; otherwise a synthesized
+   * per-transition fallback — `fallback:<bookingRef>:<type>:<lifecycleStamp>` (webhook with no id) or
+   * `reconcile:<bookingRef>:<type>` (poll) — never the bare `bookingRef`, which would collapse a
+   * later reschedule/cancel into the create's key.
+   */
   eventId: string;
   eventType: BookingEventType;
   /** TidyCal booking id — the correlation key back to a consultation (booking links can be static). */

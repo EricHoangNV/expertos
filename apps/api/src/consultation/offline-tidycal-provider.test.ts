@@ -55,16 +55,32 @@ describe("OfflineTidyCalProvider", () => {
     expect(event?.eventType).toBe("booking.cancelled");
   });
 
-  it("falls back to the bookingRef as the eventId when none is given, and email/date default to null", () => {
+  it("synthesizes a per-transition fallback eventId when none is given, and email/date default to null", () => {
     const event = parseOfflineBookingEvent({ eventType: "booking.rescheduled", bookingRef: "bkg_3" });
     expect(event).toEqual({
-      eventId: "bkg_3",
+      // ref + type + scheduled time (here `na`, no date) — not the bare bookingRef, so a later
+      // cancel/reschedule for the same booking does not collide with the create's idempotency key.
+      eventId: "fallback:bkg_3:booking.rescheduled:na",
       eventType: "booking.rescheduled",
       bookingRef: "bkg_3",
       email: null,
       scheduledAt: null,
       status: "booked",
     });
+  });
+
+  it("gives created/rescheduled/cancelled distinct fallback ids for the same booking", () => {
+    const at = (iso: string) => ({ bookingRef: "bkg_4", scheduledAt: iso });
+    const created = parseOfflineBookingEvent({
+      eventType: "booking.created",
+      ...at("2026-06-10T15:00:00.000Z"),
+    });
+    const rescheduled = parseOfflineBookingEvent({
+      eventType: "booking.rescheduled",
+      ...at("2026-06-12T15:00:00.000Z"),
+    });
+    const canceled = parseOfflineBookingEvent({ eventType: "booking.cancelled", bookingRef: "bkg_4" });
+    expect(new Set([created?.eventId, rescheduled?.eventId, canceled?.eventId]).size).toBe(3);
   });
 
   it("returns null for a non-object, an unknown event type, or a missing bookingRef", () => {

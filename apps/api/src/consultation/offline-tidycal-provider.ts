@@ -64,12 +64,19 @@ export function parseOfflineBookingEvent(raw: unknown): BookingEvent | null {
   if (typeof e.bookingRef !== "string" || e.bookingRef.length === 0) {
     return null;
   }
+  const scheduledAt = toDate(e.scheduledAt);
   return {
-    eventId: typeof e.eventId === "string" && e.eventId.length > 0 ? e.eventId : e.bookingRef,
+    // Mirror the real driver: an explicit envelope `eventId` wins, else synthesize a per-transition
+    // fallback (ref + type + scheduled time) so a later reschedule/cancel for the same booking is not
+    // collapsed into the create's idempotency key.
+    eventId:
+      typeof e.eventId === "string" && e.eventId.length > 0
+        ? e.eventId
+        : `fallback:${e.bookingRef}:${eventType}:${scheduledAt ? scheduledAt.getTime() : "na"}`,
     eventType: eventType as BookingEventType,
     bookingRef: e.bookingRef,
     email: typeof e.email === "string" ? e.email : null,
-    scheduledAt: toDate(e.scheduledAt),
+    scheduledAt,
     status: statusForBookingEvent(eventType as BookingEventType),
   };
 }

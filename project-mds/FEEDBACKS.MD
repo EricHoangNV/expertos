@@ -11,7 +11,7 @@
 - Critical: selected expert voice can answer from another expert/global published knowledge — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
 - Critical: document-upload entitlement is defined but not enforced before parse/embed work — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
 - High: retention/user deletion removes DB rows but not raw upload objects — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
-- High: TidyCal fallback idempotency can skip later cancel/reschedule lifecycle events
+- High: TidyCal fallback idempotency can skip later cancel/reschedule lifecycle events — REMEDIATED 2026-06-03, pending re-review (fallback eventId now `fallback:<ref>:<type>:<lifecycleStamp>`, distinct per transition)
 
 ### Code Review: Cycle 0 — (no review yet)
 - (awaiting first code review)
@@ -21,6 +21,23 @@
 - core user flow: FAIL — REMEDIATED 2026-06-03, pending re-review
 - data handling / privacy: PASS
 - High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
+
+---
+
+## Developer Remediation Note (2026-06-03) — Security Cycle 2 High: TidyCal fallback idempotency can skip later cancel/reschedule lifecycle events
+
+**Author:** implementing agent (not a review cycle). Addresses the Security Review Cycle 2 High "TidyCal fallback idempotency can skip later cancel/reschedule lifecycle events" (auth/data-integrity category). Last open in-sandbox-codeable FAIL in the Security Cycle 2 verdict.
+
+**Root cause:** `BookingService` keys idempotency on `booking_webhook_events.[provider, eventId]`. When a TidyCal webhook omits a delivery-unique `id`, `HttpTidyCalProvider.parseEvent` fell back to `eventId = normalized.bookingRef` (`http-tidycal-provider.ts:93`). All lifecycle events for one booking — `created`, then `rescheduled`, then `cancelled` — therefore shared the same `eventId`, so every event after the first was treated as a duplicate and skipped. Consequence: a consultation's status, schedule, and revenue attribution go stale after a reschedule/cancel that arrives without a webhook id. The offline driver (`offline-tidycal-provider.ts:68`) had the same `eventId ?? bookingRef` collision class (dev/test-only, trusted envelopes, but a latent bug).
+
+**Fix:** the fallback eventId is now synthesized per-transition, not per-booking — `fallback:<bookingRef>:<eventType>:<lifecycleStamp>`:
+- `HttpTidyCalProvider.parseEvent` prefers a non-empty `rawEvent.id`, else calls `fallbackEventId(booking, normalized)`. `lifecycleStamp` picks the timestamp that actually advances on *this* transition (cancel → `cancelled_at`/`updated_at`; reschedule → `rescheduled_at`/`updated_at`; create → `created_at`/`updated_at`), falling back to the new `scheduledAt` (which moves on a reschedule) and finally `na`. So `created`/`rescheduled`/`cancelled` for one booking get three distinct keys, and two reschedules differ via the new scheduled time — while a redelivery of the *same* transition is byte-identical, preserving idempotency.
+- `parseOfflineBookingEvent` mirrors it (`fallback:<ref>:<type>:<scheduledMs|na>`) so the offline path can't drift; an explicit envelope `eventId` still wins.
+- `BookingEvent.eventId` doc updated; `BookingService` unchanged (the key is now correct at the source).
+
+**Why not reject malformed events:** the reviewer offered "reject malformed lifecycle events" as an alternative. Dropping an event would defeat the OD#10 no-vanish guarantee (a cancel with no usable timestamp would silently disappear). Synthesizing a best-effort distinct key keeps the event in the ledger; the `na` backstop only collapses two *timestamp-less same-type* transitions, which TidyCal does not emit (a reschedule always carries a new `starts_at`).
+
+**Tests:** `http-tidycal-provider.test.ts` (+5): created→rescheduled→cancelled with no webhook id get 3 distinct ids, same-transition redelivery is byte-identical (idempotent), two reschedules differ via scheduled time, `na` backstop when no timestamp, a delivery-unique `id` still wins; updated the prior "falls back to bookingRef" case. `offline-tidycal-provider.test.ts` (+1, 1 updated): per-transition fallback + 3-distinct-id lifecycle. Full `@expertos/api` suite 722 pass; consultation files 100% stmts/funcs/lines. Gates: api build + eslint + jest (coverage) + root knip green. (LEARNINGS #31, DIRECTIVES #47.)
 
 ---
 

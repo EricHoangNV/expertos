@@ -69,18 +69,85 @@ describe("HttpTidyCalProvider.parseEvent", () => {
     });
   });
 
-  it("maps cancellation aliases to canceled and falls back to bookingRef as eventId", () => {
+  it("maps cancellation aliases to canceled and synthesizes a per-transition fallback eventId", () => {
     const event = provider.parseEvent({
       event: "booking.canceled",
-      payload: { id: "bkg_7", email: "x@y.z" },
+      payload: { id: "bkg_7", email: "x@y.z", cancelled_at: "2026-06-09T00:00:00.000Z" },
     });
     expect(event).toMatchObject({
-      eventId: "bkg_7",
+      // ref + type + the cancel's lifecycle timestamp — distinct from the booking's create event.
+      eventId: `fallback:bkg_7:booking.cancelled:${Date.parse("2026-06-09T00:00:00.000Z")}`,
       eventType: "booking.cancelled",
       bookingRef: "bkg_7",
       email: "x@y.z",
       status: "canceled",
     });
+  });
+
+  it("gives created/rescheduled/cancelled distinct fallback ids for the same booking (no webhook id)", () => {
+    // The Security Cycle 2 High regression: with no delivery-unique `id`, a later reschedule/cancel
+    // for the same booking must NOT collide with the create's idempotency key.
+    const created = provider.parseEvent({
+      event: "booking.created",
+      payload: { id: 99, starts_at: "2026-06-10T15:00:00.000Z", contact: { email: "a@b.c" } },
+    });
+    const rescheduled = provider.parseEvent({
+      event: "booking.rescheduled",
+      payload: { id: 99, starts_at: "2026-06-12T15:00:00.000Z", contact: { email: "a@b.c" } },
+    });
+    const canceled = provider.parseEvent({
+      event: "booking.cancelled",
+      payload: { id: 99, cancelled_at: "2026-06-13T09:00:00.000Z", contact: { email: "a@b.c" } },
+    });
+
+    const ids = [created?.eventId, rescheduled?.eventId, canceled?.eventId];
+    expect(new Set(ids).size).toBe(3);
+    expect(created?.eventId).toBe(
+      `fallback:99:booking.created:${Date.parse("2026-06-10T15:00:00.000Z")}`,
+    );
+    expect(rescheduled?.eventId).toBe(
+      `fallback:99:booking.rescheduled:${Date.parse("2026-06-12T15:00:00.000Z")}`,
+    );
+    expect(canceled?.eventId).toBe(
+      `fallback:99:booking.cancelled:${Date.parse("2026-06-13T09:00:00.000Z")}`,
+    );
+  });
+
+  it("synthesizes the same fallback id for a redelivery of the same transition (idempotent)", () => {
+    const payload = {
+      event: "booking.rescheduled",
+      payload: { id: 7, starts_at: "2026-07-01T10:00:00.000Z", contact: { email: "a@b.c" } },
+    };
+    expect(provider.parseEvent(payload)?.eventId).toBe(provider.parseEvent(payload)?.eventId);
+  });
+
+  it("two reschedules of the same booking get distinct fallback ids via the new scheduled time", () => {
+    const first = provider.parseEvent({
+      event: "booking.rescheduled",
+      payload: { id: 7, starts_at: "2026-07-01T10:00:00.000Z" },
+    });
+    const second = provider.parseEvent({
+      event: "booking.rescheduled",
+      payload: { id: 7, starts_at: "2026-07-05T10:00:00.000Z" },
+    });
+    expect(first?.eventId).not.toBe(second?.eventId);
+  });
+
+  it("falls back to `na` in the fallback id when no lifecycle timestamp is present", () => {
+    const event = provider.parseEvent({
+      event: "booking.cancelled",
+      payload: { id: "bkg_7", email: "x@y.z" },
+    });
+    expect(event?.eventId).toBe("fallback:bkg_7:booking.cancelled:na");
+  });
+
+  it("prefers a delivery-unique webhook id over the synthesized fallback", () => {
+    const event = provider.parseEvent({
+      id: "evt_unique",
+      event: "booking.created",
+      payload: { id: 99, starts_at: "2026-06-10T15:00:00.000Z" },
+    });
+    expect(event?.eventId).toBe("evt_unique");
   });
 
   it("returns null for a non-object, an unmodeled event name, or a booking with no id", () => {
