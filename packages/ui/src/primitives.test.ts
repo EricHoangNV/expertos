@@ -827,12 +827,25 @@ describe("ChatAssistantMessage — assistant header + body (M12.4.2)", () => {
     expect(kids(source as ReactElement)).toBe("grounded in published knowledge + your upload");
   });
 
-  it("renders the right-aligned green 'Verified' badge only when verified", () => {
+  it("renders the right-aligned green trust badge only when verified", () => {
     const off = ChatAssistantMessage({ expertName: "Jo" }) as ReactElement;
     expect(headParts(off).some((c) => /msg-assistant-verified/.test(String(cls(c))))).toBe(false);
     const on = ChatAssistantMessage({ expertName: "Jo", verified: true }) as ReactElement;
     const badge = headParts(on).find((c) => /msg-assistant-verified/.test(String(cls(c))));
     expect(cls(badge as ReactElement)).toBe("badge badge-green msg-assistant-verified");
+  });
+
+  it("defaults the trust badge to the honest 'Citations resolved' wording, overridable for i18n", () => {
+    const def = ChatAssistantMessage({ verified: true }) as ReactElement;
+    const defBadge = headParts(def).find((c) => /msg-assistant-verified/.test(String(cls(c))));
+    expect((kids(defBadge as ReactElement) as unknown[]).filter(Boolean)).toContain(
+      "Citations resolved",
+    );
+    const vi = ChatAssistantMessage({ verified: true, verifiedLabel: "Đã phân giải trích dẫn" }) as ReactElement;
+    const viBadge = headParts(vi).find((c) => /msg-assistant-verified/.test(String(cls(c))));
+    expect((kids(viBadge as ReactElement) as unknown[]).filter(Boolean)).toContain(
+      "Đã phân giải trích dẫn",
+    );
   });
 
   it("falls back to a neutral 'Assistant' author with no tone for an expert-less answer", () => {

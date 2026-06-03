@@ -37,6 +37,9 @@ const en = {
     sourceBoth: "grounded in published knowledge + your upload",
     sourceUpload: "grounded in your upload",
     sourceKnowledge: "grounded in published knowledge",
+    // Assistant trust badge (M12.4.2) — attests the citations resolve to real chunks, not that the
+    // claims are independently fact-checked.
+    verifiedBadge: "Citations resolved",
     // Source card titles (M12.5.3).
     uploadedFile: "Uploaded file",
     publishedKnowledge: "Published knowledge",
@@ -170,6 +173,7 @@ const vi = {
     sourceBoth: "dựa trên kiến thức đã xuất bản + tài liệu bạn tải lên",
     sourceUpload: "dựa trên tài liệu bạn tải lên",
     sourceKnowledge: "dựa trên kiến thức đã xuất bản",
+    verifiedBadge: "Đã phân giải trích dẫn",
     uploadedFile: "Tệp đã tải lên",
     publishedKnowledge: "Kiến thức đã xuất bản",
     consultSignIn: "Vui lòng đăng nhập để tiếp tục.",

@@ -21,6 +21,19 @@
 - core user flow: FAIL — REMEDIATED 2026-06-03, pending re-review
 - data handling / privacy: PASS
 - High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
+- Mediums (trust-signal wording): analytics "grounded" bucket label + chat "Verified" badge wording — ADDRESSED 2026-06-03 (see remediation note below)
+
+---
+
+## Developer Remediation Note (2026-06-03) — Product Cycle 1 Mediums: trust-signal wording (analytics "grounded" + chat "Verified" badge)
+
+**Author:** implementing agent (not a review cycle). Closes the two Product Review Cycle 1 Mediums deferred from the citationless-answer High remediation: the operator-facing "grounded" analytics bucket and the consumer-facing "Verified" badge both overstated what the system actually checks (citation *resolution* to a real chunk), risking an operator/user reading them as factual verification.
+
+**Medium 1 — analytics "grounded" bucket label.** The M13.2.3 Questions-Answered card partitions answers purely by resolved-citation count (grounded ≥2 / low-confidence =1 / insufficient =0 — `messages.confidence` is unused). The badges said bare "Grounded / Low-conf / Insufficient", inviting over-reading. Fixed in `apps/admin/src/lib/i18n/dictionaries/dashboard.ts` (EN+VI lockstep): badges now carry the count definition ("Grounded · 2+ cites", "Low-conf · 1 cite", "Insufficient · 0 cites"); the StackedBar segment tooltips spell it out ("Grounded — 2+ resolved citations: {count}"); and a new `questions.note` caption under the badges states "Grouped by resolved-citation count (2+ / 1 / 0). Reflects citation resolution, not factual review." Rendered as a `.muted .qa-note` line in `apps/admin/app/page.tsx` (new `.qa-note` ds.css rule). Dashboard test updated to assert the new badge text; the trend-column test hardened inside `waitFor` (LEARNINGS #19 double-load flake).
+
+**Medium 2 — chat "Verified" badge.** The M12.4.2 assistant-message green badge read "Verified", which can be read as "the claims are fact-checked"; it only attests that every emitted citation resolved to a real published chunk (M4.1 render-after-resolve). Fixed at the `@expertos/ui` `ChatAssistantMessage` primitive: the badge text is now a `verifiedLabel` prop defaulting to the honest "Citations resolved"; the web chat page passes the localized `chat.verifiedBadge` string (EN "Citations resolved" / VI "Đã phân giải trích dẫn", lockstep). The Tweaks toggle label that gates the badge was aligned ("Verified trust badge" → "Citations-resolved badge"). The trigger condition is unchanged (`done && citations.length > 0 && !insufficientKnowledge`) — only the wording, so it stays consistent with the High fix that keys ungrounded off `built.citations.length === 0`.
+
+**Tests:** `packages/ui/src/primitives.test.ts` (+1: badge defaults to "Citations resolved", overridable for i18n); `apps/admin/app/page.test.tsx` (updated badge-text assertions + `waitFor`-hardened trend-column assertion). Gates: ui build+lint+jest (235), web tsc+lint+jest (99), admin tsc+lint+jest (97, stable ×3), root lint:css + knip — all green. No FAIL items remain open in any review track.
 
 ---
 

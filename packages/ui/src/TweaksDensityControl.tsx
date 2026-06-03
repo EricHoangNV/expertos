@@ -47,7 +47,7 @@ export function TweaksDensityControl({
   const toggles: ToggleOption[] = [
     {
       key: "verified-badge",
-      label: "Verified trust badge",
+      label: "Citations-resolved badge",
       value: verifiedBadge,
       onChange: onVerifiedBadgeChange,
     },

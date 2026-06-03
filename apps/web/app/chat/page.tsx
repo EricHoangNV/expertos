@@ -441,6 +441,7 @@ function AssistantTurn({
       expertName={message.expertName}
       aiRendition={Boolean(message.expertName)}
       sourceLabel={message.done ? answerSourceLabel(message.citations, t) : undefined}
+      verifiedLabel={t("verifiedBadge")}
       verified={
         showVerifiedBadge &&
         message.done &&

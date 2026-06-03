@@ -321,6 +321,7 @@ button { font-family: inherit; cursor: pointer; }
 .qa-card { margin-bottom: 24px; }
 .qa-total { font-family: var(--font-display); font-weight: 700; font-size: 38px; color: var(--ink-900); letter-spacing: -.02em; margin-top: 6px; }
 .qa-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.qa-note { margin-top: 10px; font-size: 12px; line-height: 1.4; }
 .qa-overall { margin-top: 14px; }
 .qa-chart { display: flex; align-items: flex-end; gap: 3px; height: 72px; margin-top: 16px; }
 .qa-chart .qa-col { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; background: var(--paper-2); border-radius: var(--r-sm); overflow: hidden; }

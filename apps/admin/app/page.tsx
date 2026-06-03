@@ -179,6 +179,7 @@ function QuestionsCard({ data }: { data: QuestionsAnalyticsDto }) {
         <Badge tone="red">{t("questions.lowConf", { share: share(breakdown.lowConfidence, total) })}</Badge>
         <Badge tone="ink">{t("questions.insufficient", { share: share(breakdown.insufficient, total) })}</Badge>
       </div>
+      <p className="muted qa-note">{t("questions.note")}</p>
       <StackedBar
         className="qa-overall"
         segments={[

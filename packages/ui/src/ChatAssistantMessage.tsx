@@ -19,10 +19,17 @@ export interface ChatAssistantMessageProps {
    */
   sourceLabel?: string;
   /**
-   * Show the green "Verified" badge (right-aligned) — set once the answer is complete and grounded in
-   * citations that resolved to real chunks (M4.2 render-after-resolve).
+   * Show the green trust badge (right-aligned) — set once the answer is complete and every emitted
+   * citation resolved to a real chunk (M4.2 render-after-resolve). The badge attests that the answer's
+   * citations resolve, NOT that its claims are independently fact-checked — hence the honest default
+   * wording {@link verifiedLabel} of "Citations resolved" rather than "Verified".
    */
   verified?: boolean;
+  /**
+   * Text for the green trust badge. Defaults to "Citations resolved" — the honest claim the badge can
+   * make (the citations resolve to real published chunks). The page passes a localized string.
+   */
+  verifiedLabel?: string;
   /** The answer body — prose + inline citations (M12.4.3) and the action bar / state cards (M12.4.4+). */
   children?: ReactNode;
 }
@@ -40,6 +47,7 @@ export function ChatAssistantMessage({
   aiRendition = false,
   sourceLabel,
   verified = false,
+  verifiedLabel = "Citations resolved",
   children,
 }: ChatAssistantMessageProps) {
   const expert = expertName?.trim();
@@ -67,7 +75,7 @@ export function ChatAssistantMessage({
         {verified && (
           <span className="badge badge-green msg-assistant-verified">
             <span className="dot" aria-hidden="true" />
-            Verified
+            {verifiedLabel}
           </span>
         )}
       </div>

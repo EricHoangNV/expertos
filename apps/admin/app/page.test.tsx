@@ -249,10 +249,11 @@ describe("AdminHomePage — Questions Answered card", () => {
     await waitFor(() => {
       expect(screen.getByText("Questions answered")).toBeInTheDocument();
       expect(screen.getByText("100")).toBeInTheDocument(); // total
-      // share() rounds: 70/100=70%, 20/100=20%, 10/100=10%.
-      expect(screen.getByText("Grounded 70%")).toBeInTheDocument();
-      expect(screen.getByText("Low-conf 20%")).toBeInTheDocument();
-      expect(screen.getByText("Insufficient 10%")).toBeInTheDocument();
+      // share() rounds: 70/100=70%, 20/100=20%, 10/100=10%. Labels carry the
+      // resolved-citation-count definition (2+ / 1 / 0) so operators don't over-read "grounded".
+      expect(screen.getByText("Grounded · 2+ cites 70%")).toBeInTheDocument();
+      expect(screen.getByText("Low-conf · 1 cite 20%")).toBeInTheDocument();
+      expect(screen.getByText("Insufficient · 0 cites 10%")).toBeInTheDocument();
     });
   });
 
@@ -280,8 +281,11 @@ describe("AdminHomePage — Questions Answered card", () => {
     });
     const { container } = renderWithProviders(<AdminHomePage />, { role: "admin" });
 
-    await waitFor(() => expect(screen.getByText("Questions answered")).toBeInTheDocument());
-    expect(container.querySelectorAll(".qa-chart .qa-col")).toHaveLength(7);
+    // Assert inside waitFor — the page double-loads on mount (LEARNINGS #19), and a transient
+    // setData(null) between the title appearing and this assertion would clear the chart otherwise.
+    await waitFor(() =>
+      expect(container.querySelectorAll(".qa-chart .qa-col")).toHaveLength(7),
+    );
   });
 });
 

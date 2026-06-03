@@ -4818,3 +4818,23 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 **Docs:** FEEDBACKS remediation note + verdict line; LEARNINGS #31; DIRECTIVES #47.
 
 **Status:** All 5 Security Cycle 2 findings (3 Critical + 2 High) are now REMEDIATED in-sandbox, pending reviewer re-verification. No open in-sandbox-codeable Security FAILs remain.
+
+---
+
+## Product Cycle 1 Mediums: trust-signal wording (analytics "grounded" + chat "Verified" badge)
+**Date:** 2026-06-03
+**Ref:** FEEDBACKS Product Review Cycle 1 — the two Mediums deferred from the citationless-answer High remediation.
+
+**Why:** Both signals overstated what the system actually checks. The platform only verifies that an emitted citation *resolves to a real published chunk* (M4.1 render-after-resolve) — it does NOT fact-check claims. The operator "grounded" bucket and the consumer "Verified" badge could each be read as factual verification, the same honesty gap the High fix closed at the data layer.
+
+**Medium 1 — analytics "grounded" bucket label (M13.2.3 Questions-Answered card).** The card partitions answers purely by resolved-citation count (grounded ≥2 / low-confidence =1 / insufficient =0; `messages.confidence` is unused). Bare "Grounded / Low-conf / Insufficient" badges invited over-reading. Fixed in `apps/admin/src/lib/i18n/dictionaries/dashboard.ts` (EN+VI lockstep): badges now carry the definition ("Grounded · 2+ cites", "Low-conf · 1 cite", "Insufficient · 0 cites"); StackedBar segment tooltips spell it out ("Grounded — 2+ resolved citations: {count}"); new `questions.note` caption "Grouped by resolved-citation count (2+ / 1 / 0). Reflects citation resolution, not factual review." rendered as a `.muted .qa-note` line in `apps/admin/app/page.tsx` (new `.qa-note` ds.css rule — `margin-top:10px; font-size:12px`).
+
+**Medium 2 — chat "Verified" badge (M12.4.2 assistant message).** The green badge read "Verified". Changed the `@expertos/ui` `ChatAssistantMessage` primitive: badge text is now a `verifiedLabel` prop defaulting to the honest "Citations resolved"; the web chat page passes the localized `chat.verifiedBadge` string (EN "Citations resolved" / VI "Đã phân giải trích dẫn", lockstep). Aligned the Tweaks toggle that gates the badge ("Verified trust badge" → "Citations-resolved badge"). Trigger condition unchanged (`done && citations.length > 0 && !insufficientKnowledge`) — wording-only.
+
+**Tests:** `packages/ui/src/primitives.test.ts` (+1: badge defaults to "Citations resolved", overridable for i18n — EN default + VI override asserted); `apps/admin/app/page.test.tsx` (updated badge-text assertions to the new definitional labels; hardened the trend-column assertion inside `waitFor` to survive the LEARNINGS #19 mount double-load flake — was failing intermittently in full-suite runs). Counts: ui 234→235, admin 96→97 (stable ×3). Web 99 unchanged (i18n lockstep still green with the new `verifiedBadge` key).
+
+**Gates:** ui build + eslint + jest (235), web tsc + next lint + jest (99), admin tsc + next lint + jest (97), root lint:css + knip — all green.
+
+**Docs:** FEEDBACKS remediation note + verdict-block Medium line. No new LEARNINGS/DIRECTIVES (wording change, no new failure class).
+
+**Status:** Both Product Cycle 1 Mediums ADDRESSED. With the High already REMEDIATED and all 5 Security Cycle 2 findings REMEDIATED, no in-sandbox-codeable review finding remains open in any track. Remaining work is re-review + host E2E + PM/legal/schema gates.
