@@ -256,3 +256,34 @@ describe("DocumentVersionRepository.replaceDraftChunks", () => {
     expect(tx.documentVersion.findUnique).not.toHaveBeenCalled();
   });
 });
+
+describe("DocumentVersionRepository.assertDraftEditable", () => {
+  it("resolves for an existing draft version", async () => {
+    const tx = makeTx();
+    await expect(repoFor(tx).assertDraftEditable(USER, "ver-1")).resolves.toBeUndefined();
+  });
+
+  it("rejects a non-draft version (ConflictException) before any work", async () => {
+    const tx = makeTx({
+      documentVersion: {
+        findFirst: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue({ status: "published" }),
+        create: jest.fn(),
+      },
+    });
+    await expect(repoFor(tx).assertDraftEditable(USER, "ver-1")).rejects.toThrow(
+      /cannot edit a published version/,
+    );
+  });
+
+  it("404s when the version does not exist (or RLS hides a peer tenant's)", async () => {
+    const tx = makeTx({
+      documentVersion: {
+        findFirst: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
+    });
+    await expect(repoFor(tx).assertDraftEditable(USER, "missing")).rejects.toThrow(/not found/);
+  });
+});

@@ -4943,3 +4943,29 @@ Both carry approver checklists. Tasks remain `[~]` — committing the drafts doe
 
 **Notes for next iteration:**
 - A fresh **Security Cycle 3 — PASS** landed (2026-06-03) with one open Medium: the draft-knowledge edit path runs chunk/summarize/embed work *before* the draft-status existence check (cost-amplification on a non-draft id). In-sandbox-codeable; reorder to reserve-before-work (existence/status check first), mirroring DIRECTIVE #44/#28 guard ordering. This is the highest-priority remaining code task.
+
+---
+
+## Security Cycle 3 Medium — draft-edit cost-amplification (reserve-before-work)
+**Date:** 2026-06-03
+**Ref:** FEEDBACKS Security Cycle 3 (open Medium)
+
+**What was done:**
+- Fixed the cost-amplification window in the M8.1 draft-version edit path. `IngestionService.editDraftContent` previously ran the full chunk → summarize → embed pipeline on the request body *before* any existence/draft-status check (the only guard lived inside `DocumentVersionRepository.replaceDraftChunks`'s transaction, which runs after the embed work). An authenticated expert/admin could drive arbitrary summarize+embed cost against a missing / RLS-hidden (foreign-tenant) / non-draft `versionId` before being rejected.
+- Added cheap `DocumentVersionRepository.assertDraftEditable(user, versionId)` — one RLS-scoped `findUnique({ select: { status } })` throwing `NotFoundException`/`ConflictException`, no chunk/embed work.
+- `editDraftContent` now calls it *before* `chunkAndEmbed`. The authoritative in-tx guard in `replaceDraftChunks` is retained (closes the concurrent-submit race; the precheck only saves cost).
+- Tests: ingestion.service +1 (precondition rejects non-draft with zero summarize/embed/replace/record calls), repository +3 (assertDraftEditable resolve / non-draft Conflict / 404). Full api suite 735 pass (was 722... +4 here; prior agent delta accounts for the rest). Both touched files 100% coverage.
+
+**Key decisions:**
+- Kept the duplicated check (precheck for cost + in-tx guard for the race) rather than moving the guard out of the transaction — the in-tx atomic check is what prevents a concurrent submit from slipping a non-draft under the edit; removing it would trade a cost bug for a correctness bug.
+- Did NOT add a new directive — DIRECTIVE #44/#28 already enforce reserve-before-work; recorded the non-obvious nuance (an in-tx guard runs *after* the expensive step) as LEARNINGS #34.
+
+**Files changed:**
+- `apps/api/src/ingestion/document-version.repository.ts` — new `assertDraftEditable` precondition method.
+- `apps/api/src/ingestion/ingestion.service.ts` — `editDraftContent` calls `assertDraftEditable` before `chunkAndEmbed`.
+- `apps/api/src/ingestion/ingestion.service.test.ts` — harness wires the new repo method; +1 precondition test.
+- `apps/api/src/ingestion/document-version.repository.test.ts` — +3 tests for `assertDraftEditable`.
+- `project-mds/FEEDBACKS.MD`, `LEARNINGS.MD` (#34), `progress-state.md` — tracking.
+
+**Notes for next iteration:**
+- All in-sandbox-codeable review findings are now REMEDIATED/ADDRESSED. Remaining work is external: host-run the E2E suite (`scripts/test-e2e-{users,admin}.sh`), await Security/Product re-review, PM/schema decisions (voice-dimension widgets M13.5.3-.5/.7.4), PM/legal sign-offs (M11.4 / NT.3-6).

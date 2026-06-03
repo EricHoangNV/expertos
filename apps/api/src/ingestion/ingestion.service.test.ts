@@ -1,3 +1,4 @@
+import { ConflictException } from "@nestjs/common";
 import { IngestionService, EmptyDocumentError } from "./ingestion.service";
 import { UnsupportedContentTypeError } from "./parser-registry";
 import type { ParserRegistry } from "./parser-registry";
@@ -39,6 +40,7 @@ interface Harness {
   summarize: jest.Mock;
   store: jest.Mock;
   replaceDraftChunks: jest.Mock;
+  assertDraftEditable: jest.Mock;
   record: jest.Mock;
   info: jest.Mock;
 }
@@ -58,18 +60,34 @@ function makeHarness(opts: { parseText?: string; resolveThrows?: Error } = {}): 
   const summarize = jest.fn((c: string) => Promise.resolve(`sum:${c.slice(0, 3)}`));
   const store = jest.fn().mockResolvedValue(STORED);
   const replaceDraftChunks = jest.fn().mockResolvedValue({ versionId: "ver-1", chunkCount: 2 });
+  const assertDraftEditable = jest.fn().mockResolvedValue(undefined);
   const record = jest.fn().mockResolvedValue(undefined);
   const info = jest.fn();
 
   const registry = { resolve } as unknown as ParserRegistry;
   const embeddings = { name: "fake-embed", dimensions: 3, embed } as EmbeddingProvider;
   const summarizer = { summarize } as Summarizer;
-  const repository = { store, replaceDraftChunks } as unknown as DocumentVersionRepository;
+  const repository = {
+    store,
+    replaceDraftChunks,
+    assertDraftEditable,
+  } as unknown as DocumentVersionRepository;
   const usage = { record } as unknown as UsageLogService;
   const logger = { info } as unknown as StructuredLogger;
 
   const service = new IngestionService(registry, embeddings, summarizer, repository, usage, logger);
-  return { service, parse, resolve, embed, summarize, store, replaceDraftChunks, record, info };
+  return {
+    service,
+    parse,
+    resolve,
+    embed,
+    summarize,
+    store,
+    replaceDraftChunks,
+    assertDraftEditable,
+    record,
+    info,
+  };
 }
 
 describe("IngestionService", () => {
@@ -168,5 +186,21 @@ describe("IngestionService.editDraftContent", () => {
       EmptyDocumentError,
     );
     expect(h.replaceDraftChunks).not.toHaveBeenCalled();
+  });
+
+  it("checks the draft precondition BEFORE spending summarize/embed cost (reserve-before-work)", async () => {
+    const h = makeHarness();
+    const notDraft = new ConflictException("cannot edit a published version");
+    h.assertDraftEditable.mockRejectedValueOnce(notDraft);
+
+    await expect(
+      h.service.editDraftContent(USER, "ver-1", "freshly edited expert text"),
+    ).rejects.toBe(notDraft);
+
+    // The precondition rejected the non-draft id with NO cost-amplifying work done.
+    expect(h.summarize).not.toHaveBeenCalled();
+    expect(h.embed).not.toHaveBeenCalled();
+    expect(h.replaceDraftChunks).not.toHaveBeenCalled();
+    expect(h.record).not.toHaveBeenCalled();
   });
 });

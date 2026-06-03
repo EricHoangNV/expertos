@@ -104,6 +104,11 @@ export class IngestionService {
     versionId: string,
     content: string,
   ): Promise<{ versionId: string; chunkCount: number }> {
+    // Reserve-before-work (DIRECTIVE #44/#28): confirm the version is an editable draft *before*
+    // spending summarize + embed cost on it — a non-draft / forged id otherwise amplifies cost
+    // before the in-tx guard rejects. replaceDraftChunks re-checks atomically to close the race.
+    await this.repository.assertDraftEditable(user, versionId);
+
     const { chunks, totalTokens } = await this.chunkAndEmbed(content, `version:${versionId}`);
 
     const result = await this.repository.replaceDraftChunks(user, versionId, {

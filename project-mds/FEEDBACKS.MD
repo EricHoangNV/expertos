@@ -7,7 +7,7 @@
 - data exposure / secrets: PASS (expert retrieval boundary and raw-upload object deletion remediations verified)
 - input validation: PASS (zod route validation, raw SQL bound params, prompt citation-marker neutralization, raw-body webhook signatures)
 - dependency / supply chain: PASS (no new risky dependency or lockfile expansion in reviewed changes)
-- Medium: draft knowledge edit performs chunk/summarize/embed work before the draft-status existence check
+- Medium: draft knowledge edit performs chunk/summarize/embed work before the draft-status existence check — REMEDIATED 2026-06-03, pending re-review (`IngestionService.editDraftContent` now calls a new cheap `DocumentVersionRepository.assertDraftEditable` precondition BEFORE `chunkAndEmbed`; the in-tx guard in `replaceDraftChunks` is retained to close the concurrent-submit race — see remediation note below)
 
 ### Code Review: Cycle 0 — (no review yet)
 - (awaiting first code review)
@@ -19,6 +19,17 @@
 - High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
 - Mediums (trust-signal wording): analytics "grounded" bucket label + chat "Verified" badge wording — ADDRESSED 2026-06-03 (see remediation note below)
 - Medium (found via E2E M15.3.7): Free-plan document-upload 402 surfaced as a bare "Http Exception" badge instead of an upgrade prompt — ADDRESSED 2026-06-03 (upload client throws a typed `UploadEntitlementError`; the chat upload panel renders a localized EN/VI upgrade prompt + a link to /account; enforcement unchanged, DIRECTIVE #44 — see remediation note below)
+
+---
+
+## Developer Remediation Note (2026-06-03) — Security Cycle 3 Medium: draft-edit cost-amplification (reserve-before-work)
+
+**Author:** implementing agent (not a review cycle). Closes the open Security Cycle 3 Medium — the M8.1 draft-version edit path (`PATCH /knowledge/versions/:versionId/content` → `IngestionService.editDraftContent`) ran the full chunk → summarize → embed pipeline on the supplied content **before** the version's existence/draft-status was checked (the only guard lived inside `DocumentVersionRepository.replaceDraftChunks`'s transaction, which runs after the embed work completes). An authenticated expert/admin could therefore drive arbitrary summarize+embed cost against a non-existent, foreign (RLS-hidden), or non-draft (`expert_review`/`published`/`archived`) `versionId` before the request was rejected — cost-amplification.
+
+**Fix (reserve-before-work — DIRECTIVE #44/#28 ordering; enforcement semantics unchanged):**
+- `apps/api/src/ingestion/document-version.repository.ts` — new cheap `assertDraftEditable(user, versionId)`: a single RLS-scoped `documentVersion.findUnique({ select: { status } })` that throws `NotFoundException` (missing / peer-tenant-hidden) or `ConflictException` (non-draft) — no chunk/embed work.
+- `apps/api/src/ingestion/ingestion.service.ts` — `editDraftContent` calls `assertDraftEditable` **before** `chunkAndEmbed`. The authoritative draft-only guard inside `replaceDraftChunks`'s transaction is **retained** so a concurrent submit between the precheck and the write still can't slip a non-draft under the edit (the precheck only fails fast to avoid spending cost; the in-tx check closes the race).
+- Tests: `ingestion.service.test.ts` +1 (precondition rejects a non-draft id with zero summarize/embed/replace/record calls); `document-version.repository.test.ts` +3 (`assertDraftEditable` resolve / non-draft Conflict / missing 404). Both touched files remain 100% coverage; full api suite 735 pass.
 
 ---
 
