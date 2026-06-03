@@ -4,13 +4,13 @@
 
 ### Security: Cycle 2 — FAIL (2026-06-03)
 - auth & access control: FAIL (removed/demoted whitelist entries do not revoke mirrored API roles) — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
-- data exposure / secrets: FAIL (expert-voice-knowledge-boundary REMEDIATED 2026-06-03, pending re-review; raw upload objects still not deleted with retention/user deletion)
+- data exposure / secrets: FAIL (expert-voice-knowledge-boundary + raw-upload-object deletion both REMEDIATED 2026-06-03, pending re-review)
 - input validation: PASS (zod route validation, constant raw SQL with bound params, citation-marker neutralization, webhook raw-body signature checks)
 - dependency / supply chain: PASS (no new dependency risk reviewed in latest changes)
 - Critical: stale admin/expert roles can keep calling privileged APIs after whitelist removal — REMEDIATED 2026-06-03, pending re-review
 - Critical: selected expert voice can answer from another expert/global published knowledge — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
 - Critical: document-upload entitlement is defined but not enforced before parse/embed work — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
-- High: retention/user deletion removes DB rows but not raw upload objects
+- High: retention/user deletion removes DB rows but not raw upload objects — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
 - High: TidyCal fallback idempotency can skip later cancel/reschedule lifecycle events
 
 ### Code Review: Cycle 0 — (no review yet)
@@ -21,6 +21,27 @@
 - core user flow: FAIL — REMEDIATED 2026-06-03, pending re-review
 - data handling / privacy: PASS
 - High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
+
+---
+
+## Developer Remediation Note (2026-06-03) — Security Cycle 2 High: Retention/user deletion removes DB rows but not raw upload objects
+
+**Author:** implementing agent (not a review cycle). Addresses the Security Review Cycle 2 High "retention/user deletion removes DB rows but not raw upload objects" (data-exposure category).
+
+**Root cause:** the `StorageProvider` seam (`apps/api/src/uploads/storage-provider.ts`) only had `put` — there was no way to delete a stored object. So both deletion paths dropped only the *DB rows*: `RetentionService.sweep` `deleteMany`'d expired `uploaded_files` (chunks cascade), and `AdminUserService.executeDeletion` hard-deleted the user (Postgres `ON DELETE CASCADE` drops `uploaded_files`). The raw bytes recorded on `uploaded_files.gcs_uri` were never reclaimed — the objects outlived the rows in GCS indefinitely, defeating the NT.3 auto-delete promise and the GDPR "delete ALL user data" directive (#16).
+
+**Fix:**
+- Added `delete(uri)` to the `StorageProvider` interface + `InMemoryStorageProvider` (idempotent — deleting a missing object is a no-op, so a re-run sweep is safe; tolerates the `memory://` scheme or a bare key).
+- New shared `StorageModule` (`apps/api/src/uploads/storage.module.ts`) provides the single `STORAGE_PROVIDER` instance and is imported by both `UploadModule` and `AdminModule`, so the upload write path and the cleanup paths operate on one store (a put is deletable by retention).
+- New `deleteStorageObjects(storage, uris, logger, ctx)` helper (`apps/api/src/uploads/storage-cleanup.ts`): best-effort, non-fatal per-object loop run *outside* the deleting tx (rows are source of truth → drop them first, reclaim bytes after; a storage hiccup is logged + swallowed, not allowed to abort the purge; null/empty URIs skipped).
+- `RetentionService.sweep` now `findMany`s the expiring uploads' `gcsUri`s *before* the `deleteMany` (which returns only a count), and after the tx commits calls `deleteStorageObjects`.
+- `AdminUserService.executeDeletion` now `findMany`s the user's upload `gcsUri`s before the cascade, and after commit calls `deleteStorageObjects`.
+
+**Why outside the tx:** deleting the object inside the tx would let a storage failure roll back the row purge; deleting before the row purge would risk orphaning a live row if the tx rolled back. Collect-URIs-in-tx → delete-rows-in-tx → commit → reclaim-objects is the only ordering that never leaves a row pointing at a deleted object.
+
+**Production note:** the offline default is `InMemoryStorageProvider`; a production GCS driver (still to be written, behind `createDefaultStorageProvider`) must implement `delete` by issuing a bucket object delete for the `gs://…` URI. The seam + callers are now ready for it.
+
+**Tests:** +10 `@expertos/api` (716 total). `storage-provider.test.ts` (delete round-trip / idempotent no-op / bare-key); new `storage-cleanup.test.ts` (success count, null-skip, swallow-and-continue on throw); `retention.service.test.ts` (collects URIs before delete, deletes them post-commit, best-effort on throw); `admin-user.service.test.ts` (collects + deletes user objects post-cascade, best-effort on throw). Gates: api build + eslint + jest (coverage) + root knip green.
 
 ---
 

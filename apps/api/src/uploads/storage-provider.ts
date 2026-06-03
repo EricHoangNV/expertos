@@ -15,7 +15,20 @@ export interface StorageProvider {
   readonly name: string;
   /** Persist bytes and return the storage URI to record on the row. */
   put(input: StoragePutInput): Promise<string>;
+  /**
+   * Delete the object previously persisted at `uri` — the exact value {@link put} returned and the
+   * row recorded on `uploaded_files.gcs_uri`. This closes the Security-Cycle-2 gap where retention
+   * and user-deletion dropped DB rows but left the raw objects behind: the {@link RetentionService}
+   * sweep and the {@link AdminUserService} GDPR cascade call it for every expiring/owned upload.
+   *
+   * **Idempotent:** deleting a missing or already-deleted object is a no-op, not an error, so a
+   * re-run of the sweep is safe. Callers invoke it best-effort *after* the rows are committed gone
+   * (an orphaned object is recoverable; aborting the purge on a storage hiccup is not).
+   */
+  delete(uri: string): Promise<void>;
 }
+
+const MEMORY_SCHEME = "memory://";
 
 /**
  * Offline, in-process storage default — mirrors the `EchoLlmProvider`/`HashingEmbeddingProvider`
@@ -28,6 +41,12 @@ export class InMemoryStorageProvider implements StorageProvider {
 
   async put(input: StoragePutInput): Promise<string> {
     this.objects.set(input.key, input.content);
-    return `memory://${input.key}`;
+    return `${MEMORY_SCHEME}${input.key}`;
+  }
+
+  async delete(uri: string): Promise<void> {
+    // Map the stored `memory://<key>` URI back to its object key (tolerate a bare key too).
+    const key = uri.startsWith(MEMORY_SCHEME) ? uri.slice(MEMORY_SCHEME.length) : uri;
+    this.objects.delete(key);
   }
 }

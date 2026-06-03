@@ -2,6 +2,7 @@ import { RetentionService } from "./retention.service";
 import type { AdminAuditService } from "./admin-audit.service";
 import type { RlsService } from "../auth/rls.service";
 import type { StructuredLogger } from "../observability/logger.service";
+import type { StorageProvider } from "../uploads/storage-provider";
 import type { RetentionPolicy } from "./retention.config";
 import type { AuthUser } from "../auth/auth.types";
 
@@ -30,7 +31,7 @@ const POLICY: RetentionPolicy = {
 
 function makeTx() {
   return {
-    uploadedFile: { count: jest.fn(), deleteMany: jest.fn() },
+    uploadedFile: { count: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     conversation: { count: jest.fn(), deleteMany: jest.fn() },
     usageLog: { count: jest.fn(), deleteMany: jest.fn() },
     consultationNote: { count: jest.fn(), deleteMany: jest.fn() },
@@ -53,8 +54,19 @@ function makeService(tx: ReturnType<typeof makeTx>, policy: RetentionPolicy = PO
   const record = jest.fn().mockResolvedValue(undefined);
   const audit = { record } as unknown as AdminAuditService;
   const info = jest.fn();
-  const logger = { info } as unknown as StructuredLogger;
-  return { service: new RetentionService(rls, audit, logger, policy), run, record, info, tx };
+  const warn = jest.fn();
+  const logger = { info, warn } as unknown as StructuredLogger;
+  const del = jest.fn().mockResolvedValue(undefined);
+  const storage = { name: "mock", put: jest.fn(), delete: del } as unknown as StorageProvider;
+  return {
+    service: new RetentionService(rls, audit, logger, storage, policy),
+    run,
+    record,
+    info,
+    warn,
+    del,
+    tx,
+  };
 }
 
 describe("RetentionService.preview", () => {
@@ -161,6 +173,41 @@ describe("RetentionService.sweep", () => {
       "retention sweep complete",
       expect.objectContaining({ actorId: ADMIN.id }),
     );
+  });
+
+  it("reclaims the expiring uploads' raw objects from storage after the rows are deleted", async () => {
+    const tx = makeTx();
+    primeSweep(tx, { up: 2, cv: 0, ul: 0, ct: 0, cr: 0 });
+    tx.uploadedFile.findMany.mockResolvedValue([
+      { gcsUri: "memory://uploads/u1/a/x.csv" },
+      { gcsUri: null }, // a row that never recorded a URI — skipped, not deleted
+      { gcsUri: "memory://uploads/u1/b/y.pdf" },
+    ]);
+    const { service, del } = makeService(tx);
+
+    await service.sweep(ADMIN);
+
+    // URIs collected before the row delete (deleteMany returns only a count).
+    expect(tx.uploadedFile.findMany).toHaveBeenCalledWith({
+      where: { mode: "temporary", expiresAt: { lt: new Date(NOW_MS) } },
+      select: { gcsUri: true },
+    });
+    expect(del).toHaveBeenCalledTimes(2);
+    expect(del).toHaveBeenCalledWith("memory://uploads/u1/a/x.csv");
+    expect(del).toHaveBeenCalledWith("memory://uploads/u1/b/y.pdf");
+  });
+
+  it("does not fail the sweep when a storage object delete throws (best-effort)", async () => {
+    const tx = makeTx();
+    primeSweep(tx, { up: 1, cv: 0, ul: 0, ct: 0, cr: 0 });
+    tx.uploadedFile.findMany.mockResolvedValue([{ gcsUri: "memory://uploads/u1/a/x.csv" }]);
+    const { service, del, warn } = makeService(tx);
+    del.mockRejectedValueOnce(new Error("gcs down"));
+
+    const result = await service.sweep(ADMIN);
+
+    expect(result.temporaryUploads).toBe(1);
+    expect(warn).toHaveBeenCalledWith("storage object delete failed", expect.objectContaining({ job: "retention" }));
   });
 
   it("deletes consultation transcripts on the consultation date but keeps the consultation row", async () => {

@@ -4765,3 +4765,35 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 - Re-review needed to flip Product Cycle 1 from FAIL → PASS.
 - The serveCachedAnswer path always hardcodes `insufficientKnowledge: false` — correct, because only knowledge-only grounded answers (≥1 citation) are ever written to the shared cache, so a cache hit is grounded by construction.
 - Follow-ups still open: the two Product Cycle 1 Mediums, and the two remaining Security Cycle 2 Highs (raw upload-object deletion on retention/user-deletion; TidyCal fallback idempotency for cancel/reschedule).
+
+## Security Cycle 2 High — Raw upload objects not deleted on retention/user-deletion
+**Date:** 2026-06-03
+**Ref:** FEEDBACKS Security Cycle 2 — High "retention/user deletion removes DB rows but not raw upload objects" (data-exposure category); NT.3 retention sweeper + M8.4 GDPR cascade + M5.1 upload storage seam.
+
+**What was done:**
+- Added idempotent `delete(uri)` to the `StorageProvider` interface + `InMemoryStorageProvider` (tolerates the `memory://` scheme or a bare key; deleting a missing object is a no-op).
+- New shared `apps/api/src/uploads/storage.module.ts` `StorageModule` provides the single `STORAGE_PROVIDER` instance; `UploadModule` + `AdminModule` now import it (one store for the put path and both cleanup paths). Removed the per-provider `STORAGE_PROVIDER` factory from `UploadModule`.
+- New `apps/api/src/uploads/storage-cleanup.ts` `deleteStorageObjects(storage, uris, logger, ctx)` — best-effort, non-fatal per-object loop; skips null/empty URIs; logs + swallows failures; returns success count.
+- `RetentionService.sweep`: `findMany`s the expiring uploads' `gcsUri`s before the `deleteMany`, returns them out of the tx, and reclaims the objects after commit. Injected `STORAGE_PROVIDER`.
+- `AdminUserService.executeDeletion`: `findMany`s the user's upload `gcsUri`s before the cascade, returns them, reclaims after commit. Injected `STORAGE_PROVIDER`.
+
+**Key decisions:**
+- Ordering: collect-URIs-in-tx → delete-rows-in-tx → commit → reclaim-objects-best-effort-outside-tx. Deleting inside the tx would let a storage failure roll back the row purge; deleting before the row delete would orphan a live row on rollback; `deleteMany`/cascade returns only a count so keys must be captured before the delete.
+- Shared `StorageModule` (not two independent factory registrations) so a `put` from the upload path is deletable by retention/deletion — otherwise the offline default's two `Map`s would never see each other's objects.
+- Best-effort cleanup (log + swallow) keeps the purge from failing on a transient storage error; the `delete` is idempotent so the next sweep retries an orphan.
+
+**Files changed:**
+- `apps/api/src/uploads/storage-provider.ts` — `delete()` on interface + InMemory impl.
+- `apps/api/src/uploads/storage.module.ts` — new shared module (provides/exports `STORAGE_PROVIDER`).
+- `apps/api/src/uploads/storage-cleanup.ts` — new best-effort `deleteStorageObjects` helper.
+- `apps/api/src/uploads/upload.module.ts` — import `StorageModule`, drop local factory; doc updated.
+- `apps/api/src/admin/admin.module.ts` — import `StorageModule`.
+- `apps/api/src/admin/retention.service.ts` — inject storage; collect URIs + reclaim post-commit.
+- `apps/api/src/admin/admin-user.service.ts` — inject storage; collect URIs + reclaim post-commit; class doc updated.
+- Tests: `storage-provider.test.ts` (+3), new `storage-cleanup.test.ts` (3), `retention.service.test.ts` (+2 +findMany mock), `admin-user.service.test.ts` (+2 +findMany mock). api 706→716.
+- Docs: FEEDBACKS remediation note + verdict lines; LEARNINGS #30; DIRECTIVES #46.
+
+**Notes for next iteration:**
+- Production GCS driver still to be written behind `createDefaultStorageProvider`; it must implement `delete` as a bucket object delete on the `gs://…` URI. The seam + callers are ready.
+- Re-review needed to flip the Security Cycle 2 data-exposure category (now both its issues — expert-voice boundary + raw-object deletion — are remediated; auth & access-control's whitelist-role-sync remediation is the remaining category gating the cycle).
+- Remaining Security Cycle 2 High: TidyCal fallback idempotency skips cancel/reschedule (fallback id = ref+type+timestamp) — next in-sandbox FAIL to work.

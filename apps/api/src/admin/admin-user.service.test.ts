@@ -3,6 +3,7 @@ import { AdminUserService } from "./admin-user.service";
 import type { AdminAuditService } from "./admin-audit.service";
 import type { RlsService } from "../auth/rls.service";
 import type { StructuredLogger } from "../observability/logger.service";
+import type { StorageProvider } from "../uploads/storage-provider";
 import type { AuthUser } from "../auth/auth.types";
 
 const ADMIN: AuthUser = {
@@ -26,6 +27,7 @@ function makeTx() {
       update: jest.fn(),
       delete: jest.fn(),
     },
+    uploadedFile: { findMany: jest.fn().mockResolvedValue([]) },
     fairUseFlag: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     dataDeletionRequest: { create: jest.fn() },
   };
@@ -37,8 +39,11 @@ function makeService(tx: ReturnType<typeof makeTx>) {
   const record = jest.fn().mockResolvedValue(undefined);
   const audit = { record } as unknown as AdminAuditService;
   const info = jest.fn();
-  const logger = { info } as unknown as StructuredLogger;
-  return { service: new AdminUserService(rls, audit, logger), run, record, info };
+  const warn = jest.fn();
+  const logger = { info, warn } as unknown as StructuredLogger;
+  const del = jest.fn().mockResolvedValue(undefined);
+  const storage = { name: "mock", put: jest.fn(), delete: del } as unknown as StorageProvider;
+  return { service: new AdminUserService(rls, audit, logger, storage), run, record, info, warn, del };
 }
 
 describe("AdminUserService.list", () => {
@@ -470,5 +475,45 @@ describe("AdminUserService.executeDeletion", () => {
     expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: USER_ID } });
     expect(info).toHaveBeenCalledWith("user data deleted", { userId: USER_ID, actorId: ADMIN.id });
     expect(result).toEqual({ userId: USER_ID, deleted: true });
+  });
+
+  it("reclaims the user's raw upload objects from storage after the cascade commits", async () => {
+    const tx = makeTx();
+    tx.user.findUnique.mockResolvedValue({ id: USER_ID, role: "user" });
+    tx.user.delete.mockResolvedValue({ id: USER_ID });
+    tx.uploadedFile.findMany.mockResolvedValue([
+      { gcsUri: "memory://uploads/u/a/x.csv" },
+      { gcsUri: null }, // never recorded a URI — skipped
+      { gcsUri: "memory://uploads/u/b/y.pdf" },
+    ]);
+    const { service, del } = makeService(tx);
+
+    await service.executeDeletion(ADMIN, USER_ID);
+
+    // Collected by user before the cascade drops the rows.
+    expect(tx.uploadedFile.findMany).toHaveBeenCalledWith({
+      where: { userId: USER_ID },
+      select: { gcsUri: true },
+    });
+    expect(del).toHaveBeenCalledTimes(2);
+    expect(del).toHaveBeenCalledWith("memory://uploads/u/a/x.csv");
+    expect(del).toHaveBeenCalledWith("memory://uploads/u/b/y.pdf");
+  });
+
+  it("does not fail the deletion when a storage object delete throws (best-effort)", async () => {
+    const tx = makeTx();
+    tx.user.findUnique.mockResolvedValue({ id: USER_ID, role: "user" });
+    tx.user.delete.mockResolvedValue({ id: USER_ID });
+    tx.uploadedFile.findMany.mockResolvedValue([{ gcsUri: "memory://uploads/u/a/x.csv" }]);
+    const { service, del, warn } = makeService(tx);
+    del.mockRejectedValueOnce(new Error("gcs down"));
+
+    const result = await service.executeDeletion(ADMIN, USER_ID);
+
+    expect(result).toEqual({ userId: USER_ID, deleted: true });
+    expect(warn).toHaveBeenCalledWith(
+      "storage object delete failed",
+      expect.objectContaining({ job: "user-deletion", userId: USER_ID }),
+    );
   });
 });

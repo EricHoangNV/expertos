@@ -4,6 +4,9 @@ import type { RetentionPreviewDto, RetentionSweepResultDto } from "@expertos/sha
 import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { StructuredLogger } from "../observability/logger.service";
+import { STORAGE_PROVIDER } from "../uploads/upload.tokens";
+import type { StorageProvider } from "../uploads/storage-provider";
+import { deleteStorageObjects } from "../uploads/storage-cleanup";
 import { AdminAuditService } from "./admin-audit.service";
 import { RETENTION_POLICY, type RetentionPolicy } from "./retention.config";
 
@@ -64,6 +67,7 @@ export class RetentionService {
     private readonly rls: RlsService,
     private readonly audit: AdminAuditService,
     private readonly logger: StructuredLogger,
+    @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
     @Inject(RETENTION_POLICY) private readonly policy: RetentionPolicy,
   ) {}
 
@@ -97,9 +101,15 @@ export class RetentionService {
 
   /** Enforce every category (deletions + anonymization), audit the action, and report the counts. */
   async sweep(actor: AuthUser): Promise<RetentionSweepResultDto> {
-    return this.rls.run(actor, async (tx) => {
+    const { result, uploadUris } = await this.rls.run(actor, async (tx) => {
       const cutoffs = this.cutoffs();
       // Sequential (not Promise.all) so the writes share one well-defined order inside the tx.
+      // Capture the raw-object URIs before the row delete drops them (`deleteMany` returns only a
+      // count), so the post-commit cleanup can reclaim the GCS objects too (Security Cycle 2).
+      const expiringUploads = await tx.uploadedFile.findMany({
+        where: expiredUploadWhere(cutoffs.now),
+        select: { gcsUri: true },
+      });
       const temporaryUploads = (
         await tx.uploadedFile.deleteMany({ where: expiredUploadWhere(cutoffs.now) })
       ).count;
@@ -147,14 +157,24 @@ export class RetentionService {
         conciergeRecords,
       });
       return {
-        sweptAt: cutoffs.now.toISOString(),
-        temporaryUploads,
-        expiredConversations,
-        oldUsageLogs,
-        consultationTranscripts,
-        conciergeRecords,
+        result: {
+          sweptAt: cutoffs.now.toISOString(),
+          temporaryUploads,
+          expiredConversations,
+          oldUsageLogs,
+          consultationTranscripts,
+          conciergeRecords,
+        } satisfies RetentionSweepResultDto,
+        uploadUris: expiringUploads.map((u) => u.gcsUri),
       };
     });
+
+    // Reclaim the raw upload objects now that their rows are committed gone (best-effort, non-fatal).
+    await deleteStorageObjects(this.storage, uploadUris, this.logger, {
+      job: "retention",
+      actorId: actor.id,
+    });
+    return result;
   }
 
   /** Compute all cutoff instants from a single "now" so preview and sweep see the same boundaries. */

@@ -11,6 +11,7 @@ import { RetentionController } from "./retention.controller";
 import { RETENTION_POLICY, resolveRetentionPolicy } from "./retention.config";
 import { AccessControlService } from "./access-control.service";
 import { AccessControlController } from "./access-control.controller";
+import { StorageModule } from "../uploads/storage.module";
 
 /**
  * Admin management portal (M8.4, PRD §"Admin web portal" + §"Foundational security/privacy"):
@@ -21,7 +22,7 @@ import { AccessControlController } from "./access-control.controller";
  * writes through.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, StorageModule],
   controllers: [
     AdminAuditController,
     AdminUserController,

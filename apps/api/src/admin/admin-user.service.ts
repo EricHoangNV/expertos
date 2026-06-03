@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@expertos/db";
 import type {
   AdminFairUseFlagDto,
@@ -16,6 +16,9 @@ import type {
 import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { StructuredLogger } from "../observability/logger.service";
+import { STORAGE_PROVIDER } from "../uploads/upload.tokens";
+import type { StorageProvider } from "../uploads/storage-provider";
+import { deleteStorageObjects } from "../uploads/storage-cleanup";
 import { AdminAuditService } from "./admin-audit.service";
 
 /** `select` for the management list row → {@link AdminUserSummaryDto}. */
@@ -143,6 +146,9 @@ const FLAG_SELECT = {
  * it survives the cascade (`admin_audit_logs` is tenant-scoped with an actor `SetNull`, so it is the
  * durable proof the deletion happened). An `experts` row linked to the user has its `user_id`
  * `SetNull`'d — the expert's published knowledge/voice outlives the operator account by design.
+ * Because the cascade only removes DB rows, the user's raw upload objects are collected before the
+ * delete and reclaimed from object storage *after* commit (best-effort) — otherwise the bytes would
+ * outlive the account (Security Cycle 2).
  */
 @Injectable()
 export class AdminUserService {
@@ -150,6 +156,7 @@ export class AdminUserService {
     private readonly rls: RlsService,
     private readonly audit: AdminAuditService,
     private readonly logger: StructuredLogger,
+    @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
 
   /** A page of users, newest first; optionally narrowed by role and/or an email/name substring. */
@@ -319,7 +326,7 @@ export class AdminUserService {
     if (actor.id === userId) {
       throw new BadRequestException("cannot delete your own account");
     }
-    return this.rls.run(actor, async (tx) => {
+    const uploadUris = await this.rls.run(actor, async (tx) => {
       const target = await tx.user.findUnique({
         where: { id: userId },
         select: { id: true, role: true },
@@ -327,6 +334,13 @@ export class AdminUserService {
       if (!target) {
         throw new NotFoundException("user not found");
       }
+      // Capture the user's raw-object URIs before the cascade drops the `uploaded_files` rows, so the
+      // post-commit cleanup can reclaim the GCS objects too — the cascade only removes DB rows
+      // (Security Cycle 2: deleting all user data must include the raw upload bytes, not just rows).
+      const uploads = await tx.uploadedFile.findMany({
+        where: { userId },
+        select: { gcsUri: true },
+      });
       await this.audit.record(tx, actor, {
         action: "user.data_deleted",
         targetType: "user",
@@ -335,8 +349,16 @@ export class AdminUserService {
       });
       await tx.user.delete({ where: { id: userId } });
       this.logger.info("user data deleted", { userId, actorId: actor.id });
-      return { userId, deleted: true };
+      return uploads.map((u) => u.gcsUri);
     });
+
+    // Reclaim the raw upload objects now that the user (and the cascade) are committed gone.
+    await deleteStorageObjects(this.storage, uploadUris, this.logger, {
+      job: "user-deletion",
+      userId,
+      actorId: actor.id,
+    });
+    return { userId, deleted: true };
   }
 }
 
