@@ -4858,3 +4858,27 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 **Files changed:**
 - `project-mds/PRD.md` — M15.3.3/.4 `[ ]`→`[x]` with completion notes.
 - `project-mds/progress-state.md` — M15 status + next-tasks updated.
+
+---
+
+## 2026-06-03 — Security remediation re-audit + preserve NT.3/NT.4 legal drafts
+
+**Context.** All in-sandbox-codeable manifest tasks are DONE; the 10 open `[ ]` items are all human-gated (NT.3-6 / M11.4 PM-legal sign-offs), deferred (OD#6, Phase 2/3), or schema-blocked (M13.5.3/.4/.5, M13.7.4 voice-dimension widgets — no schema backing). No open requests. The standing FAIL verdicts (Security Cycle 2, Product Cycle 1) are marked REMEDIATED pending external re-review. With no codeable backlog, the highest-value action was to (a) independently verify the remediations actually hold and (b) preserve uncommitted deliverables.
+
+**(a) Independent re-audit of all 5 Security Cycle 2 remediations — all PRESENT, no gaps:**
+1. Access-control role write-through — `access-control.service.ts` `updateRole`/`remove` call `syncUserRole(tx, …)` in the SAME transaction; `AdminSessionService` downgrades stale elevated roles + 403s non-whitelisted emails.
+2. Expert-voice knowledge boundary — `pgvector.store.ts` `buildFilterClause` EXISTS-joins `document_versions → documents` admitting `expert_id = $p OR expert_id IS NULL`; `response-cache.service.ts` forks the retrieval key by `expertId`.
+3. Upload entitlement — `upload.controller.ts` `@RequiresEntitlement("document_upload")` on `@Post()`, before `@UseInterceptors` (guard fires before multipart buffering).
+4. Raw-object deletion — `retention.service.ts` + `admin-user.service.ts` both `findMany` gcsUri BEFORE the row delete, then `deleteStorageObjects` (shared `storage-cleanup.ts`) AFTER commit, best-effort.
+5. TidyCal fallback idempotency — `http-tidycal-provider.ts` + `offline-tidycal-provider.ts` synthesize `fallback:<bookingRef>:<eventType>:<lifecycleStamp>`, distinct per transition.
+
+**(b) Preserved NT.3/NT.4 legal-policy drafts in version control** (`docs/legal/`, were untracked):
+- `data-retention-and-deletion-policy.md` (NT.3) — verified code-faithful: windows match `retention.config.ts` (730/730/365/365) + `TEMPORARY_RETENTION_DAYS` (7).
+- `high-stakes-disclaimer-copy.md` (NT.4) — verified the EN+VI disclaimer text matches `HIGH_STAKES_DISCLAIMERS` in `packages/shared/src/chat.ts` verbatim.
+Both carry approver checklists. Tasks remain `[~]` — committing the drafts does not close them; the PM/legal sign-off is a human gate, not code.
+
+**No manifest status changed.** No code changed (docs + progress only). Gates not re-run (no code touched).
+
+**Files changed:**
+- `docs/legal/data-retention-and-deletion-policy.md`, `docs/legal/high-stakes-disclaimer-copy.md` — new (preserved drafts).
+- `project-mds/progress-state.md` — re-audit + drafts-in-repo notes.
