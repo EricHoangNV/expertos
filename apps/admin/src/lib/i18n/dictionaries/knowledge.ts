@@ -77,6 +77,15 @@ export const en = {
       requestChanges: "Request changes",
       archive: "Archive",
     },
+    edit: {
+      open: "Edit content",
+      title: "Edit draft content",
+      hint: "Saving re-chunks and re-embeds this version. Only drafts can be edited.",
+      save: "Save changes",
+      saving: "Saving…",
+      cancel: "Cancel",
+      saved: "Saved — re-chunked into {count} chunks.",
+    },
   },
   // Errors / auth.
   errors: {
@@ -85,6 +94,8 @@ export const en = {
     approve: "Approve failed.",
     loadDocument: "Failed to load document.",
     action: "Action failed.",
+    loadContent: "Failed to load content.",
+    saveContent: "Failed to save content.",
   },
 } satisfies Messages;
 
@@ -153,6 +164,15 @@ export const vi = {
       requestChanges: "Yêu cầu chỉnh sửa",
       archive: "Lưu trữ",
     },
+    edit: {
+      open: "Sửa nội dung",
+      title: "Sửa nội dung bản nháp",
+      hint: "Khi lưu, phiên bản này sẽ được chia khối và nhúng lại. Chỉ sửa được bản nháp.",
+      save: "Lưu thay đổi",
+      saving: "Đang lưu…",
+      cancel: "Hủy",
+      saved: "Đã lưu — chia thành {count} khối.",
+    },
   },
   errors: {
     signIn: "Vui lòng đăng nhập để tiếp tục.",
@@ -160,5 +180,7 @@ export const vi = {
     approve: "Duyệt thất bại.",
     loadDocument: "Không tải được tài liệu.",
     action: "Hành động thất bại.",
+    loadContent: "Không tải được nội dung.",
+    saveContent: "Lưu nội dung thất bại.",
   },
 } satisfies Messages;

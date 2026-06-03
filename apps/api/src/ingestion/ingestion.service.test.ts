@@ -38,6 +38,7 @@ interface Harness {
   embed: jest.Mock;
   summarize: jest.Mock;
   store: jest.Mock;
+  replaceDraftChunks: jest.Mock;
   record: jest.Mock;
   info: jest.Mock;
 }
@@ -56,18 +57,19 @@ function makeHarness(opts: { parseText?: string; resolveThrows?: Error } = {}): 
   const embed = jest.fn((contents: string[]) => Promise.resolve(contents.map(() => [0, 0, 1])));
   const summarize = jest.fn((c: string) => Promise.resolve(`sum:${c.slice(0, 3)}`));
   const store = jest.fn().mockResolvedValue(STORED);
+  const replaceDraftChunks = jest.fn().mockResolvedValue({ versionId: "ver-1", chunkCount: 2 });
   const record = jest.fn().mockResolvedValue(undefined);
   const info = jest.fn();
 
   const registry = { resolve } as unknown as ParserRegistry;
   const embeddings = { name: "fake-embed", dimensions: 3, embed } as EmbeddingProvider;
   const summarizer = { summarize } as Summarizer;
-  const repository = { store } as unknown as DocumentVersionRepository;
+  const repository = { store, replaceDraftChunks } as unknown as DocumentVersionRepository;
   const usage = { record } as unknown as UsageLogService;
   const logger = { info } as unknown as StructuredLogger;
 
   const service = new IngestionService(registry, embeddings, summarizer, repository, usage, logger);
-  return { service, parse, resolve, embed, summarize, store, record, info };
+  return { service, parse, resolve, embed, summarize, store, replaceDraftChunks, record, info };
 }
 
 describe("IngestionService", () => {
@@ -130,5 +132,41 @@ describe("IngestionService", () => {
       h.service.ingest(USER, { ...VALID_INPUT, contentType: "application/pdf" }, "text"),
     ).rejects.toBeInstanceOf(UnsupportedContentTypeError);
     expect(h.store).not.toHaveBeenCalled();
+  });
+});
+
+describe("IngestionService.editDraftContent", () => {
+  it("re-chunks + re-embeds the new text and replaces the draft's chunks", async () => {
+    const h = makeHarness();
+    const result = await h.service.editDraftContent(USER, "ver-1", "freshly edited expert text");
+
+    // Re-embedded the edited content, not the original.
+    expect(h.embed).toHaveBeenCalledTimes(1);
+    expect(h.embed.mock.calls[0][0].join(" ")).toContain("freshly edited expert text");
+
+    // Replaced the draft's chunks (not a new version via store()).
+    expect(h.store).not.toHaveBeenCalled();
+    expect(h.replaceDraftChunks).toHaveBeenCalledTimes(1);
+    const [user, versionId, params] = h.replaceDraftChunks.mock.calls[0];
+    expect(user).toBe(USER);
+    expect(versionId).toBe("ver-1");
+    expect(params.embeddingDimensions).toBe(3);
+    expect(params.chunks.length).toBeGreaterThan(0);
+    expect(params.chunks[0]).toMatchObject({ index: 0, embedding: [0, 0, 1] });
+
+    // Logged embedding cost under the edit feature key, and returned the repo result.
+    expect(h.record).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ featureKey: "knowledge.edit.embed", model: "fake-embed" }),
+    );
+    expect(result).toEqual({ versionId: "ver-1", chunkCount: 2 });
+  });
+
+  it("rejects empty/whitespace content (no chunks → EmptyDocumentError, nothing written)", async () => {
+    const h = makeHarness();
+    await expect(h.service.editDraftContent(USER, "ver-1", "   ")).rejects.toBeInstanceOf(
+      EmptyDocumentError,
+    );
+    expect(h.replaceDraftChunks).not.toHaveBeenCalled();
   });
 });

@@ -53,7 +53,7 @@ function drow(overrides: Record<string, unknown> = {}) {
 interface Tx {
   document: { findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
   documentVersion: { findUnique: jest.Mock; update: jest.Mock };
-  chunk: { updateMany: jest.Mock };
+  chunk: { updateMany: jest.Mock; findMany: jest.Mock };
 }
 
 function makeHarness() {
@@ -67,7 +67,10 @@ function makeHarness() {
       findUnique: jest.fn().mockResolvedValue(vrow()),
       update: jest.fn().mockResolvedValue(vrow()),
     },
-    chunk: { updateMany: jest.fn().mockResolvedValue({ count: 3 }) },
+    chunk: {
+      updateMany: jest.fn().mockResolvedValue({ count: 3 }),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   };
   const run = jest.fn((_user: AuthUser, work: (tx: unknown) => Promise<unknown>) => work(tx));
   const rls = { run } as unknown as RlsService;
@@ -304,5 +307,37 @@ describe("KnowledgeService.archive", () => {
     h.tx.documentVersion.findUnique.mockResolvedValue(vrow({ status: "draft" }));
     await expect(h.service.archive(ACTOR, VERSION_ID)).rejects.toBeInstanceOf(ConflictException);
     expect(h.invalidateTenant).not.toHaveBeenCalled();
+  });
+});
+
+describe("KnowledgeService.getVersionContent", () => {
+  it("reconstructs the text from overlapping chunks (de-overlaps shared words)", async () => {
+    const h = makeHarness();
+    h.tx.documentVersion.findUnique.mockResolvedValue({ id: VERSION_ID, status: "draft" });
+    h.tx.chunk.findMany.mockResolvedValue([{ content: "a b c d e" }, { content: "d e f g h" }]);
+
+    const result = await h.service.getVersionContent(ACTOR, VERSION_ID);
+
+    expect(result.content).toBe("a b c d e f g h");
+    expect(result.status).toBe("draft");
+    expect(result.chunkCount).toBe(2);
+    expect(h.tx.chunk.findMany.mock.calls[0][0].orderBy).toEqual({ chunkIndex: "asc" });
+  });
+
+  it("returns a single chunk's text unchanged", async () => {
+    const h = makeHarness();
+    h.tx.documentVersion.findUnique.mockResolvedValue({ id: VERSION_ID, status: "draft" });
+    h.tx.chunk.findMany.mockResolvedValue([{ content: "only one chunk here" }]);
+
+    const result = await h.service.getVersionContent(ACTOR, VERSION_ID);
+    expect(result.content).toBe("only one chunk here");
+  });
+
+  it("404s when the version is missing", async () => {
+    const h = makeHarness();
+    h.tx.documentVersion.findUnique.mockResolvedValue(null);
+    await expect(h.service.getVersionContent(ACTOR, VERSION_ID)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

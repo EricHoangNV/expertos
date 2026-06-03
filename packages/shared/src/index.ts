@@ -47,12 +47,16 @@ export {
   knowledgeDraftCreateSchema,
   knowledgeDraftUpdateSchema,
   knowledgeDraftListQuerySchema,
+  versionContentEditSchema,
 } from "./knowledge";
 export type {
   KnowledgeListQueryInput,
   KnowledgeVersionDto,
   KnowledgeDocumentDto,
   KnowledgeDocumentDetailDto,
+  VersionContentEditInput,
+  VersionContentDto,
+  VersionContentEditResultDto,
   KnowledgeDraftStatusValue,
   KnowledgeDraftCreateInput,
   KnowledgeDraftUpdateInput,

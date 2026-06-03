@@ -3,6 +3,7 @@ import {
   knowledgeDraftListQuerySchema,
   knowledgeDraftUpdateSchema,
   knowledgeListQuerySchema,
+  versionContentEditSchema,
 } from "./knowledge";
 
 describe("knowledgeListQuerySchema", () => {
@@ -92,5 +93,22 @@ describe("knowledgeDraftListQuerySchema", () => {
 
   it("rejects an unknown draft status", () => {
     expect(() => knowledgeDraftListQuerySchema.parse({ status: "archived" })).toThrow();
+  });
+});
+
+describe("versionContentEditSchema", () => {
+  it("accepts and trims non-empty content", () => {
+    expect(versionContentEditSchema.parse({ content: "  hello world  " })).toEqual({
+      content: "hello world",
+    });
+  });
+
+  it("rejects empty / whitespace-only content", () => {
+    expect(() => versionContentEditSchema.parse({ content: "" })).toThrow();
+    expect(() => versionContentEditSchema.parse({ content: "   " })).toThrow();
+  });
+
+  it("rejects content beyond the 200k-char bound", () => {
+    expect(() => versionContentEditSchema.parse({ content: "x".repeat(200_001) })).toThrow();
   });
 });

@@ -1,23 +1,30 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
 } from "@nestjs/common";
 import {
   knowledgeListQuerySchema,
+  versionContentEditSchema,
   type KnowledgeDocumentDetailDto,
   type KnowledgeDocumentDto,
   type KnowledgeListQueryInput,
   type KnowledgeVersionDto,
+  type VersionContentDto,
+  type VersionContentEditInput,
+  type VersionContentEditResultDto,
 } from "@expertos/shared";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { Roles } from "../auth/roles.decorator";
 import type { AuthUser } from "../auth/auth.types";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
+import { IngestionService } from "../ingestion/ingestion.service";
 import { KnowledgeService } from "./knowledge.service";
 
 /**
@@ -30,7 +37,10 @@ import { KnowledgeService } from "./knowledge.service";
 @Controller("knowledge")
 @Roles("expert")
 export class KnowledgeController {
-  constructor(private readonly service: KnowledgeService) {}
+  constructor(
+    private readonly service: KnowledgeService,
+    private readonly ingestion: IngestionService,
+  ) {}
 
   /** The knowledge list / review queue (filter by document status + scope). */
   @Get("documents")
@@ -49,6 +59,25 @@ export class KnowledgeController {
     @Param("id", ParseUUIDPipe) id: string,
   ): Promise<KnowledgeDocumentDetailDto> {
     return this.service.getDocument(user, id);
+  }
+
+  /** A version's editable text (reconstructed from its chunks) for the edit-draft UI (Option B). */
+  @Get("versions/:versionId/content")
+  getVersionContent(
+    @CurrentUser() user: AuthUser,
+    @Param("versionId", ParseUUIDPipe) versionId: string,
+  ): Promise<VersionContentDto> {
+    return this.service.getVersionContent(user, versionId);
+  }
+
+  /** Edit a draft version's text (Option B) — re-chunks + re-embeds; draft-only (enforced in the repo). */
+  @Patch("versions/:versionId/content")
+  editVersionContent(
+    @CurrentUser() user: AuthUser,
+    @Param("versionId", ParseUUIDPipe) versionId: string,
+    @Body(new ZodValidationPipe(versionContentEditSchema)) body: VersionContentEditInput,
+  ): Promise<VersionContentEditResultDto> {
+    return this.ingestion.editDraftContent(user, versionId, body.content);
   }
 
   /** Submit a draft version for expert review (`draft` → `expert_review`). */

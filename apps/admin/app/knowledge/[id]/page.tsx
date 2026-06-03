@@ -7,7 +7,13 @@ import { Badge, Button, Table } from "@expertos/ui";
 import type { KnowledgeDocumentDetailDto, KnowledgeVersionDto } from "@expertos/shared";
 import { AdminFrame } from "../../../src/components/AdminFrame";
 import { useAuth } from "../../../src/lib/auth-context";
-import { versionAction, getDocument, type VersionAction } from "../../../src/lib/admin-client";
+import {
+  versionAction,
+  getDocument,
+  getVersionContent,
+  editVersionContent,
+  type VersionAction,
+} from "../../../src/lib/admin-client";
 import { publishStatusTone } from "../../../src/lib/status-tone";
 import { useStatusLabel, useT } from "../../../src/lib/i18n";
 
@@ -42,6 +48,10 @@ export default function KnowledgeDetailPage() {
   const [doc, setDoc] = useState<KnowledgeDocumentDetailDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Option B: the draft version currently open in the content editor, plus its working text. */
+  const [editing, setEditing] = useState<{ versionId: string; content: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -81,6 +91,48 @@ export default function KnowledgeDetailPage() {
     },
     [getIdToken, load, t],
   );
+
+  /** Open the editor for a draft version: fetch its (reconstructed) text into the textarea. */
+  const openEdit = useCallback(
+    async (versionId: string) => {
+      setError(null);
+      setSavedNote(null);
+      try {
+        const token = await getIdToken();
+        if (!token) {
+          setError(t("errors.signIn"));
+          return;
+        }
+        const content = await getVersionContent(token, versionId);
+        setEditing({ versionId, content: content.content });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("errors.loadContent"));
+      }
+    },
+    [getIdToken, t],
+  );
+
+  /** Save the edited text — the server re-chunks + re-embeds; then refresh the version history. */
+  const saveEdit = useCallback(async () => {
+    if (editing == null) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        setError(t("errors.signIn"));
+        return;
+      }
+      const result = await editVersionContent(token, editing.versionId, editing.content);
+      setSavedNote(t("detail.edit.saved", { count: result.chunkCount }));
+      setEditing(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("errors.saveContent"));
+    } finally {
+      setSaving(false);
+    }
+  }, [editing, getIdToken, load, t]);
 
   return (
     <AdminFrame>
@@ -151,12 +203,54 @@ export default function KnowledgeDetailPage() {
                         {t(ACTION_LABEL_KEY[action])}
                       </Button>
                     ))}
+                    {version.status === "draft" && (
+                      <Button
+                        key="edit"
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy || saving}
+                        onClick={() => void openEdit(version.id)}
+                      >
+                        {t("detail.edit.open")}
+                      </Button>
+                    )}
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </Table>
+      )}
+
+      {savedNote != null && editing == null && <Badge tone="green">{savedNote}</Badge>}
+
+      {editing != null && (
+        <div className="card card-pad" style={{ marginTop: 16 }}>
+          <div className="label">{t("detail.edit.title")}</div>
+          <p className="muted">{t("detail.edit.hint")}</p>
+          <textarea
+            className="textarea"
+            rows={18}
+            style={{ width: "100%" }}
+            value={editing.content}
+            disabled={saving}
+            onChange={(e) =>
+              setEditing((cur) => (cur == null ? cur : { ...cur, content: e.target.value }))
+            }
+          />
+          <div className="row gap1" style={{ marginTop: 12 }}>
+            <Button
+              variant="primary"
+              disabled={saving || editing.content.trim() === ""}
+              onClick={() => void saveEdit()}
+            >
+              {saving ? t("detail.edit.saving") : t("detail.edit.save")}
+            </Button>
+            <Button variant="subtle" disabled={saving} onClick={() => setEditing(null)}>
+              {t("detail.edit.cancel")}
+            </Button>
+          </div>
+        </div>
       )}
     </AdminFrame>
   );

@@ -42,6 +42,27 @@ export interface KnowledgeVersionDto {
   isPublished: boolean;
 }
 
+/** Edit a draft version's full text (Option B). On save the server re-chunks + re-embeds the
+ *  version; draft-only is enforced server-side. */
+export const versionContentEditSchema = z.object({
+  content: z.string().trim().min(1).max(200_000),
+});
+export type VersionContentEditInput = z.infer<typeof versionContentEditSchema>;
+
+/** A version's editable text (reconstructed from its chunks) + whether it can still be edited. */
+export interface VersionContentDto {
+  versionId: string;
+  status: PublishStatusValue;
+  content: string;
+  chunkCount: number;
+}
+
+/** Result of a content edit — the version and its fresh chunk count after re-chunking. */
+export interface VersionContentEditResultDto {
+  versionId: string;
+  chunkCount: number;
+}
+
 /** A knowledge document with a snapshot of its versions for the review queue. */
 export interface KnowledgeDocumentDto {
   id: string;

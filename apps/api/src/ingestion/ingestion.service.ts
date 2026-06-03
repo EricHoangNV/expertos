@@ -65,9 +65,78 @@ export class IngestionService {
     const parser = this.registry.resolve(input.contentType);
     const parsed = await parser.parse(raw);
 
-    const textChunks = chunkText(parsed.text);
+    const { chunks, totalTokens } = await this.chunkAndEmbed(parsed.text, input.sourceUri);
+
+    const stored = await this.repository.store(user, {
+      input,
+      chunks,
+      embeddingDimensions: this.embeddings.dimensions,
+      publish,
+    });
+
+    await this.usage.record(user, {
+      featureKey: "ingest.embed",
+      model: this.embeddings.name,
+      promptTokens: totalTokens,
+    });
+
+    this.logger.info("Ingested document version", {
+      sourceUri: input.sourceUri,
+      documentId: stored.documentId,
+      documentVersionId: stored.documentVersionId,
+      versionNumber: stored.versionNumber,
+      chunkCount: stored.chunkCount,
+      published: stored.published,
+    });
+
+    return stored;
+  }
+
+  /**
+   * Edit a draft version's text (Option B — makes the "request changes" loop actionable). Re-chunks
+   * + re-embeds the supplied content and atomically replaces the version's chunks. Draft-only and
+   * version existence are enforced inside the repository transaction (so a concurrent submit can't
+   * race the write); new chunks land `pending`, exactly as a fresh draft, so nothing goes live until
+   * the version is approved.
+   */
+  async editDraftContent(
+    user: AuthUser,
+    versionId: string,
+    content: string,
+  ): Promise<{ versionId: string; chunkCount: number }> {
+    const { chunks, totalTokens } = await this.chunkAndEmbed(content, `version:${versionId}`);
+
+    const result = await this.repository.replaceDraftChunks(user, versionId, {
+      chunks,
+      embeddingDimensions: this.embeddings.dimensions,
+    });
+
+    await this.usage.record(user, {
+      featureKey: "knowledge.edit.embed",
+      model: this.embeddings.name,
+      promptTokens: totalTokens,
+    });
+
+    this.logger.info("Edited draft version content", {
+      versionId,
+      chunkCount: result.chunkCount,
+    });
+
+    return result;
+  }
+
+  /**
+   * Shared chunk → summarize → embed step (used by both {@link ingest} and {@link editDraftContent}).
+   * Returns processed chunks plus the total estimated token count for usage logging. Throws
+   * {@link EmptyDocumentError} when the text yields no chunks.
+   */
+  private async chunkAndEmbed(
+    text: string,
+    label: string,
+  ): Promise<{ chunks: ProcessedChunk[]; totalTokens: number }> {
+    const textChunks = chunkText(text);
     if (textChunks.length === 0) {
-      throw new EmptyDocumentError(input.sourceUri);
+      throw new EmptyDocumentError(label);
     }
 
     const contents = textChunks.map((chunk) => chunk.content);
@@ -92,29 +161,15 @@ export class IngestionService {
       embedding: embeddings[i],
     }));
 
-    const stored = await this.repository.store(user, {
-      input,
-      chunks,
-      embeddingDimensions: this.embeddings.dimensions,
-      publish,
-    });
-
-    const totalTokens = textChunks.reduce((sum, chunk) => sum + chunk.tokenCount, 0);
-    await this.usage.record(user, {
-      featureKey: "ingest.embed",
-      model: this.embeddings.name,
-      promptTokens: totalTokens,
-    });
-
-    this.logger.info("Ingested document version", {
-      sourceUri: input.sourceUri,
-      documentId: stored.documentId,
-      documentVersionId: stored.documentVersionId,
-      versionNumber: stored.versionNumber,
-      chunkCount: stored.chunkCount,
-      published: stored.published,
-    });
-
-    return stored;
+    return { chunks, totalTokens: textChunks.reduce((sum, chunk) => sum + chunk.tokenCount, 0) };
   }
+}
+
+/** A chunk processed (text + summary + embedding) and ready to persist. */
+interface ProcessedChunk {
+  index: number;
+  content: string;
+  summary: string;
+  tokenCount: number;
+  embedding: number[];
 }

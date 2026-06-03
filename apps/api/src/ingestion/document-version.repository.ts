@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import type { IngestionInput } from "@expertos/shared";
 import type { Prisma } from "@expertos/db";
 import { RlsService } from "../auth/rls.service";
@@ -111,6 +111,71 @@ export class DocumentVersionRepository {
         chunkCount: chunks.length,
         published: publish,
       };
+    });
+  }
+
+  /**
+   * Replace a *draft* version's chunks with a freshly re-chunked/re-embedded set (Option B edit).
+   * The draft-only guard + the delete/insert run in one RLS transaction so a concurrent submit
+   * can't slip a published version under the edit. New chunks inherit the document's scope/language
+   * and land `pending` (not retrieval-visible) — identical to a fresh draft.
+   */
+  async replaceDraftChunks(
+    user: AuthUser,
+    versionId: string,
+    params: { chunks: ChunkToStore[]; embeddingDimensions: number },
+  ): Promise<{ versionId: string; chunkCount: number }> {
+    for (const chunk of params.chunks) {
+      if (chunk.embedding.length !== params.embeddingDimensions) {
+        throw new Error(
+          `chunk ${chunk.index} embedding has ${chunk.embedding.length} dims, expected ${params.embeddingDimensions}`,
+        );
+      }
+    }
+
+    return this.rls.run(user, async (tx) => {
+      const version = await tx.documentVersion.findUnique({
+        where: { id: versionId },
+        select: { id: true, status: true, documentId: true },
+      });
+      if (!version) {
+        throw new NotFoundException("document version not found");
+      }
+      if (version.status !== "draft") {
+        throw new ConflictException(`cannot edit a ${version.status} version`);
+      }
+
+      const doc = await tx.document.findUnique({
+        where: { id: version.documentId },
+        select: { scope: true, language: true },
+      });
+      if (!doc) {
+        throw new NotFoundException("document not found");
+      }
+
+      await tx.chunk.deleteMany({ where: { documentVersionId: versionId } });
+      for (const chunk of params.chunks) {
+        const row = await tx.chunk.create({
+          data: {
+            tenantId: user.tenantId,
+            scope: doc.scope,
+            documentVersionId: versionId,
+            chunkIndex: chunk.index,
+            content: chunk.content,
+            summary: chunk.summary,
+            language: doc.language,
+            status: "pending",
+            tokenCount: chunk.tokenCount,
+          },
+        });
+        await tx.$executeRawUnsafe(
+          "UPDATE chunks SET embedding = $1::vector WHERE id = $2::uuid",
+          toVectorLiteral(chunk.embedding),
+          row.id,
+        );
+      }
+
+      return { versionId, chunkCount: params.chunks.length };
     });
   }
 

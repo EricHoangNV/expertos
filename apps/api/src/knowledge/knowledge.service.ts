@@ -5,6 +5,7 @@ import type {
   KnowledgeDocumentDto,
   KnowledgeListQueryInput,
   KnowledgeVersionDto,
+  VersionContentDto,
   ContentScopeValue,
   LanguageValue,
   PublishStatusValue,
@@ -137,6 +138,35 @@ export class KnowledgeService {
         throw new NotFoundException("document not found");
       }
       return toDetailDto(row);
+    });
+  }
+
+  /**
+   * A version's editable text, reconstructed from its chunks (Option B read-back). The system
+   * stores only chunks (overlapping windows), so the text is rebuilt by stitching consecutive
+   * chunks and dropping the duplicated overlap — good enough to seed the editor; on save the edited
+   * text is re-chunked from scratch. The returned `status` lets the UI gate editing to drafts.
+   */
+  async getVersionContent(user: AuthUser, versionId: string): Promise<VersionContentDto> {
+    return this.rls.run(user, async (tx) => {
+      const version = await tx.documentVersion.findUnique({
+        where: { id: versionId },
+        select: { id: true, status: true },
+      });
+      if (!version) {
+        throw new NotFoundException("document version not found");
+      }
+      const chunks = await tx.chunk.findMany({
+        where: { documentVersionId: versionId },
+        orderBy: { chunkIndex: "asc" },
+        select: { content: true },
+      });
+      return {
+        versionId,
+        status: version.status as PublishStatusValue,
+        content: reconstructFromChunks(chunks.map((c) => c.content)),
+        chunkCount: chunks.length,
+      };
     });
   }
 
@@ -359,4 +389,37 @@ function toDetailDto(row: DocumentRow): KnowledgeDocumentDetailDto {
     versionCount: row.versions.length,
     versions: row.versions.map((v) => toVersionDto(v, row.publishedVersionId)),
   };
+}
+
+/**
+ * Rebuild a version's text from its (overlapping) chunks for the editor. Consecutive ingestion
+ * chunks share a trailing/leading word overlap; we stitch them by detecting the largest suffix of
+ * the accumulated text that prefixes the next chunk and appending only the non-overlapping tail.
+ * Lossy on the original whitespace (chunks store words joined by single spaces) but content-faithful
+ * — and the save path re-chunks the edited text from scratch, so round-trips stay stable.
+ */
+function reconstructFromChunks(chunkContents: string[]): string {
+  const wordsOf = (s: string): string[] => s.split(/\s+/).filter((w) => w.length > 0);
+  if (chunkContents.length === 0) return "";
+  const out = wordsOf(chunkContents[0]);
+  for (let i = 1; i < chunkContents.length; i++) {
+    const next = wordsOf(chunkContents[i]);
+    const cap = Math.min(out.length, next.length, 120);
+    let overlap = 0;
+    for (let k = cap; k > 0; k--) {
+      let match = true;
+      for (let j = 0; j < k; j++) {
+        if (out[out.length - k + j] !== next[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        overlap = k;
+        break;
+      }
+    }
+    for (let j = overlap; j < next.length; j++) out.push(next[j]);
+  }
+  return out.join(" ");
 }

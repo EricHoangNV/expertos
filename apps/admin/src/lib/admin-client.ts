@@ -9,6 +9,8 @@ import type {
   KnowledgeDraftSummaryDto,
   KnowledgeDraftUpdateInput,
   KnowledgeVersionDto,
+  VersionContentDto,
+  VersionContentEditResultDto,
   PublishStatusValue,
   LanguageValue,
   RecommendationRuleDto,
@@ -156,6 +158,27 @@ export function versionAction(
     `/knowledge/versions/${versionId}/${action}`,
     token,
     { method: "POST" },
+  );
+}
+
+/** A draft version's editable text, reconstructed from its chunks (Option B read-back). */
+export function getVersionContent(
+  token: string,
+  versionId: string,
+): Promise<VersionContentDto> {
+  return request<VersionContentDto>(`/knowledge/versions/${versionId}/content`, token);
+}
+
+/** Save edited draft content — the server re-chunks + re-embeds the version (draft-only). */
+export function editVersionContent(
+  token: string,
+  versionId: string,
+  content: string,
+): Promise<VersionContentEditResultDto> {
+  return request<VersionContentEditResultDto>(
+    `/knowledge/versions/${versionId}/content`,
+    token,
+    { method: "PATCH", body: JSON.stringify({ content }) },
   );
 }
 

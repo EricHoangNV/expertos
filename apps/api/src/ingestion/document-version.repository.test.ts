@@ -16,9 +16,9 @@ const USER: AuthUser = {
 };
 
 interface FakeTx {
-  document: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
-  documentVersion: { findFirst: jest.Mock; create: jest.Mock };
-  chunk: { create: jest.Mock };
+  document: { findFirst: jest.Mock; findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+  documentVersion: { findFirst: jest.Mock; findUnique: jest.Mock; create: jest.Mock };
+  chunk: { create: jest.Mock; deleteMany: jest.Mock };
   $executeRawUnsafe: jest.Mock;
 }
 
@@ -26,12 +26,14 @@ function makeTx(overrides: Partial<FakeTx> = {}): FakeTx {
   return {
     document: {
       findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn().mockResolvedValue({ scope: "global_expert", language: "en" }),
       create: jest.fn().mockResolvedValue({ id: "doc-new" }),
       update: jest.fn().mockResolvedValue({}),
       ...overrides.document,
     },
     documentVersion: {
       findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn().mockResolvedValue({ id: "ver-1", status: "draft", documentId: "doc-1" }),
       create: jest.fn().mockResolvedValue({ id: "ver-1" }),
       ...overrides.documentVersion,
     },
@@ -41,6 +43,7 @@ function makeTx(overrides: Partial<FakeTx> = {}): FakeTx {
         .mockImplementation(({ data }: { data: { chunkIndex: number } }) =>
           Promise.resolve({ id: `chunk-${data.chunkIndex}` }),
         ),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       ...overrides.chunk,
     },
     $executeRawUnsafe: overrides.$executeRawUnsafe ?? jest.fn().mockResolvedValue(1),
@@ -137,11 +140,13 @@ describe("DocumentVersionRepository", () => {
     const tx = makeTx({
       document: {
         findFirst: jest.fn().mockResolvedValue({ id: "doc-existing" }),
+        findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn().mockResolvedValue({}),
       },
       documentVersion: {
         findFirst: jest.fn().mockResolvedValue({ versionNumber: 3 }),
+        findUnique: jest.fn(),
         create: jest.fn().mockResolvedValue({ id: "ver-4" }),
       },
     });
@@ -186,5 +191,68 @@ describe("DocumentVersionRepository", () => {
         }),
       ),
     ).rejects.toThrow("non-finite");
+  });
+});
+
+describe("DocumentVersionRepository.replaceDraftChunks", () => {
+  const editChunks = [
+    { index: 0, content: "e0", summary: "s0", tokenCount: 2, embedding: [0.1, 0.2, 0.3] },
+    { index: 1, content: "e1", summary: "s1", tokenCount: 2, embedding: [0.4, 0.5, 0.6] },
+  ];
+
+  it("replaces a draft's chunks with re-embedded pending chunks (delete then insert)", async () => {
+    const tx = makeTx();
+    const result = await repoFor(tx).replaceDraftChunks(USER, "ver-1", {
+      chunks: editChunks,
+      embeddingDimensions: 3,
+    });
+
+    expect(tx.chunk.deleteMany).toHaveBeenCalledWith({ where: { documentVersionId: "ver-1" } });
+    expect(tx.chunk.create).toHaveBeenCalledTimes(2);
+    // New chunks inherit the document's scope/language and land pending (not retrieval-visible).
+    expect(tx.chunk.create.mock.calls[0][0].data).toMatchObject({
+      scope: "global_expert",
+      language: "en",
+      status: "pending",
+      documentVersionId: "ver-1",
+    });
+    expect(tx.$executeRawUnsafe).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ versionId: "ver-1", chunkCount: 2 });
+  });
+
+  it("refuses to edit a non-draft version (ConflictException)", async () => {
+    const tx = makeTx({
+      documentVersion: {
+        findFirst: jest.fn(),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: "ver-1", status: "expert_review", documentId: "doc-1" }),
+        create: jest.fn(),
+      },
+    });
+    await expect(
+      repoFor(tx).replaceDraftChunks(USER, "ver-1", { chunks: editChunks, embeddingDimensions: 3 }),
+    ).rejects.toThrow(/cannot edit a expert_review version/);
+    expect(tx.chunk.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("404s when the version does not exist", async () => {
+    const tx = makeTx({
+      documentVersion: { findFirst: jest.fn(), findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+    });
+    await expect(
+      repoFor(tx).replaceDraftChunks(USER, "missing", { chunks: editChunks, embeddingDimensions: 3 }),
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("rejects a wrong-dimensionality embedding before touching the database", async () => {
+    const tx = makeTx();
+    await expect(
+      repoFor(tx).replaceDraftChunks(USER, "ver-1", {
+        chunks: [{ index: 0, content: "c", summary: "s", tokenCount: 1, embedding: [0.1, 0.2] }],
+        embeddingDimensions: 3,
+      }),
+    ).rejects.toThrow("expected 3");
+    expect(tx.documentVersion.findUnique).not.toHaveBeenCalled();
   });
 });
