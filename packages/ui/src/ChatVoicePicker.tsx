@@ -23,12 +23,12 @@ export interface ChatVoicePickerProps {
 
 /**
  * The conversation voice picker (M12.3.2) — a "VOICE" `.label` followed by `.chip` / `.chip.active`
- * pills, one per expert voice plus a leading "Neutral" option. Each expert chip carries a small
- * expert-colored `.avatar` (initials) so the active voice reads at a glance; the active chip gets the
- * `.chip.active` (ink-900 fill) treatment. Mounts into the `.chat-topbar-aside` slot of the
- * {@link ChatTopbar}. Presentational only: the chat page loads the experts API (M2.2), tracks the
- * selected `expertId`, and reuses it on the next turn so selecting a chip switches the conversation's
- * expert. Hidden by the caller when no expert voices exist (neutral is the only option then).
+ * pills, one per expert voice. Each chip carries a small expert-colored `.avatar` (initials) so the
+ * active voice reads at a glance; the active chip gets the `.chip.active` (ink-900 fill) treatment.
+ * Mounts into the `.chat-topbar-aside` slot of the {@link ChatTopbar}. Presentational only: the chat
+ * page loads the experts API (M2.2), defaults to the primary expert, tracks the selected `expertId`,
+ * and reuses it on the next turn so selecting a chip switches the conversation's expert. There is no
+ * neutral / expert-less option — the product always answers in an expert's voice.
  */
 export function ChatVoicePicker({
   options,
@@ -39,9 +39,6 @@ export function ChatVoicePicker({
   return (
     <div className="chat-voice-picker">
       <span className="label">Voice</span>
-      <Chip active={activeId === ""} disabled={disabled} onClick={() => onSelect("")}>
-        Neutral
-      </Chip>
       {options.map((opt) => {
         const tone = avatarTone(opt.name);
         return (

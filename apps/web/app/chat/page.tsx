@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Badge,
   Button,
@@ -744,6 +744,26 @@ export default function ChatPage() {
       active = false;
     };
   }, [user, getIdToken]);
+
+  // Default a fresh chat to the primary voice (Ngô Công Trường) once the experts load — the product
+  // has no neutral/expert-less option, so the assistant always answers in his voice out of the box.
+  // Applied a single time and only when nothing has been chosen yet (`expertId === ""`) and we're not
+  // viewing a saved conversation — so a manual switch to another voice sticks, and an opened
+  // conversation keeps the voice it was asked in.
+  const DEFAULT_EXPERT_NAME = "Ngô Công Trường";
+  const defaultedVoiceRef = useRef(false);
+  useEffect(() => {
+    if (defaultedVoiceRef.current || experts.length === 0) return;
+    if (expertId !== "" || conversationId != null) {
+      defaultedVoiceRef.current = true; // a conversation/user already determined the voice
+      return;
+    }
+    const primary = experts.find((e) => e.displayName === DEFAULT_EXPERT_NAME) ?? experts[0];
+    if (primary) {
+      setExpertId(primary.expertId);
+      defaultedVoiceRef.current = true;
+    }
+  }, [experts, expertId, conversationId]);
 
   // Load the conversation history list (M12.2.3 → M3.2), most-recent-first.
   // Best-effort: a failure just leaves the list empty (the sidebar still works).
