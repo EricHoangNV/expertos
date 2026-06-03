@@ -262,6 +262,103 @@ async function globalSetup(): Promise<void> {
             slaDueAt: new Date(now + 24 * 60 * 60 * 1000),
           },
         });
+
+        // Seed a member-owned conversation containing an expert-*refined* answer, so the
+        // consumer-facing concierge disclosure (OD#5 / M9.0) renders in /history. That badge keys
+        // solely on `Message.refinedFromMessageId` (a delivered, reviewer-edited answer points back
+        // at the original), so the minimal faithful fixture is two assistant messages where the
+        // second refines the first. Wipe + recreate every run for a deterministic single case.
+        const REVIEWED_TITLE = "E2E Reviewed Answer Case";
+        await tx.conversation.deleteMany({ where: { userId: member.id, title: REVIEWED_TITLE } });
+        const reviewedConvo = await tx.conversation.create({
+          data: { tenantId: GLOBAL_TENANT_ID, userId: member.id, title: REVIEWED_TITLE, language: "en" },
+          select: { id: true },
+        });
+        const rNow = Date.now();
+        await tx.message.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            conversationId: reviewedConvo.id,
+            role: "user",
+            content: "Reviewed-case question for the disclosure badge.",
+            createdAt: new Date(rNow - 3000),
+          },
+        });
+        const reviewedOriginal = await tx.message.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            conversationId: reviewedConvo.id,
+            role: "assistant",
+            content: "Original AI answer before expert review.",
+            createdAt: new Date(rNow - 2000),
+          },
+          select: { id: true },
+        });
+        await tx.message.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            conversationId: reviewedConvo.id,
+            role: "assistant",
+            content: "Refined answer delivered after expert review. E2E reviewed disclosure fixture.",
+            refinedFromMessageId: reviewedOriginal.id,
+            createdAt: new Date(rNow - 1000),
+          },
+        });
+
+        // Seed a conversation-sourced KnowledgeDraft so the admin Knowledge page's
+        // "Conversation → Knowledge" table (M8.2) has a real "From chat: yes" row to assert. The
+        // pipeline has no UI promote button — the "marked valuable" state is represented purely by a
+        // KnowledgeDraft row whose `conversationId` is set. Wipe + recreate by title each run.
+        const KD_TITLE = "E2E Recurring Question Draft";
+        let kdConvo = await tx.conversation.findFirst({
+          where: { userId: member.id, title: "E2E Knowledge Source Convo" },
+          select: { id: true },
+        });
+        if (!kdConvo) {
+          kdConvo = await tx.conversation.create({
+            data: { tenantId: GLOBAL_TENANT_ID, userId: member.id, title: "E2E Knowledge Source Convo", language: "en" },
+            select: { id: true },
+          });
+        }
+        await tx.knowledgeDraft.deleteMany({ where: { tenantId: GLOBAL_TENANT_ID, title: KD_TITLE } });
+        await tx.knowledgeDraft.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            conversationId: kdConvo.id,
+            expertId: expert.id,
+            title: KD_TITLE,
+            content: "Seeded conversation-sourced draft for the M8.2 admin surface.",
+            language: "en",
+            status: "draft",
+          },
+        });
+      }
+
+      // Seed a second voice profile parked at **expert_review** so the expert can Approve→publish it
+      // (M2.3 / M13.5): from expert_review a single "Approve" publishes the voice. Reset to
+      // expert_review every run (a prior run's Approve published it), mirroring the knowledge-doc reset.
+      const SIGNOFF_VOICE_NAME = "Ada — awaiting sign-off";
+      const signoffVoice = await tx.voiceProfile.findFirst({
+        where: { expertId: expert.id, name: SIGNOFF_VOICE_NAME },
+        select: { id: true },
+      });
+      if (signoffVoice) {
+        await tx.voiceProfile.update({
+          where: { id: signoffVoice.id },
+          data: { status: "expert_review", approvedBy: null, approvedAt: null },
+        });
+      } else {
+        await tx.voiceProfile.create({
+          data: {
+            tenantId: GLOBAL_TENANT_ID,
+            expertId: expert.id,
+            language: "en",
+            name: SIGNOFF_VOICE_NAME,
+            description: "E2E-seeded profile awaiting expert sign-off.",
+            guidelines: "Be concise and practical.",
+            status: "expert_review",
+          },
+        });
       }
 
       // Seed a dedicated throwaway user *with owned data* so the M8.4 irreversible deletion

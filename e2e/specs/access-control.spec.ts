@@ -61,4 +61,59 @@ test.describe("admin access control", () => {
     await expect(page.getByText(/access denied/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /sign out/i })).toBeVisible();
   });
+
+  test("removing a whitelist entry revokes that user's portal access", async ({ browser }) => {
+    // Guards the admin-whitelist-revocation fix: the whitelist is the source of truth for portal
+    // roles, so removing an entry must immediately deny that user (no stale elevated access). Uses
+    // the real `users.other` identity so the grant→revoke is observed through actual portal sign-in.
+    const adminCtx = await browser.newContext();
+    const adminPage = await adminCtx.newPage();
+    // Accept the window.confirm guarding "Remove" (registered once; reused by the cleanup below).
+    adminPage.on("dialog", (dialog) => void dialog.accept());
+    const otherCtx = await browser.newContext();
+    const otherPage = await otherCtx.newPage();
+
+    const signInOther = async (): Promise<void> => {
+      await otherPage.goto(env.adminBaseUrl);
+      await otherPage.waitForFunction(() => typeof window.__e2eSignIn === "function");
+      await otherPage.evaluate(
+        async ({ email, password }) => {
+          await window.__e2eSignIn!(email, password);
+        },
+        { email: users.other.email, password: users.other.password },
+      );
+    };
+
+    try {
+      // 1. Admin grants `other` expert access via the whitelist.
+      await signInAdmin(adminPage, users.admin);
+      await adminPage.goto(`${env.adminBaseUrl}/access-control`);
+      await adminPage.getByPlaceholder("person@example.com").fill(users.other.email);
+      await adminPage.locator("select").first().selectOption("expert");
+      await adminPage.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(adminPage.getByText(`Added ${users.other.email}.`)).toBeVisible();
+
+      // 2. `other` can now reach the portal shell (the "Expert portal" nav group renders).
+      await signInOther();
+      await expect(otherPage.getByText(/^expert portal$/i).first()).toBeVisible();
+
+      // 3. Admin removes the entry → access is revoked.
+      const row = adminPage.getByRole("row").filter({ hasText: users.other.email });
+      await row.getByRole("button", { name: "Remove" }).click();
+      await expect(adminPage.getByText(`Removed ${users.other.email}.`)).toBeVisible();
+
+      // 4. A fresh portal entry by `other` now hits Access Denied — the gate re-checks the
+      //    whitelist on sign-in, so the revoked user no longer reaches the shell.
+      await signInOther();
+      await expect(otherPage.getByText(/access denied/i)).toBeVisible();
+    } finally {
+      // Safety net: never leave `other` whitelisted — it would break the deny test above on reorder.
+      const leftover = adminPage.getByRole("row").filter({ hasText: users.other.email });
+      if ((await leftover.count().catch(() => 0)) > 0) {
+        await leftover.getByRole("button", { name: "Remove" }).click().catch(() => {});
+      }
+      await adminCtx.close();
+      await otherCtx.close();
+    }
+  });
 });

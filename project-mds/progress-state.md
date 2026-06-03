@@ -2,29 +2,31 @@
 
 ## Current State
 
-Phase 1 (MVP) is functionally launch-ready. All in-sandbox-codeable review findings (Security Cycle 2 + Product Cycle 1) are now REMEDIATED/ADDRESSED, pending re-review. Remaining open manifest `[ ]` items are externally blocked (host E2E run, PM/legal sign-offs, schema decisions).
+Phase 1 (MVP) is functionally launch-ready. All in-sandbox-codeable review findings (Security Cycle 2 + Product Cycle 1) are REMEDIATED/ADDRESSED, pending re-review. Remaining open `[ ]` items are externally blocked (host E2E run, PM/legal sign-offs, schema decisions).
 
 - Phase 0 + Phase 1 backend/admin/expert (M1–M11): COMPLETE.
-- M12 (consumer web `/chat` UI overhaul): COMPLETE (M12.1–M12.9).
-- M13 (UI i18n EN+VI): COMPLETE. Web + admin each own `LocaleProvider`/`useT`; system content locale-aware; persist via `PATCH /me/locale`.
-- M13 (admin/expert portal UI overhaul): DONE except voice-dimension widgets — M13.5.3/.4/.5, M13.5.6 fidelity, M13.7.4 `.voice-bar` DEFERRED (no schema backing; needs PM/schema decision). M13.5 ships schema-honest lean.
-- M14 (access-control whitelist, invite-only admin gate): COMPLETE.
-- M15 (test coverage): M15.1 (web jest) + M15.2 (admin jest) COMPLETE; M15.3 (E2E) — all subtasks done in-sandbox. M15.3.3/.4 now `[x]`: specs written + fixtures seeded + committed + static-gate-clean + **DOM-selector-verified against the current admin pages**; only the host Playwright run remains (§3.4.1).
-- Real LLM chat drivers landed (OpenAI/Anthropic/Gemini over a shared SSE seam; env-selected, Echo fallback). SSE keep-alive-frame guard (LEARNINGS #24, DIRECTIVES #41).
-- Tests: 1547 pass / 0 fail (shared 190, ui 235, db 9, ai 195, api 722, web 99, admin 97). E2E (host): last 20 passed / 3 fixme (→2 after host-run of M15.3.3/.4/.5).
-- **Security Cycle 2 — all 5 findings REMEDIATED** (pending re-review): 3 Criticals (stale whitelist roles→`AccessControlService` role write-through + `AdminSessionService` 403 downgrade; expert-voice knowledge boundary→`PgVectorStore` expert_id join + cache-key fork; document-upload entitlement→`@RequiresEntitlement` on `POST /uploads`) + 2 Highs (raw-object deletion→`StorageProvider.delete` + shared `StorageModule`, reclaimed post-commit by retention/user-deletion; TidyCal fallback idempotency→per-transition `fallback:<ref>:<type>:<stamp>` eventId). DIRECTIVES #42-44,46,47; LEARNINGS #26-28,30,31.
-- **Product Cycle 1 — High + 2 Mediums cleared** (pending re-review): High = citationless real-LLM answers now key ungrounded off `built.citations.length===0` (not `facts.length`), threaded into done event + concierge + consultation (DIRECTIVES #45, LEARNINGS #29). Mediums (trust-signal wording) ADDRESSED = analytics "grounded" bucket labels its 2+/1/0 resolved-citation definition (badges+tooltips+`.qa-note` caption, EN+VI); chat "Verified" badge → honest "Citations resolved" (`verifiedLabel` prop, localized `chat.verifiedBadge`), Tweaks toggle aligned. **No FAIL/Medium in-sandbox code work remains in any review track.**
-- Gates: run per-workspace (`turbo` SIGILLs here) — build+eslint+jest, `tsc`+`next lint` for apps, root `lint:css`+`knip` all clean. `next build` + `tsx` seed are arch-blocked in-sandbox (LEARNINGS #25).
-- **Sandbox cannot run the live E2E stack**: 4GB RAM OOMs it AND the network policy blocks `host.docker.internal`. Host runs Playwright; sandbox writes specs + static gates (DIRECTIVES §3.4.1, LEARNINGS #22).
-- **Independent re-audit (2026-06-03):** all 5 Security Cycle 2 remediations verified present in code (access-control role write-through in-tx + 403 downgrade; `PgVectorStore` expert_id EXISTS join + cache-key fork; `@RequiresEntitlement("document_upload")` on `POST /uploads`; pre-delete `findMany` + post-commit `deleteStorageObjects` in retention + user-deletion; per-transition TidyCal `fallback:<ref>:<type>:<stamp>`). No gaps found.
-- **NT.3/NT.4 drafts now in-repo** (`docs/legal/`): data-retention/deletion policy + high-stakes disclaimer/ToS copy — code-faithful, carry approver checklists. Tasks stay `[~]` pending PM/legal sign-off (human gate, not code).
+- M12 (consumer web `/chat` UI): COMPLETE (M12.1–M12.9).
+- M13 (UI i18n EN+VI): COMPLETE. Web + admin own `LocaleProvider`/`useT`; system content locale-aware; persist via `PATCH /me/locale`.
+- M13 (admin/expert portal UI): DONE except voice-dimension widgets (M13.5.3/.4/.5, M13.5.6, M13.7.4 `.voice-bar`) — DEFERRED, no schema backing (PM/schema decision).
+- M14 (access-control whitelist): COMPLETE.
+- M15 (test coverage): M15.1 web jest + M15.2 admin jest COMPLETE; M15.3 E2E done in-sandbox (M15.3.1–.6); M15.3.7 = negative-space expansion (8 new tests, below).
+- Real LLM chat drivers landed (OpenAI/Anthropic/Gemini, shared SSE seam, env-selected, Echo fallback). SSE keep-alive guard (LEARNINGS #24, DIRECTIVES #41).
+- Tests (unit/jest): 1547 pass / 0 fail (shared 190, ui 235, db 9, ai 195, api 722, web 99, admin 97).
+- E2E (Playwright, host): collects 36 tests / 18 files. Last full host run green at 20 pass / 3 fixme (pre-expansion 27); the +9 added tests are tsc+eslint+collection clean, host-run pending.
+- **Security Cycle 2 — 5 findings REMEDIATED** (pending re-review): stale-whitelist role write-through + 403 downgrade; expert-voice knowledge boundary (`PgVectorStore` expert_id join + cache fork); `@RequiresEntitlement` on `POST /uploads`; raw-object deletion (`StorageProvider.delete` + `StorageModule`); TidyCal per-transition fallback eventId. DIRECTIVES #42-44,46,47; LEARNINGS #26-28,30,31. Re-audited 2026-06-03 — all present, no gaps.
+- **Product Cycle 1 — High + 2 Mediums cleared** (pending re-review): citationless answers key off `built.citations.length===0` (DIRECTIVES #45, LEARNINGS #29); analytics "grounded" labels + "Citations resolved" badge (EN+VI). No FAIL/Medium in-sandbox code work remains.
+- **E2E negative-space expansion (2026-06-03, M15.3.7):** +8 tests guarding recent fixes & untested negative space — cross-user isolation (RLS), citation trust-invariant, Free-plan upload 402, concierge consumer disclosure, conversation→knowledge surface, voice sign-off publish, whitelist revocation, i18n persistence. 3 idempotent fixtures added to `global-setup.ts`. Host-run via `scripts/test-e2e-{users,admin}.sh`. LEARNINGS #32 / DIRECTIVES #48 (NEXT_PUBLIC build-time E2E gotcha).
+- Gates: per-workspace build+eslint+jest, app tsc+next lint, root lint:css+knip clean. `next build` + `tsx` seed arch-blocked in-sandbox (LEARNINGS #25).
+- **Sandbox cannot run live E2E** (4GB OOM + network policy blocks host.docker.internal); host runs Playwright (DIRECTIVES §3.4.1, LEARNINGS #22).
+- **NT.3/NT.4 drafts in-repo** (`docs/legal/`): retention/deletion + high-stakes disclaimer copy; tasks stay `[~]` pending PM/legal sign-off (human gate).
 
-## Next tasks — all in-sandbox-codeable manifest work DONE; remaining is re-review + host runs + non-code + blocked
-1. **Await Security Cycle 2 + Product Cycle 1 re-review** — all Security Cycle 2 (3 Critical + 2 High) + Product Cycle 1 (High + 2 Mediums) REMEDIATED/ADDRESSED in-sandbox, pending reviewer re-verification. No open in-sandbox-codeable review findings remain.
-2. **Host-validate the E2E suite** (incl. the now-`[x]` M15.3.3/.4/.5) — host runs dev stack + allowlist `host.docker.internal:3000-3002,9099`; expected ~24 pass / 2 fixme.
-3. **M13.5.3/.4/.5 + M13.7.4** voice-dimension widgets — BLOCKED on PM/schema decision; do NOT invent fields.
+## Next tasks — in-sandbox-codeable work DONE; remaining = re-review + host runs + non-code + blocked
+1. **Host-run the E2E suite** incl. the +8 M15.3.7 tests via `scripts/test-e2e-{users,admin}.sh` (expect ~28 pass / 2 fixme); fix any selector drift.
+2. **Await Security Cycle 2 + Product Cycle 1 re-review** — all REMEDIATED/ADDRESSED in-sandbox.
+3. **M13.5.3/.4/.5 + M13.7.4** voice-dimension widgets — BLOCKED on PM/schema decision; don't invent fields.
 4. **M11.4 / NT.3-6** PM/legal sign-offs. (deferred) Phase 2/3 + OD#6.
 
-## Reference (detail lives in progress-log.md)
-- i18n core, web/admin test harnesses (`renderWithProviders`, `mockApi`), `useMediaQuery`, ds.css primitives: see progress-log M13.1/M15.1.1/M15.2.1.
-- Rebuild `packages/ui` (`pnpm --filter @expertos/ui build`) after changing it — apps consume `dist/` (ds.css ships from `src/`, no rebuild).
+## Reference (detail in progress-log.md)
+- i18n core, web/admin test harnesses, ds.css primitives: progress-log M13.1/M15.1.1/M15.2.1.
+- Rebuild `packages/ui` after changing it (apps consume `dist/`; ds.css ships from `src/`).
+- E2E host-run recipe + NEXT_PUBLIC build-time gotcha: LEARNINGS #32, `scripts/test-e2e-*.sh`.

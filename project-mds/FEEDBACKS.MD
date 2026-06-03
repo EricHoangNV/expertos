@@ -22,6 +22,21 @@
 - data handling / privacy: PASS
 - High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
 - Mediums (trust-signal wording): analytics "grounded" bucket label + chat "Verified" badge wording — ADDRESSED 2026-06-03 (see remediation note below)
+- Medium (NEW, OPEN — 2026-06-03, found via E2E M15.3.7): Free-plan document-upload 402 surfaces to the user as a bare "Http Exception" badge instead of an upgrade prompt — enforcement is correct (DIRECTIVE #44), UX wording only (see finding note below)
+
+---
+
+## Finding Note (2026-06-03) — Product/UX (OPEN): Free-plan upload 402 shows "Http Exception" instead of an upgrade prompt
+
+**Author:** implementing agent (E2E negative-space expansion, M15.3.7). This is a **newly-discovered open issue**, not a remediation — logged at the user's request. Severity: Medium (UX). **Not a security gap — the entitlement enforcement is correct.**
+
+**What:** A Free-plan user (no `document_upload` entitlement) who attaches a valid document in `/chat` has the upload correctly rejected by the `@RequiresEntitlement("document_upload")` guard (402, before any parse/embed — DIRECTIVE #44 works as intended). But the rejection surfaces in the attach popover as a red badge reading literally **"Http Exception"** — a leaked framework string. The user gets no indication they hit a plan limit and no path forward, even though the same screen already shows a "FREE / UPGRADE →" affordance.
+
+**Where / root cause:** The 402's `EntitlementDeniedPayload` (`packages/shared/src/entitlements.ts`) carries `reason` / `feature` / `currentPlan` / `upgradeOptions` but **no user-facing `message`**. The web upload client's `errorMessage()` (`apps/web/src/lib/upload-client.ts`) looks for a `message` field on the error body; with none present it falls through to the thrown `HttpException`'s default message ("Http Exception"), which `UploadPanel` renders in a `.badge-red` (`apps/web/app/chat/page.tsx`). Confirmed live via `e2e/specs/web-entitlements.spec.ts` (screenshot: FREE plan, persistent upload → "HTTP EXCEPTION" badge).
+
+**Suggested fix (enforcement unchanged):** surface a friendly, actionable message for an entitlement-denied 402 — e.g. map the `feature` + `upgradeOptions` payload to "Document upload isn't in your plan — upgrade to add documents." with a link to `/account`, either by adding a derived `message` to the entitlement-denied response or by special-casing the 402 entitlement payload in the web upload client. Localize EN+VI (lockstep). Keep the guard and the reserve-before-work ordering as-is.
+
+**Test posture:** `web-entitlements.spec.ts` asserts the *rejection* (red badge present + the file never indexes), deliberately **not** the badge wording, so it stays green and will not need updating when the message is improved.
 
 ---
 

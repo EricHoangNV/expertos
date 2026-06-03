@@ -4882,3 +4882,41 @@ Both carry approver checklists. Tasks remain `[~]` — committing the drafts doe
 **Files changed:**
 - `docs/legal/data-retention-and-deletion-policy.md`, `docs/legal/high-stakes-disclaimer-copy.md` — new (preserved drafts).
 - `project-mds/progress-state.md` — re-audit + drafts-in-repo notes.
+
+## E2E negative-space coverage expansion (8 specs) + host-run enablement
+
+**Date:** 2026-06-03
+**Ref:** User request — "review the e2e flows; can we add more / are all cases covered". Extends M15.3 (E2E suite expansion).
+
+**What was done:**
+- Coverage review against the full PRD: the suite proved features *exist* (happy path) but barely tested *failure/permission/isolation* cases, and the 5 recently-remediated Security/Product fixes had no E2E regression guard. Added 8 tests (6 new spec files + 2 added tests) targeting that negative space:
+  - `web-isolation.spec.ts` — cross-user RLS: `users.member` saves a uniquely-titled conversation; `users.other` (two browser contexts) must not find it via history search or saved-answers (uses the previously-unused `e2e-other@` identity).
+  - `web-citations.spec.ts` — citation trust-boundary *invariant*: a completed turn is either grounded (sources/"Citations resolved") or flagged "Limited knowledge", never an uncited authoritative answer. Guards DIRECTIVE #45 / LEARNINGS #29 without needing deterministic retrieval.
+  - `web-entitlements.spec.ts` — Free-plan (`users.other`, no subscription) document upload rejected with 402 (`.badge-red` "upload failed (402)"). Guards DIRECTIVE #44 (the `document_upload` entitlement).
+  - `concierge-disclosure.spec.ts` — consumer-facing OD#5 disclosure: a refined answer shows "Reviewed & refined by our team" in `/history` (the consumer side of M9; review/verdict side was already covered).
+  - `conversation-knowledge.spec.ts` — M8.2 admin surface: a conversation-sourced KnowledgeDraft appears in the Knowledge page's Conversation→Knowledge table (no UI promote button exists; it's a seeded/server-side state, so this asserts the read surface).
+  - `voice-publish.spec.ts` — M2.3/M13.5 expert sign-off: expert Approves a profile parked at `expert_review` → "Approve done." (publish is "Submit"→"Approve", never a literal "Publish").
+  - `access-control.spec.ts` (+3rd test) — whitelist *revocation* actually revokes: admin grants `other` expert access (reaches portal shell), then removes the entry → `other` hits Access Denied on re-entry. Guards DIRECTIVE #42 (whitelist = source of truth). Cleanup safety-net so it can't pollute the sibling deny-test.
+  - `web-i18n.spec.ts` (+2nd test) — locale *persistence*: toggle VI → reload + fresh nav still VI (the existing test only toggled, never proved it sticks).
+- Added 3 idempotent fixtures to `global-setup.ts` (inside the existing admin-RLS-context transaction): a member-owned refined-answer conversation (`refinedFromMessageId`), a conversation-sourced `KnowledgeDraft`, and a voice profile parked at `expert_review`.
+
+**Key decisions:**
+- Citations assert the *invariant* (grounded-or-limited), not a forced citation, because deterministic retrieval needs live embeddings (publish→retrieval is a documented fixme). The invariant holds regardless of seeded knowledge and still catches the citationless-authoritative-answer regression.
+- M8.2 became a read-surface assertion: a selector-extraction pass found "Mark valuable" is a static pipeline *label*, not a button — no in-portal promote action exists — so forcing a click would assert non-existent UI.
+- Pre-flight selector extraction corrected 6 wrong assumptions before writing (history rows labeled by title not "Open conversation"; concierge disclosure is `/history`-only; no client-side upload gate → server 402 `.badge-red`; voice publish is Submit→Approve; etc.), avoiding a round of host-run failures.
+
+**Files changed:**
+- `e2e/specs/web-isolation.spec.ts`, `e2e/specs/web-citations.spec.ts`, `e2e/specs/web-entitlements.spec.ts`, `e2e/specs/concierge-disclosure.spec.ts`, `e2e/specs/conversation-knowledge.spec.ts`, `e2e/specs/voice-publish.spec.ts` — new specs.
+- `e2e/specs/access-control.spec.ts`, `e2e/specs/web-i18n.spec.ts` — one added test each.
+- `e2e/global-setup.ts` — 3 new idempotent fixtures (refined-answer conversation, conversation-sourced KnowledgeDraft, expert_review voice profile).
+- `scripts/test-e2e-users.sh`, `scripts/test-e2e-admin.sh` — host run+rebuild convenience scripts (gitignored, local-only; folder tracked via `scripts/.gitkeep`). `.gitignore` updated.
+
+**Verification:**
+- e2e `tsc` clean, `eslint` clean, Playwright collection = **36 tests / 18 files** (was 27/12); all 8 new tests collect.
+- NOT yet host-run (live stack not driven this session). Host run via the new scripts; expected to pass pending live verification — same posture as M15.3.3/.4 (sandbox/static deliverable, host run pending).
+
+**Compliance (DIRECTIVES):** fixtures run inside the existing `applyRlsContext(isAdmin)` transaction (#35); the isolation spec validates RLS; specs use accessibility-first selectors with documented `.class`/regex fallbacks matching the existing suite; no secrets in tracked files (scripts are gitignored). LEARNINGS #32 + DIRECTIVES #48 added for the `NEXT_PUBLIC` build-time gotcha surfaced enabling the host run. Per DIRECTIVE #40, verify file integrity before any commit of `global-setup.ts`.
+
+**Notes for next iteration:**
+- Host-run the 8 new tests via `scripts/test-e2e-users.sh` + `scripts/test-e2e-admin.sh`; if any selector drifts, the most likely suspects are the conv→knowledge "From chat" cell and the voice-profile list row (extracted, not live-verified).
+- The 9 pre-existing uncommitted source edits (knowledge/ingestion/i18n) in the working tree are unrelated to this task and were left untouched — they predate it (likely a ralph iteration that didn't commit).

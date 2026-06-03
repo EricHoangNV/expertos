@@ -50,4 +50,22 @@ test.describe("web i18n (EN ↔ VI)", () => {
     await expect(page.getByRole("heading", { name: "Lịch sử" })).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("lang", "vi");
   });
+
+  test("the chosen locale persists across a reload and fresh navigation", async ({ page }) => {
+    await signIn(page, users.member);
+    await gotoChat(page);
+
+    // Switch EN → VI, then prove the choice survives a hard reload (localStorage + profile carry
+    // it) rather than reverting to the English default — i.e. the toggle actually persists.
+    await page.getByRole("button", { name: /switch language/i }).click();
+    await expect(page.locator("html")).toHaveAttribute("lang", "vi");
+
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("lang", "vi");
+    await expect(page.getByPlaceholder(/Hỏi bất cứ điều gì/)).toBeVisible();
+
+    // A brand-new navigation to another page also restores Vietnamese.
+    await page.goto(`${env.webBaseUrl}/account`);
+    await expect(page.locator("html")).toHaveAttribute("lang", "vi");
+  });
 });

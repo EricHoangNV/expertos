@@ -381,3 +381,15 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Apply the same shape to every driver of the seam (the offline/test provider had the identical `eventId ?? entityRef` collision) so behavior can't drift between drivers.
 
 **Rule:** An idempotency/dedup key for lifecycle events must identify the *transition*, not the entity. When the provider gives no delivery-unique event id, synthesize one from `entityRef + eventType + a transition timestamp` — never the bare entity id, which collapses the entity's whole lifecycle into one key and silently swallows every event after the first. Test the full create→update→delete sequence with no provider id, not just one event.
+
+---
+
+## 32. `NEXT_PUBLIC_*` is inlined at `next build`, so injecting it into the E2E `next start` runtime is a silent no-op — the apps must be *built* with the e2e env
+
+**Context:** Host E2E debugging session (2026-06-03) — every spec hung 60s on the Google login screen instead of being signed in programmatically.
+
+- The suite bypasses the Google popup via `window.__e2eSignIn`, installed by each app's `lib/firebase.ts` behind a guard: `if (window && process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST)`. `playwright.config.ts` injects that var (and the other `NEXT_PUBLIC_*` client vars) into the managed `webServer` env — but the webServer runs the apps in **production** mode (`next start`), and Next inlines `NEXT_PUBLIC_*` into the client bundle at **build** time. A var set only at `next start` runtime never reaches the already-frozen bundle, so the guard stays false, `__e2eSignIn` is never installed, and `fixtures/auth.ts`'s `waitForFunction(() => typeof window.__e2eSignIn === "function")` times out — presenting as a stuck login page, not an auth error. The config comment even mislabels these as "the web/admin **dev** servers need" (dev reads env per-compile; prod does not), which is the trap.
+- Fix: build web + admin **with the e2e env exported** so the var inlines truthy and dead-code-elimination leaves `window.__e2eSignIn=` installed unconditionally. Verify by grepping the built chunk: a correct build shows `window.__e2eSignIn=` *without* the `..._EMULATOR_HOST&&` guard prefix. The repo's `scripts/test-e2e-users.sh` / `scripts/test-e2e-admin.sh` encode the full recipe (build-with-env → free ports → run).
+- Same class of trap also bit the build itself: `output: "standalone"` (Cloud Run) leaves a nested `.next/standalone/.../esbuild` symlink that `next build`'s pre-clean chokes on with `recursiveDelete ENOENT` — `rm -rf apps/{web,admin}/.next` before building clears it.
+
+**Rule:** Any client-read `NEXT_PUBLIC_*`/build-time-inlined config that an E2E (or prod) flow depends on must be present in the **build** environment, not just the server's runtime env. When a feature gated on such a var silently fails to activate under `next start`, suspect a build done without it before debugging the runtime. Verify the value is actually baked into the emitted bundle.
