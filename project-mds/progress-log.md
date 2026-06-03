@@ -4733,3 +4733,35 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 **Docs:** FEEDBACKS.MD (remediation note + verdict annotation), LEARNINGS #28, DIRECTIVES #44, progress-state.md, progress-log.md.
 
 **Gates:** `@expertos/api` build + eslint + jest (705 pass, coverage gate green) + root knip — all green.
+
+---
+
+## Product Cycle 1 High — Citationless answers bypass the honest limitation state
+**Date:** 2026-06-03
+**Ref:** FEEDBACKS.MD → Product Review Cycle 1 (High: "citationless answers can still be delivered as ordinary expert answers without the honest limitation state")
+
+**What was done:**
+- `apps/api/src/chat/chat.service.ts`: the live answer path now derives a single `ungrounded = built.citations.length === 0` immediately after `buildCitations`, and threads it through the three downstream seams in place of the old `facts.length === 0`:
+  - the terminal `done` event's `insufficientKnowledge`
+  - the M9.2 concierge `enqueueIfTriggered` insufficient-knowledge trigger
+  - the M7.1 consultation `recommend` insufficient-knowledge signal
+- Added a regression test asserting all three seams + persistence/caching for the citationless-with-facts case.
+
+**Key decisions:**
+- **`built.citations.length === 0` is the right signal, not `facts.length === 0`.** The product trust contract is about the *final* answer's verifiable support, not whether retrieval found anything. A real LLM can return fluent prose that cites nothing (forged markers stripped by `buildCitations`, or answering from nearby context without markers) even when facts were retrieved — `facts.length` would be > 0 and silently lose the "I don't know, here's why" behavior. We can't rely on model obedience now that real OpenAI/Anthropic/Gemini drivers sit behind the seam.
+- **Counts both knowledge and upload citations**, so a genuinely upload-grounded answer (knowledge retrieval empty, upload cited) stays grounded — the existing "not insufficient when only an upload grounds the answer" test still passes.
+- **No persistence-schema change needed.** The history/inspector read paths (`failed-query.service.ts`, `expert-portal.service.ts`) already derive `insufficient_knowledge` from `cardinality(source_version_ids) = 0`, which is empty for an uncited knowledge answer — already consistent with treating uncited as insufficient. Caching was already correct (write-through gated on `built.citations.length > 0`).
+- **Deferred the two Mediums** (analytics "grounded = ≥2 citations" label; "Verified" badge wording) — distinct findings, kept this change scoped to the High trust-event fix.
+
+**Files changed:**
+- `apps/api/src/chat/chat.service.ts` — derive `ungrounded` from final citation count; use it for the `done` event, concierge enqueue, and consultation recommend (was `facts.length === 0`).
+- `apps/api/src/chat/chat.service.test.ts` — +1 regression test: "treats a citationless answer (facts retrieved, none cited) as ungrounded across every seam (Product Cycle 1)".
+- `project-mds/FEEDBACKS.MD` — remediation note + Product Cycle 1 verdict annotation (REMEDIATED, pending re-review).
+- `project-mds/progress-state.md` — test count 1528→1529, status + next tasks.
+
+**Gates:** `@expertos/api` build + eslint + jest (706 pass, coverage gate green) + root knip — all green.
+
+**Notes for next iteration:**
+- Re-review needed to flip Product Cycle 1 from FAIL → PASS.
+- The serveCachedAnswer path always hardcodes `insufficientKnowledge: false` — correct, because only knowledge-only grounded answers (≥1 citation) are ever written to the shared cache, so a cache hit is grounded by construction.
+- Follow-ups still open: the two Product Cycle 1 Mediums, and the two remaining Security Cycle 2 Highs (raw upload-object deletion on retention/user-deletion; TidyCal fallback idempotency for cancel/reschedule).

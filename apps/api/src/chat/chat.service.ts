@@ -185,6 +185,16 @@ export class ChatService {
         });
       }
 
+      // The product-level trust signal is whether the *final* answer carries a resolved citation —
+      // not whether retrieval found facts (Product Cycle 1 fix). A fluent model reply that cites
+      // nothing (cited only forged/unresolvable markers that `buildCitations` stripped, or answered
+      // from nearby context without attaching any marker) is ungrounded: it must surface the honest
+      // insufficient-knowledge state, trigger concierge review + consultation routing, and stay
+      // uncached — exactly like a zero-facts refusal. We cannot rely on model obedience for the trust
+      // contract now that real LLM drivers sit behind the seam. `built.citations.length` counts both
+      // knowledge and upload citations, so a genuinely upload-grounded answer stays grounded.
+      const ungrounded = built.citations.length === 0;
+
       // Provenance is the document_version ids of the *knowledge* sources cited; upload citations
       // carry no document version (empty), so they're filtered out here.
       const sourceVersionIds = [
@@ -251,7 +261,7 @@ export class ChatService {
       await this.concierge.enqueueIfTriggered(user, {
         messageId: persisted.messageId,
         conversationId: persisted.conversationId,
-        insufficientKnowledge: facts.length === 0,
+        insufficientKnowledge: ungrounded,
         confidence: null,
       });
 
@@ -263,7 +273,7 @@ export class ChatService {
         question: input.text,
         answer: built.text,
         citationCount: built.citations.length,
-        insufficientKnowledge: facts.length === 0,
+        insufficientKnowledge: ungrounded,
         highStakes,
       });
 
@@ -272,10 +282,10 @@ export class ChatService {
         conversationId: persisted.conversationId,
         messageId: persisted.messageId,
         citations: built.citations.map(toCitationDto),
-        // No grounding sources → the prompt builder's INSUFFICIENT-KNOWLEDGE rule governed the
-        // answer (M3.4). Surface that to the client so it can offer a graceful next step rather
-        // than present an ungrounded reply as a confident answer.
-        insufficientKnowledge: facts.length === 0,
+        // No resolved citation on the final answer → ungrounded (M3.4 + Product Cycle 1). Surface the
+        // honest insufficient-knowledge state to the client so it offers a graceful next step rather
+        // than presenting an uncited reply as a confident, verifiable answer.
+        insufficientKnowledge: ungrounded,
         degraded,
         recommendation,
         highStakes,

@@ -657,4 +657,34 @@ describe("ChatService.answerStream", () => {
     expect(stubs.lookupAnswer).toHaveBeenCalledTimes(1);
     expect(stubs.storeAnswer).not.toHaveBeenCalled();
   });
+
+  it("treats a citationless answer (facts retrieved, none cited) as ungrounded across every seam (Product Cycle 1)", async () => {
+    // Facts ARE retrieved (the default CHUNKS), but the model returns fluent prose with no
+    // resolvable marker. The product trust signal is the *final* answer's citation count, not
+    // whether retrieval found facts — so this uncited reply must surface the honest insufficient
+    // state, drive concierge review + consultation routing, and stay uncached.
+    const { service, stubs } = makeService({ deltas: ["A fluent answer with no markers."] });
+
+    const events = await drain(service.answerStream(USER, baseInput()));
+
+    // Done event: ungrounded → insufficient, with no citations.
+    expect(events.at(-1)).toMatchObject({
+      type: "done",
+      insufficientKnowledge: true,
+      citations: [],
+    });
+    // Concierge silent review (M9.2) is offered with the insufficient signal, even though facts existed.
+    expect(stubs.enqueueIfTriggered).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ insufficientKnowledge: true }),
+    );
+    // Consultation routing (M7.1) receives the ungrounded signal + a zero citation count.
+    expect(stubs.recommend).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ citationCount: 0, insufficientKnowledge: true }),
+    );
+    // Still persisted (a real, honest-limitation answer) but never pinned to the shared cache.
+    expect(stubs.persistTurn).toHaveBeenCalledTimes(1);
+    expect(stubs.storeAnswer).not.toHaveBeenCalled();
+  });
 });

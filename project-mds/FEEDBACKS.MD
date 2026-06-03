@@ -17,10 +17,24 @@
 - (awaiting first code review)
 
 ### Product Review: Cycle 1 — FAIL (2026-06-03)
-- requirements coverage: FAIL (uncited real-LLM answers can bypass insufficient-knowledge handling, review, and escalation)
-- core user flow: FAIL
+- requirements coverage: FAIL (uncited real-LLM answers can bypass insufficient-knowledge handling, review, and escalation) — REMEDIATED 2026-06-03, pending re-review (`ChatService` now keys the insufficient/ungrounded state off `built.citations.length === 0`, not `facts.length === 0`)
+- core user flow: FAIL — REMEDIATED 2026-06-03, pending re-review
 - data handling / privacy: PASS
-- High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state
+- High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
+
+---
+
+## Developer Remediation Note (2026-06-03) — Product Cycle 1 High: Citationless answers bypass the honest limitation state
+
+**Author:** implementing agent (not a review cycle). Addresses the Product Review Cycle 1 High "citationless answers can still be delivered as ordinary expert answers without the honest limitation state."
+
+**Root cause:** the chat pipeline correctly enforces the M4.1 chunk-resolvability guarantee — `buildCitations` strips any unresolvable marker and keeps only citations that resolve to a retrieved chunk — but the product-level insufficient/ungrounded signal was still computed as `facts.length === 0` (did retrieval find anything), not from the *final* answer's resolved citation count. So a fluent real-LLM reply that cited nothing (forged/stripped markers, or answered from nearby context without attaching a marker) was treated as an ordinary grounded answer: `insufficientKnowledge: false` flowed to the client (no amber notice), to the concierge silent-review trigger (`enqueueIfTriggered`), and to consultation routing (`recommend`). The trust contract cannot rely on model obedience now that real OpenAI/Anthropic/Gemini drivers sit behind the LLM seam.
+
+**Fix:** in `apps/api/src/chat/chat.service.ts` the live answer path now derives a single `ungrounded = built.citations.length === 0` right after `buildCitations`, and threads it through all three downstream seams in place of `facts.length === 0` — the `done` event's `insufficientKnowledge`, the concierge `enqueueIfTriggered`, and the consultation `recommend` call. `built.citations.length` counts both knowledge and upload citations, so a genuinely upload-grounded answer stays grounded; an uncited answer (even with facts retrieved) now surfaces the honest insufficient-knowledge notice, fires Mode-B silent concierge review, and feeds the low-confidence consultation rule. Caching was already correct (write-through already gated on `built.citations.length > 0`), so an uncited answer stays unpinned. Persistence read paths (failed-query inspector, expert portal) already derive insufficiency from empty `source_version_ids`, consistent with an uncited knowledge answer.
+
+**Not changed (separate Mediums, deferred):** the operator "grounded = ≥2 citations" analytics bucket label and the UI "Verified" badge wording are distinct Medium findings, not this High; left for a follow-up so this remediation stays scoped to the trust-event fix.
+
+**Tests:** new regression test in `apps/api/src/chat/chat.service.test.ts` — "treats a citationless answer (facts retrieved, none cited) as ungrounded across every seam" asserts the `done` event reports `insufficientKnowledge: true` with no citations, the concierge enqueue + consultation recommend both receive the ungrounded signal, and the answer is persisted but not cached. Full `@expertos/api` suite 706 pass. Gates: api build + eslint + jest (coverage) + root knip green.
 
 ---
 
