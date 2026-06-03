@@ -131,6 +131,9 @@ export class DocumentVersionRepository {
       data: {
         tenantId: user.tenantId,
         scope: input.scope,
+        // Expert attribution (Security Cycle 2): set once at creation so the chunk-retrieval
+        // boundary can restrict this document to its expert's voice (null = shared global corpus).
+        expertId: input.expertId ?? null,
         title: input.title,
         sourceUri: input.sourceUri,
         language: input.language,

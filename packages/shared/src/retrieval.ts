@@ -27,6 +27,14 @@ export const retrievalFiltersSchema = z.object({
   language: languageSchema.optional(),
   /** Publication status gate. Defaults to `published`. */
   status: chunkStatusSchema.default("published"),
+  /**
+   * Expert-knowledge boundary (Security Cycle 2): when an expert voice is selected, ground the
+   * answer only in that expert's own published knowledge **plus** unattributed/global knowledge —
+   * never another expert's. A document is "the expert's" when its `expert_id` matches; documents
+   * with no `expert_id` are the shared global corpus available to every voice. Omitted (neutral
+   * voice) = no expert restriction. The driver resolves this via a join back to `documents`.
+   */
+  expertId: z.string().uuid().optional(),
 });
 
 export type RetrievalFilters = z.infer<typeof retrievalFiltersSchema>;

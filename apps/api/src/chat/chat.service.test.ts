@@ -165,6 +165,12 @@ describe("ChatService.answerStream", () => {
     expect(stubs.retrieveVoice).toHaveBeenCalledTimes(1);
     expect(stubs.loadHistory).toHaveBeenCalledWith(USER, "conv-1");
 
+    // Expert-knowledge boundary (Security Cycle 2): the selected expert scopes knowledge retrieval.
+    expect(stubs.retrieve).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ filters: expect.objectContaining({ expertId: "ex-1" }) }),
+    );
+
     // Prompt = [system, ...history, freshly-built user].
     const messages = stubs.seenMessages[0];
     expect(messages).toHaveLength(4);
@@ -477,6 +483,8 @@ describe("ChatService.answerStream", () => {
 
     expect(stubs.retrieveVoice).not.toHaveBeenCalled();
     expect(stubs.loadHistory).not.toHaveBeenCalled();
+    // Neutral voice → no expert restriction on knowledge retrieval.
+    expect(stubs.retrieve.mock.calls[0][1].filters).not.toHaveProperty("expertId");
     // No history → [system, user] only.
     expect(stubs.seenMessages[0]).toHaveLength(2);
     expect(stubs.persistTurn.mock.calls[0][1]).toMatchObject({

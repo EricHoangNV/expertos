@@ -107,7 +107,9 @@ export class PgVectorStore implements VectorStore {
 /**
  * Builds the metadata WHERE clause and its bound params. `offset` is the count of params
  * already bound before the filters (e.g. the query vector or query text), so placeholders
- * continue the sequence. `status` is always present; `language` / `scope` are optional.
+ * continue the sequence. `status` is always present; `language` / `scope` / `expertId` are
+ * optional. All predicates qualify `chunks` columns explicitly so the optional `expertId`
+ * EXISTS subquery (which references `chunks.document_version_id`) stays unambiguous.
  */
 function buildFilterClause(
   filters: RetrievalFilters,
@@ -116,17 +118,32 @@ function buildFilterClause(
   const params: unknown[] = [];
   const clauses: string[] = [];
 
-  clauses.push(`status = $${offset + params.length + 1}::chunk_status`);
+  clauses.push(`chunks.status = $${offset + params.length + 1}::chunk_status`);
   params.push(filters.status);
 
   if (filters.language) {
-    clauses.push(`language = $${offset + params.length + 1}::language`);
+    clauses.push(`chunks.language = $${offset + params.length + 1}::language`);
     params.push(filters.language);
   }
 
   if (filters.scope && filters.scope.length > 0) {
-    clauses.push(`scope = ANY($${offset + params.length + 1}::content_scope[])`);
+    clauses.push(`chunks.scope = ANY($${offset + params.length + 1}::content_scope[])`);
     params.push(filters.scope);
+  }
+
+  // Expert-knowledge boundary (Security Cycle 2): restrict grounding to the selected expert's own
+  // documents plus the unattributed/global corpus (`expert_id IS NULL`) — never another expert's.
+  // Resolved by joining each chunk back through `document_versions` → `documents`; the subquery runs
+  // under the same RLS-scoped transaction, so tenant isolation still holds.
+  if (filters.expertId) {
+    const p = offset + params.length + 1;
+    clauses.push(
+      `EXISTS (SELECT 1 FROM document_versions dv ` +
+        `JOIN documents d ON d.id = dv.document_id ` +
+        `WHERE dv.id = chunks.document_version_id ` +
+        `AND (d.expert_id = $${p}::uuid OR d.expert_id IS NULL))`,
+    );
+    params.push(filters.expertId);
   }
 
   return { clause: clauses.join(" AND "), params };

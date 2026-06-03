@@ -58,13 +58,18 @@ describe("ResponseCacheService keys", () => {
     expect(a).toBe(b);
   });
 
-  it("forks the retrieval key on topK, status, language, and scope", () => {
+  it("forks the retrieval key on topK, status, language, scope, and expertId", () => {
     const { service } = makeService();
     const base = service.retrievalKey(USER.tenantId, query());
     expect(service.retrievalKey(USER.tenantId, query({}, { topK: 3 }))).not.toBe(base);
     expect(service.retrievalKey(USER.tenantId, query({ status: "archived" }))).not.toBe(base);
     expect(service.retrievalKey(USER.tenantId, query({ language: "vi" }))).not.toBe(base);
     expect(service.retrievalKey(USER.tenantId, query({ scope: ["global_expert"] }))).not.toBe(base);
+    // Expert-knowledge boundary: a different selected expert must not reuse another's cached chunks.
+    const e1 = service.retrievalKey(USER.tenantId, query({ expertId: "e1" }));
+    const e2 = service.retrievalKey(USER.tenantId, query({ expertId: "e2" }));
+    expect(e1).not.toBe(base);
+    expect(e1).not.toBe(e2);
   });
 
   it("does not fork the retrieval key on scope ordering", () => {

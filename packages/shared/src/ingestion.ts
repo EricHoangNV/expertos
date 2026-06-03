@@ -35,6 +35,12 @@ export const ingestionInputSchema = z.object({
   contentType: z.string().trim().min(1).max(150),
   /** Optional human note recorded on the immutable version. */
   changeSummary: z.string().trim().max(2000).optional(),
+  /**
+   * Optional expert attribution (Security Cycle 2). When set, the document becomes that expert's
+   * own knowledge and is retrievable only under that expert's voice (plus the neutral voice);
+   * omitted = the shared global corpus available to every voice. Set once at document creation.
+   */
+  expertId: z.string().uuid().optional(),
 });
 
 export type IngestionInput = z.infer<typeof ingestionInputSchema>;

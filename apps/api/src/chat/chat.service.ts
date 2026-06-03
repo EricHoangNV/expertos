@@ -371,8 +371,14 @@ export class ChatService {
   private toRetrievalQuery(input: ChatRequestInput): RetrievalQueryInput {
     // No `language` filter: cross-lingual retrieval is the resolved OD#9 default, so a Vietnamese
     // question can still ground on English knowledge. `status: published` keeps answers grounded
-    // in expert-reviewed knowledge only.
-    return { text: input.text, topK: input.topK, filters: { status: "published" } };
+    // in expert-reviewed knowledge only. `expertId` enforces the expert-knowledge boundary
+    // (Security Cycle 2): a selected expert voice grounds only on that expert's own knowledge +
+    // the unattributed global corpus, never another expert's. Omitted (neutral) = no restriction.
+    return {
+      text: input.text,
+      topK: input.topK,
+      filters: { status: "published", ...(input.expertId ? { expertId: input.expertId } : {}) },
+    };
   }
 
   private async resolveVoice(user: AuthUser, input: ChatRequestInput) {

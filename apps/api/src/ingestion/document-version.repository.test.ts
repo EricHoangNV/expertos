@@ -118,6 +118,21 @@ describe("DocumentVersionRepository", () => {
     });
   });
 
+  it("attributes a new document to an expert when expertId is given (Security Cycle 2)", async () => {
+    const tx = makeTx();
+    const expertId = "22222222-2222-2222-2222-222222222222";
+    await repoFor(tx).store(USER, params({ input: { ...params().input, expertId } }));
+
+    expect(tx.document.create.mock.calls[0][0].data.expertId).toBe(expertId);
+  });
+
+  it("leaves a new document unattributed (global corpus) when no expertId is given", async () => {
+    const tx = makeTx();
+    await repoFor(tx).store(USER, params());
+
+    expect(tx.document.create.mock.calls[0][0].data.expertId).toBeNull();
+  });
+
   it("appends a new version to an existing document", async () => {
     const tx = makeTx({
       document: {

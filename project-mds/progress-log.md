@@ -4685,3 +4685,32 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 - `project-mds/FEEDBACKS.MD`, `LEARNINGS.MD` (#26), `DIRECTIVES.MD` (#42), `progress-state.md`, `progress-log.md`.
 
 **Gates:** `@expertos/api` build + eslint + jest (698 pass, changed files 100% covered) + root knip — all green.
+
+---
+
+## Security Cycle 2 remediation — Critical: Selected expert voice is not a knowledge boundary (2026-06-03)
+
+**Task:** Close the Security/Architecture Cycle 2 Critical "selected expert voice can answer from another expert/global published knowledge." The chat `expertId` scoped voice retrieval, prompt persona, and persistence, but knowledge retrieval filtered chunks only by `status`/`language`/`scope` — so Expert A's voice could ground a cited answer in Expert B's / global knowledge A never signed off on.
+
+**Scope policy decided (the open question in the finding):** unattributed knowledge (`documents.expert_id IS NULL`) is the **shared global corpus** for every voice; an expert-attributed document is **that expert's own**, retrievable only under that expert's voice (or neutral). Selected voice ⇒ admit `expert_id = $selected OR expert_id IS NULL`, never another expert's. Preserves the single-expert-launch behavior (all current docs unattributed → still shared) while making per-expert private knowledge enforceable as soon as a doc is attributed — the "clearly labeled secondary corpus" framing the reviewer asked for.
+
+**Changes:**
+- `packages/shared/src/retrieval.ts` — `retrievalFiltersSchema.expertId` (optional uuid).
+- `packages/ai/src/retrieval/types.ts` — `RetrievalFilters.expertId`.
+- `apps/api/src/retrieval/pgvector.store.ts` — `buildFilterClause` appends an `EXISTS` join `document_versions dv JOIN documents d` on `dv.id = chunks.document_version_id AND (d.expert_id = $n::uuid OR d.expert_id IS NULL)` when `expertId` is set (bound param; same RLS-scoped tx → tenant isolation holds). Chunk predicates qualified `chunks.*` to stay unambiguous beside the subquery.
+- `apps/api/src/chat/chat.service.ts` — `toRetrievalQuery` threads `input.expertId` into filters (omitted = neutral = full corpus).
+- `apps/api/src/cache/response-cache.service.ts` — `retrievalKey` forks on `expertId` (answer key already did) so a per-expert chunk set can't serve another expert / the neutral voice.
+- `packages/shared/src/ingestion.ts` + `apps/api/src/ingestion/document-version.repository.ts` — `IngestionInput.expertId` → `Document.expert_id` at creation (null = global); the attribution path that makes the boundary usable.
+
+**Tests (+7 api → 702; shared 190, ai 195 unchanged):**
+- `pgvector.store.test.ts` (+2): expert predicate present + scoped when `expertId` set; absent for neutral.
+- `pgvector.store.integration.test.ts` (+1 live, opt-in): seeds an expertX-attributed doc tree; asserts expertX sees own+global, expertY excluded from expertX's chunk, neutral sees all.
+- `response-cache.service.test.ts` (+1 assertion block): retrieval key forks on expertId, two experts differ.
+- `chat.service.test.ts` (+2 assertions): expertId flows into retrieval filters; neutral turn has no `expertId` filter.
+- `document-version.repository.test.ts` (+2): attributed create sets `expert_id`; unattributed create leaves it null.
+
+**Follow-up (product, not security):** the admin knowledge-upload UI does not yet let an operator choose the owning expert (uploads are global today). The boundary + attribution field are wired end-to-end; an admin expert picker is deferred to a per-expert-knowledge-base feature.
+
+**Docs:** FEEDBACKS.MD (remediation note + verdict annotations), LEARNINGS #27, DIRECTIVES #43, progress-state.md, progress-log.md.
+
+**Gates:** `@expertos/api` build + eslint + jest (702 pass) + `@expertos/shared`/`@expertos/ai` build+lint+jest + root knip — all green. Rebuilt `shared`/`ai` dist (apps consume dist/).

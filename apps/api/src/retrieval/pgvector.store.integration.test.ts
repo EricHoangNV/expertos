@@ -65,7 +65,15 @@ describeLive("PgVectorStore live integration (app_user role)", () => {
   const cMid = randomUUID(); //  45° off  → cosine ~0.707
   const cFarVi = randomUUID(); // orthogonal → cosine 0; Vietnamese, tenant_customer
   const cPending = randomUUID(); // axis 0 but status=pending → excluded by the published gate
-  const myIds = new Set<string>([cNear, cMid, cFarVi, cPending]);
+
+  // Expert-knowledge boundary (Security Cycle 2): a document attributed to expertX, so it is
+  // retrievable only under expertX's voice (or neutral), never another expert's.
+  const expertX = randomUUID();
+  const expertY = randomUUID(); // a *different* expert — must not see expertX's chunk
+  const docX = randomUUID();
+  const dvX = randomUUID();
+  const cExpertX = randomUUID(); // axis 0, published, owned by expertX
+  const myIds = new Set<string>([cNear, cMid, cFarVi, cPending, cExpertX]);
 
   async function asCtx<T>(
     ctx: RlsContext,
@@ -183,6 +191,42 @@ describeLive("PgVectorStore live integration (app_user role)", () => {
         "pending",
         embed(1, 0),
       );
+
+      // Expert-attributed document tree: documents.expert_id = expertX.
+      await tx.$executeRawUnsafe(
+        `INSERT INTO experts (id, tenant_id, slug, display_name, active, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3, $4, true, now())`,
+        expertX,
+        tenantA,
+        `expert-x-${tag}`,
+        `Expert X ${tag}`,
+      );
+      await tx.$executeRawUnsafe(
+        `INSERT INTO documents (id, tenant_id, scope, expert_id, title, language, status, updated_at)
+         VALUES ($1::uuid, $2::uuid, 'global_expert'::content_scope, $3::uuid, $4, 'en'::language, 'published'::publish_status, now())`,
+        docX,
+        tenantA,
+        expertX,
+        `doc-x ${tag}`,
+      );
+      await tx.$executeRawUnsafe(
+        `INSERT INTO document_versions (id, tenant_id, document_id, version_number, status, created_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 'published'::publish_status, now())`,
+        dvX,
+        tenantA,
+        docX,
+      );
+      await tx.$executeRawUnsafe(
+        `INSERT INTO chunks
+           (id, tenant_id, scope, document_version_id, chunk_index, content, summary, language, status, embedding, created_at)
+         VALUES ($1::uuid, $2::uuid, 'global_expert'::content_scope, $3::uuid, 0, $4, $5, 'en'::language, 'published'::chunk_status, $6::vector, now())`,
+        cExpertX,
+        tenantA,
+        dvX,
+        "Expert X's signed-off note on photosynthesis efficiency.".normalize("NFC"),
+        "biology",
+        toVectorLiteral(embed(1, 0)),
+      );
     });
   });
 
@@ -277,6 +321,34 @@ describeLive("PgVectorStore live integration (app_user role)", () => {
     expect(res.filter((r) => myIds.has(r.chunkId)).map((r) => r.chunkId)).toEqual(
       [cPending],
     );
+  });
+
+  it("scopes to the selected expert + global corpus, excluding another expert's chunk", async () => {
+    // expertX's voice: sees its own attributed chunk AND the unattributed (null) global chunks.
+    const own = await retrieve(
+      { tenantId: tenantA },
+      { text: "", embedding: qNear, topK: 50, filters: { status: "published", expertId: expertX } },
+    );
+    const ownIds = own.map((r) => r.chunkId);
+    expect(ownIds).toContain(cExpertX); // its own
+    expect(ownIds).toContain(cNear); // global (expert_id null)
+    expect(ownIds).toContain(cMid); // global (expert_id null)
+
+    // expertY's voice: sees the global corpus but NOT expertX's attributed chunk (the boundary).
+    const others = await retrieve(
+      { tenantId: tenantA },
+      { text: "", embedding: qNear, topK: 50, filters: { status: "published", expertId: expertY } },
+    );
+    const otherIds = others.map((r) => r.chunkId);
+    expect(otherIds).not.toContain(cExpertX);
+    expect(otherIds).toContain(cNear); // global still visible
+
+    // Neutral voice (no expertId): every published chunk, including the expert-attributed one.
+    const neutral = await retrieve(
+      { tenantId: tenantA },
+      { text: "", embedding: qNear, topK: 50, filters: { status: "published" } },
+    );
+    expect(neutral.map((r) => r.chunkId)).toContain(cExpertX);
   });
 
   it("enforces RLS: another tenant sees none of these tenant-scoped chunks", async () => {

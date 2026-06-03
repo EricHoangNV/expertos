@@ -62,7 +62,7 @@ export class ResponseCacheService {
 
   /** Builds the retrieval cache key from the tenant + the (normalized) query and its scope. */
   retrievalKey(tenantId: string, query: RetrievalQueryInput): string {
-    const { status, language, scope } = query.filters;
+    const { status, language, scope, expertId } = query.filters;
     return join([
       "retrieval",
       tenantId,
@@ -71,6 +71,9 @@ export class ResponseCacheService {
       language ?? "",
       // Scope is a set — sort so order can't fork the key.
       (scope ? [...scope].sort() : []).join(","),
+      // Expert-knowledge boundary (Security Cycle 2): expertId scopes the chunk set, so it must
+      // fork the key or one expert's cached chunks could serve another's (or the neutral) query.
+      expertId ?? "",
       normalizeKey(query.text),
     ]);
   }

@@ -28,6 +28,12 @@ export interface RetrievalFilters {
   language?: RetrievalLanguage;
   /** Publication-status gate; the driver always receives a resolved value. */
   status: RetrievalStatus;
+  /**
+   * Expert-knowledge boundary: when set, the driver restricts grounding to documents owned by
+   * this expert plus unattributed/global documents (`expert_id IS NULL`), never another expert's.
+   * Omitted = no expert restriction (neutral voice). Enforced via a join back to `documents`.
+   */
+  expertId?: string;
 }
 
 export interface RetrievalRequest {

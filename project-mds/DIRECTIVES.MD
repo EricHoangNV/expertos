@@ -48,6 +48,7 @@
 40. **Verify large-file integrity before committing** — the OWC mount can silently truncate a just-edited file before `git add` reads it; check `wc -l`/`tail` + watch for an unexpected deletion count in the commit stat, recover from the last good commit if hit (§3.4.2, LEARNINGS #23)
 41. **Guard every SSE `JSON.parse`** — route external-stream frame parsing through one helper that skips empty/sentinel/unparseable frames; an unguarded `JSON.parse("")` on a blank keep-alive frame aborts the whole answer mid-stream. Test with a malformed frame interleaved, not just a clean payload (LEARNINGS #24)
 42. **Sync mirrored auth fields on every source-of-truth change** — when a guard authorizes from a denormalized copy (`RolesGuard` reads `users.role`, the mirror of the `allowed_emails` whitelist), every mutation of the source must write through to the mirror **in the same transaction**, not only at sign-in; a sign-in-only sync leaves stale privilege live until the next login (LEARNINGS #26)
+43. **A UI scope selector must filter the retrieval query, not just the persona** — when a selector narrows what an answer should be grounded in (expert/tenant/project), thread that scope into the grounding query's `WHERE` (e.g. expert-knowledge boundary: `PgVectorStore` joins `document_versions → documents` admitting `expert_id = $expertId OR expert_id IS NULL`) **and fork every cache key it now influences**; a scope only the voice/persona/persistence layer reads is cosmetic, not a security boundary (LEARNINGS #27)
 
 ---
 

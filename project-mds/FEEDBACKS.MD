@@ -4,11 +4,11 @@
 
 ### Security: Cycle 2 — FAIL (2026-06-03)
 - auth & access control: FAIL (removed/demoted whitelist entries do not revoke mirrored API roles) — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
-- data exposure / secrets: FAIL (expert voice is not a knowledge boundary; raw upload objects are not deleted with retention/user deletion)
+- data exposure / secrets: FAIL (expert-voice-knowledge-boundary REMEDIATED 2026-06-03, pending re-review; raw upload objects still not deleted with retention/user deletion)
 - input validation: PASS (zod route validation, constant raw SQL with bound params, citation-marker neutralization, webhook raw-body signature checks)
 - dependency / supply chain: PASS (no new dependency risk reviewed in latest changes)
 - Critical: stale admin/expert roles can keep calling privileged APIs after whitelist removal — REMEDIATED 2026-06-03, pending re-review
-- Critical: selected expert voice can answer from another expert/global published knowledge
+- Critical: selected expert voice can answer from another expert/global published knowledge — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
 - Critical: document-upload entitlement is defined but not enforced before parse/embed work
 - High: retention/user deletion removes DB rows but not raw upload objects
 - High: TidyCal fallback idempotency can skip later cancel/reschedule lifecycle events
@@ -21,6 +21,29 @@
 - core user flow: FAIL
 - data handling / privacy: PASS
 - High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state
+
+---
+
+## Developer Remediation Note (2026-06-03) — Critical: Selected expert voice is not a knowledge boundary
+
+**Author:** implementing agent (not a review cycle). Addresses the Security Cycle 2 / Architecture Cycle 2 Critical "selected expert voice can answer from another expert/global published knowledge."
+
+**Root cause:** `expertId` drove voice retrieval, prompt persona, and conversation persistence, but knowledge retrieval (`PgVectorStore`) filtered chunks only by `status`/`language`/`scope` — no expert predicate. `Document.expert_id` existed but no flow set it, `Chunk` didn't denormalize it, and the store never joined back to it. So Expert A's voice could ground a cited answer in Expert B's / global knowledge A never signed off on.
+
+**Scope policy (the decision the review asked for):** unattributed knowledge (`documents.expert_id IS NULL`) is the **shared global corpus** available to every voice; a document attributed to an expert is **that expert's own** and retrievable only under that expert's voice (or the neutral voice). When a voice is selected, retrieval admits `expert_id = $selected OR expert_id IS NULL`, never another expert's. This preserves the single-expert-launch behavior (all current knowledge is unattributed → still shared) while making per-expert private knowledge enforceable the moment a document is attributed.
+
+**Fix:**
+- `expertId` added to the retrieval filter contract (`@expertos/shared` `retrievalFiltersSchema` + `@expertos/ai` `RetrievalFilters`).
+- `PgVectorStore.buildFilterClause` now appends, when `expertId` is set, an `EXISTS (SELECT 1 FROM document_versions dv JOIN documents d ON d.id = dv.document_id WHERE dv.id = chunks.document_version_id AND (d.expert_id = $n::uuid OR d.expert_id IS NULL))` predicate (bound param; runs under the same RLS-scoped tx so tenant isolation still holds). All chunk-column predicates qualified with `chunks.` to stay unambiguous alongside the subquery.
+- `ChatService.toRetrievalQuery` threads the selected `input.expertId` into the filters (omitted = neutral = full corpus).
+- `ResponseCacheService.retrievalKey` now forks on `expertId` (the answer key already did) so one expert's cached chunks can't serve another's / the neutral query.
+- Attribution path: `expertId` added to `IngestionInput`; `DocumentVersionRepository` sets `Document.expert_id` at creation (null = global).
+
+**Tests:** `pgvector.store.test.ts` (+2: expert predicate present/scoped, absent for neutral); `pgvector.store.integration.test.ts` (+1 live: expertX sees own+global, expertY excluded from expertX's chunk, neutral sees all — seeds an expert-attributed doc tree); `response-cache.service.test.ts` (+expertId key-fork); `chat.service.test.ts` (+expertId flows into retrieval filters; neutral has none); `document-version.repository.test.ts` (+2: attributed vs unattributed create). Full `@expertos/api` suite 702 pass; shared 190, ai 195. Gates: api build + eslint + shared/ai lint + root knip green.
+
+**Follow-up (not a security gap — a product feature):** the admin knowledge-upload UI does not yet let an operator *choose* the owning expert (knowledge is uploaded as global today). The boundary is enforced end-to-end and the attribution field is plumbed; surfacing an expert picker in the admin upload flow is deferred to a per-expert-knowledge-base feature. DIRECTIVES #43, LEARNINGS #27.
+
+**Not addressed here (still open in the Security Cycle 2 verdict):** document-upload entitlement enforcement, raw-upload-object deletion, TidyCal fallback idempotency.
 
 ---
 

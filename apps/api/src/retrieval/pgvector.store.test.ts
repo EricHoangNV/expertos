@@ -60,6 +60,31 @@ describe("PgVectorStore", () => {
     }
   });
 
+  it("scopes to the selected expert + global knowledge when expertId is set", async () => {
+    const { tx, calls } = makeTx();
+    await new PgVectorStore(tx).retrieve({
+      ...BASE,
+      filters: { status: "published", expertId: "11111111-1111-1111-1111-111111111111" },
+    });
+
+    for (const call of calls) {
+      // Joins back to documents and admits only the expert's own docs OR the global (null) corpus.
+      expect(call.sql).toContain("EXISTS (SELECT 1 FROM document_versions dv");
+      expect(call.sql).toContain("d.expert_id = $");
+      expect(call.sql).toContain("d.expert_id IS NULL");
+      expect(call.params).toContain("11111111-1111-1111-1111-111111111111");
+    }
+  });
+
+  it("omits the expert predicate when no expertId is given (neutral voice)", async () => {
+    const { tx, calls } = makeTx();
+    await new PgVectorStore(tx).retrieve(BASE);
+
+    for (const call of calls) {
+      expect(call.sql).not.toContain("d.expert_id");
+    }
+  });
+
   it("skips the keyword query when the text is blank", async () => {
     const { tx, calls } = makeTx();
     const results = await new PgVectorStore(tx).retrieve({ ...BASE, text: "   " });
