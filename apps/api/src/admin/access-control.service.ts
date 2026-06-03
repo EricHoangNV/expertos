@@ -117,6 +117,10 @@ export class AccessControlService {
         data: { role: input.role },
         select: DTO_SELECT,
       })) as AllowedEmailRow;
+      // Source-of-truth sync: mirror the new role onto the user row so a demotion revokes the
+      // stale privilege on the *next* API request, not just at the next portal sign-in (security
+      // FAIL: RolesGuard reads users.role, which AdminSessionService only synced at sign-in).
+      await this.syncUserRole(tx, current.email, input.role);
       await this.audit.record(tx, actor, {
         action: "access_control.role_changed",
         targetType: "allowed_email",
@@ -143,6 +147,10 @@ export class AccessControlService {
         throw new BadRequestException("You cannot remove your own access");
       }
       await tx.allowedEmail.delete({ where: { id } });
+      // Source-of-truth sync: drop the user back to the base `user` role so a removed admin/expert
+      // loses privileged-API access immediately (RolesGuard reads users.role) rather than only
+      // being blocked at the portal sign-in gate. See {@link syncUserRole}.
+      await this.syncUserRole(tx, current.email, "user");
       await this.audit.record(tx, actor, {
         action: "access_control.email_removed",
         targetType: "allowed_email",
@@ -151,6 +159,26 @@ export class AccessControlService {
       });
       this.logger.info("allowed email removed", { id });
       return { ok: true };
+    });
+  }
+
+  /**
+   * Mirror a whitelist change onto the matching user row(s). The privileged API boundary
+   * ({@link RolesGuard}) authorizes from `users.role`, which {@link AdminSessionService} previously
+   * only synced at portal sign-in — so a removed/demoted operator kept their stale role until they
+   * re-signed-in and could keep calling `@Roles` APIs directly. Writing through here makes the
+   * whitelist the source of truth for the API, not just the UI. Email match is case-insensitive
+   * (the whitelist normalizes to lowercase; the mirrored `users.email` comes verbatim from Firebase)
+   * and uses `updateMany`, so it is a no-op when the invitee has never signed in (no user row yet).
+   */
+  private async syncUserRole(
+    tx: Prisma.TransactionClient,
+    email: string,
+    role: "user" | "expert" | "admin",
+  ): Promise<void> {
+    await tx.user.updateMany({
+      where: { email: { equals: email, mode: "insensitive" } },
+      data: { role },
     });
   }
 }

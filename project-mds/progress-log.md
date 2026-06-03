@@ -4660,3 +4660,28 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 **Files changed:**
 - `apps/web/app/page.test.tsx` — new (+3 tests) login/landing page coverage.
 - `project-mds/progress-state.md` — test counts (web 99, total 1519), M15 note, last-task line.
+
+## Remediate Security/Architecture Cycle 2 Critical — admin whitelist removal does not revoke API privilege
+**Date:** 2026-06-03
+**Ref:** FEEDBACKS Security Cycle 2 / Daily Architecture Review Cycle 2 — Critical "stale admin/expert roles can keep calling privileged APIs after whitelist removal" (M14 access-control)
+
+**What was done:**
+- Made the `allowed_emails` whitelist the source of truth for the *API* boundary, not just the portal UI. `RolesGuard` authorizes from `users.role` (a denormalized mirror) which `AdminSessionService` previously only synced at sign-in — so a removed/demoted operator kept their stale role until next portal sign-in and could call `@Roles` APIs directly in the meantime.
+- `AccessControlService`: added a private `syncUserRole(tx, email, role)` helper (case-insensitive email match, `updateMany` → no-op when the invitee never signed in). `remove` now writes the matching user back to `role:"user"`; `updateRole` mirrors the new whitelist role onto the user. Both run inside the existing admin-RLS transaction alongside the whitelist mutation + audit entry, so revocation is atomic and immediate (next request reads the downgraded role).
+- `AdminSessionService.resolve`: the 403 (not-whitelisted) path now reconciles defensively — an account presenting a stale `admin`/`expert` role is downgraded to `user` before the 403 is thrown.
+- Tests: `access-control.service.test.ts` — added `user.updateMany` to the mock tx, asserted the demote/remove write-through, and asserted self-lockout rejections skip it (+1 net test). `admin-session.service.test.ts` — added a stale-elevated-role reconciliation case (+1).
+- Docs: FEEDBACKS.MD developer remediation note + verdict-line annotation (remediated, pending re-review); LEARNINGS #26 (mirrored-auth-field staleness); DIRECTIVES Quick Reference #42.
+
+**Key decisions:**
+- **Write-through on the mutation (belt) + reconcile at the sign-in gate (suspenders)**, rather than re-deriving from the whitelist on every guarded request. Re-deriving would add a DB read to every `@Roles` call on the hot path; the mirror is fine *if* every source mutation writes through — which is exactly what was missing. The 403-path downgrade closes the residual case of an out-of-band whitelist edit.
+- **`updateRole` mirrors in both directions** (demote *and* promote) for consistent "source of truth" semantics; the security-critical direction is demotion, but immediate promotion is benign and avoids a stale-low mirror. Documented that this makes role changes effective immediately, not only at next sign-in.
+- Did **not** flip the Security verdict to PASS — a developer remediating a finding isn't a review cycle, and the Security Cycle 2 verdict stays FAIL on its other four findings. Annotated the two relevant lines as remediated-pending-review instead.
+
+**Files changed:**
+- `apps/api/src/admin/access-control.service.ts` — `syncUserRole` helper; write-through in `remove`/`updateRole`.
+- `apps/api/src/auth/admin-session.service.ts` — 403-path stale-elevated-role downgrade.
+- `apps/api/src/admin/access-control.service.test.ts` — mock `user.updateMany`; write-through + skip-on-self-lockout assertions.
+- `apps/api/src/auth/admin-session.service.test.ts` — stale-elevated reconciliation test.
+- `project-mds/FEEDBACKS.MD`, `LEARNINGS.MD` (#26), `DIRECTIVES.MD` (#42), `progress-state.md`, `progress-log.md`.
+
+**Gates:** `@expertos/api` build + eslint + jest (698 pass, changed files 100% covered) + root knip — all green.

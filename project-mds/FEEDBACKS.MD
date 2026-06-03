@@ -3,11 +3,11 @@
 ## Latest Review Verdicts (read this section first — stop at the breaker line)
 
 ### Security: Cycle 2 — FAIL (2026-06-03)
-- auth & access control: FAIL (removed/demoted whitelist entries do not revoke mirrored API roles)
+- auth & access control: FAIL (removed/demoted whitelist entries do not revoke mirrored API roles) — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
 - data exposure / secrets: FAIL (expert voice is not a knowledge boundary; raw upload objects are not deleted with retention/user deletion)
 - input validation: PASS (zod route validation, constant raw SQL with bound params, citation-marker neutralization, webhook raw-body signature checks)
 - dependency / supply chain: PASS (no new dependency risk reviewed in latest changes)
-- Critical: stale admin/expert roles can keep calling privileged APIs after whitelist removal
+- Critical: stale admin/expert roles can keep calling privileged APIs after whitelist removal — REMEDIATED 2026-06-03, pending re-review
 - Critical: selected expert voice can answer from another expert/global published knowledge
 - Critical: document-upload entitlement is defined but not enforced before parse/embed work
 - High: retention/user deletion removes DB rows but not raw upload objects
@@ -21,6 +21,22 @@
 - core user flow: FAIL
 - data handling / privacy: PASS
 - High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state
+
+---
+
+## Developer Remediation Note (2026-06-03) — Critical: Admin whitelist removal does not revoke API privilege
+
+**Author:** implementing agent (not a review cycle). Addresses the Security Cycle 2 / Architecture Cycle 2 Critical "stale admin/expert roles can keep calling privileged APIs after whitelist removal."
+
+**Root cause:** `RolesGuard` authorizes from `users.role`, which `AdminSessionService` only synced at portal sign-in. `AccessControlService.remove`/`updateRole` mutated `allowed_emails` but never the mirrored `users.role`, so a removed/demoted operator kept their stale role (and `is_admin` RLS) until they next re-signed-in to the portal — and could keep calling `@Roles` APIs directly with a valid Firebase token in the meantime.
+
+**Fix (whitelist is now the API source of truth, not just a UI gate):**
+- `AccessControlService.remove` now writes the matching user row back to `role = "user"`; `updateRole` mirrors the new whitelist role onto the user (demotion revokes admin immediately). Both via a new `syncUserRole` helper — case-insensitive email match, `updateMany` so it's a no-op when the invitee never signed in. Runs in the same admin-RLS transaction as the whitelist mutation + audit entry.
+- `AdminSessionService.resolve` 403 path now reconciles defensively: a not-/no-longer-whitelisted email presenting a stale `admin`/`expert` role is downgraded to `user` before the 403 is thrown.
+
+**Tests:** `access-control.service.test.ts` (+1) asserts the demote/remove write-through and that self-lockout rejections skip it; `admin-session.service.test.ts` (+1) asserts the stale-elevated reconciliation. Full `@expertos/api` suite 698 pass, changed files 100% covered. Gates: api build + eslint + jest + root knip green.
+
+**Not addressed here (still open in the Security Cycle 2 verdict):** expert-voice knowledge boundary, document-upload entitlement enforcement, raw-upload-object deletion, TidyCal fallback idempotency.
 
 ---
 

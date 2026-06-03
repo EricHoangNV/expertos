@@ -308,3 +308,15 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Fix: add a repo-root `.stylelintignore` excluding build output (`**/.next/**`, `**/tmp/**`, `**/dist/**`, `**/.turbo/**`, `**/coverage/**`, `**/node_modules/**`). stylelint auto-reads `.stylelintignore` from cwd, so the existing `lint:css` script needs no change. To confirm only build artifacts are the cause before adding it, re-run stylelint with `--ignore-pattern "**/tmp/**" --ignore-pattern "**/.next/**" …` and verify exit 0.
 
 **Rule:** A lint/format glob that can match a directory name appearing in build output (`app`, `src`, `dist`) needs an ignore file for that build output — never assume "clean in CI" means clean for an agent who has run the app locally. Diagnose a wall of generated-file lint errors by grouping failures by path prefix; if they're all under `.next`/`tmp`/`dist`, it's the glob, not your code.
+
+---
+
+## 26. A mirrored authorization field is only as fresh as its write paths — sync it on every source-of-truth change, or the guard reads stale privilege
+
+**Context:** Security Cycle 2 / Architecture Cycle 2 — Critical "stale admin/expert roles can keep calling privileged APIs after whitelist removal" (M14 access-control).
+
+- The `allowed_emails` whitelist is the *intended* source of truth for admin/expert access, but the API authorization guard (`RolesGuard`) actually reads a **mirror**: `users.role`. That mirror was only written in one place — `AdminSessionService` at portal sign-in. The whitelist mutation paths (`AccessControlService.remove`/`updateRole`) changed `allowed_emails` but never the mirror, so a removed/demoted operator kept their stale `users.role` (and, for admins, the `is_admin` RLS GUC) and could keep calling `@Roles` APIs directly with a still-valid Firebase token until they happened to re-sign-in to the portal. Invite-only access was effectively a UI/session gate, not an API gate.
+- Root cause is the classic mirror-staleness trap: when a guard reads a *denormalized copy* of an authorization fact, every mutation of the original must write through to the copy (or the guard must re-derive from the source on each request, fail-closed). A read-time check and a write-time sync that disagree on which store is authoritative leaves a silent gap exactly the size of "between mutation and next sync."
+- Fix: write through `users.role` from the whitelist mutations in the same admin-RLS transaction (`remove` → `user`, `updateRole` → the new role; case-insensitive email match, `updateMany` so it no-ops for invitees who never signed in), **and** reconcile defensively at the sign-in gate (the 403 path downgrades a stale elevated role before refusing). Belt (immediate revocation at the mutation) and suspenders (reconciliation at the next gate touch).
+
+**Rule:** When an authorization guard reads a mirrored/denormalized copy of a permission fact, treat every mutation of the source of truth as also a mutation of the mirror — write through synchronously in the same transaction (and/or fail-closed re-derive at read time); a sync that only runs at sign-in/login leaves stale privilege live until the next login.

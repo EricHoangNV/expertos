@@ -33,6 +33,12 @@ export class AdminSessionService {
       // Only the two portal roles authorize the portal; a `user`-roled row (shouldn't exist — the
       // app layer never writes one) is treated as not authorized, defensively.
       if (!entry || (entry.role !== "admin" && entry.role !== "expert")) {
+        // Defense-in-depth: if this account still carries a stale elevated role (e.g. its whitelist
+        // entry was removed out-of-band), revoke it now so RolesGuard can't authorize it from a
+        // stale users.role. The primary revocation is the write-through in AccessControlService.
+        if (user.role === "admin" || user.role === "expert") {
+          await tx.user.update({ where: { id: user.id }, data: { role: "user" } });
+        }
         throw new ForbiddenException("Your email is not authorized for the admin portal");
       }
       const role: AllowedEmailRole = entry.role;

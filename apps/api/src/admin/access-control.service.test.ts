@@ -27,6 +27,9 @@ function makeTx() {
       update: jest.fn(),
       delete: jest.fn(),
     },
+    user: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
   };
 }
 
@@ -139,6 +142,11 @@ describe("AccessControlService.updateRole", () => {
     expect(tx.allowedEmail.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: ENTRY_ID }, data: { role: "admin" } }),
     );
+    // Source-of-truth sync: the new role is mirrored onto the matching user row.
+    expect(tx.user.updateMany).toHaveBeenCalledWith({
+      where: { email: { equals: "expert@example.com", mode: "insensitive" } },
+      data: { role: "admin" },
+    });
     expect(record).toHaveBeenCalledWith(
       tx,
       ADMIN,
@@ -170,7 +178,22 @@ describe("AccessControlService.updateRole", () => {
       BadRequestException,
     );
     expect(tx.allowedEmail.update).not.toHaveBeenCalled();
+    expect(tx.user.updateMany).not.toHaveBeenCalled();
     expect(record).not.toHaveBeenCalled();
+  });
+
+  it("demoting an entry mirrors the lower role onto the user (immediate revocation)", async () => {
+    const tx = makeTx();
+    tx.allowedEmail.findUnique.mockResolvedValue({ email: "ex@example.com", role: "admin" });
+    tx.allowedEmail.update.mockResolvedValue(dtoRow({ email: "ex@example.com", role: "expert" }));
+    const { service } = makeService(tx);
+
+    await service.updateRole(ADMIN, ENTRY_ID, { role: "expert" });
+
+    expect(tx.user.updateMany).toHaveBeenCalledWith({
+      where: { email: { equals: "ex@example.com", mode: "insensitive" } },
+      data: { role: "expert" },
+    });
   });
 
   it("allows re-setting your own entry to admin (no demotion)", async () => {
@@ -194,6 +217,11 @@ describe("AccessControlService.remove", () => {
     const result = await service.remove(ADMIN, ENTRY_ID);
 
     expect(tx.allowedEmail.delete).toHaveBeenCalledWith({ where: { id: ENTRY_ID } });
+    // Source-of-truth sync: a removed operator is dropped back to the base `user` role.
+    expect(tx.user.updateMany).toHaveBeenCalledWith({
+      where: { email: { equals: "expert@example.com", mode: "insensitive" } },
+      data: { role: "user" },
+    });
     expect(record).toHaveBeenCalledWith(
       tx,
       ADMIN,
@@ -221,6 +249,7 @@ describe("AccessControlService.remove", () => {
 
     await expect(service.remove(ADMIN, ENTRY_ID)).rejects.toBeInstanceOf(BadRequestException);
     expect(tx.allowedEmail.delete).not.toHaveBeenCalled();
+    expect(tx.user.updateMany).not.toHaveBeenCalled();
     expect(record).not.toHaveBeenCalled();
   });
 });

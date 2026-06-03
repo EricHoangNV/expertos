@@ -86,6 +86,18 @@ describe("AdminSessionService.resolve", () => {
     expect(tx.user.update).not.toHaveBeenCalled();
   });
 
+  it("revokes a stale elevated role when the email is no longer whitelisted", async () => {
+    const { prisma, tx } = makeFakePrisma();
+    tx.allowedEmail.findUnique.mockResolvedValue(null);
+
+    // A previously-admin account whose whitelist entry was removed out-of-band still presents a
+    // stale `admin` users.role; the sign-in gate must downgrade it before refusing the portal.
+    await expect(
+      new AdminSessionService(prisma).resolve({ ...USER, role: "admin" }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.user.update).toHaveBeenCalledWith({ where: { id: USER.id }, data: { role: "user" } });
+  });
+
   it("throws 403 for a non-portal role on the entry (defensive)", async () => {
     const { prisma, tx } = makeFakePrisma();
     tx.allowedEmail.findUnique.mockResolvedValue({ role: "user" });

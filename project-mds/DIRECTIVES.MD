@@ -47,6 +47,7 @@
 39. **Split-origin API needs CORS** — the SPA and API are different origins (separate Cloud Run services), so `enableCors` with an origin allowlist + the `Authorization` header; only a real browser preflight catches its absence (LEARNINGS #10)
 40. **Verify large-file integrity before committing** — the OWC mount can silently truncate a just-edited file before `git add` reads it; check `wc -l`/`tail` + watch for an unexpected deletion count in the commit stat, recover from the last good commit if hit (§3.4.2, LEARNINGS #23)
 41. **Guard every SSE `JSON.parse`** — route external-stream frame parsing through one helper that skips empty/sentinel/unparseable frames; an unguarded `JSON.parse("")` on a blank keep-alive frame aborts the whole answer mid-stream. Test with a malformed frame interleaved, not just a clean payload (LEARNINGS #24)
+42. **Sync mirrored auth fields on every source-of-truth change** — when a guard authorizes from a denormalized copy (`RolesGuard` reads `users.role`, the mirror of the `allowed_emails` whitelist), every mutation of the source must write through to the mirror **in the same transaction**, not only at sign-in; a sign-in-only sync leaves stale privilege live until the next login (LEARNINGS #26)
 
 ---
 
