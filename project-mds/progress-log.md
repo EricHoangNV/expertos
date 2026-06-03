@@ -4838,3 +4838,23 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 **Docs:** FEEDBACKS remediation note + verdict-block Medium line. No new LEARNINGS/DIRECTIVES (wording change, no new failure class).
 
 **Status:** Both Product Cycle 1 Mediums ADDRESSED. With the High already REMEDIATED and all 5 Security Cycle 2 findings REMEDIATED, no in-sandbox-codeable review finding remains open in any track. Remaining work is re-review + host E2E + PM/legal/schema gates.
+
+## M15.3.3 + M15.3.4 — Concierge review + Knowledge approval E2E (sandbox deliverable closed)
+**Date:** 2026-06-03
+**Ref:** PRD Task Manifest M15.3.3 / M15.3.4 (E2E suite expansion); DIRECTIVES §3.4.1
+
+**What was done:**
+- Confirmed both specs already exist, are committed, and their fixtures are seeded: `e2e/specs/concierge-review.spec.ts` (M13.6 two-pane queue; `"E2E concierge fixture answer"` marker) and `e2e/specs/knowledge-approval.spec.ts` (M13.3 kanban; `"E2E Expert-Review Note"`). Both fixtures are created+reset every run by `e2e/global-setup.ts`.
+- **Selector/label audit (the new value this session):** verified every DOM selector and EN dictionary string each spec asserts against the *current* admin pages, to de-risk the host run:
+  - concierge: `<h1>`="Review queue", `.queue-item`/`.review-detail`/`.review-answer`/`.review-section`, `role="tab"`+`aria-selected` (tabOpen/Mine/Done = "Open"/"Mine"/"Done"), `verdict-card`+`aria-pressed` (verdictGoodName="Good"), action label flips `recordVerdict`→`pushRefined`="Push refined update".
+  - knowledge: `<h1>`="Knowledge approval", `.kanban-col`×4 (Draft/AI Processing/Expert Review/Published), `.kanban-card`, `card.approve`="Approve & publish"; step-pipeline buttons render "Draft"/"Published" as `<button>` while the conv→knowledge "Draft" is a `<Link>` (role=link) → no `getByRole("button", {name:"Draft"})` collision.
+- Ran the e2e static gates: `pnpm --filter @expertos/e2e typecheck` and `lint` both clean.
+- Marked M15.3.3 + M15.3.4 `[x]` in the PRD manifest with honest "sandbox deliverable; host run pending" notes (mirrors the M15.3.5 precedent). Updated progress-state.
+
+**Key decisions:**
+- Marked the two tasks done rather than leaving them `[ ]`: the entire sandbox-side deliverable (spec + seed + commit + static gates + DOM verification) is complete; only the host Playwright run is left, which §3.4.1 says the sandbox structurally cannot do. Did NOT claim the specs "pass" — only that they are written and verified to align with the rendered DOM.
+- No code changes — the specs were sound; the contribution is the verification that they will not fail the host run on selector/label drift.
+
+**Files changed:**
+- `project-mds/PRD.md` — M15.3.3/.4 `[ ]`→`[x]` with completion notes.
+- `project-mds/progress-state.md` — M15 status + next-tasks updated.
