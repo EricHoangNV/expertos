@@ -28,7 +28,7 @@ import {
   createSavedAnswer,
   removeSavedAnswer,
 } from "./history-client";
-import { uploadFile, UPLOAD_ACCEPT } from "./upload-client";
+import { uploadFile, UploadEntitlementError, UPLOAD_ACCEPT } from "./upload-client";
 import { fetchProfileLocale, updateProfileLocale } from "./i18n/profile-client";
 
 const TOKEN = "test-token";
@@ -315,6 +315,39 @@ describe("upload-client", () => {
     mockApi("POST", "/uploads", { status: 413 });
     const file = new File(["x"], "big.pdf", { type: "application/pdf" });
     await expect(uploadFile(TOKEN, file, "persistent")).rejects.toThrow("upload failed (413)");
+  });
+
+  it("uploadFile throws a typed UploadEntitlementError on a 402 entitlement-denied payload", async () => {
+    // The 402 carries the structured upgrade payload (no user-facing `message`); the UI localizes it
+    // into a friendly upgrade prompt rather than surfacing the framework's bare "Http Exception".
+    mockApi("POST", "/uploads", {
+      status: 402,
+      body: {
+        reason: "feature_disabled",
+        feature: "document_upload",
+        currentPlan: "free",
+        upgradeOptions: [{ key: "plus", name: "Plus" }],
+        remainingQuota: null,
+        message: "Http Exception",
+      },
+    });
+    const file = new File(["a,b\n1,2"], "data.csv", { type: "text/csv" });
+    await expect(uploadFile(TOKEN, file, "temporary")).rejects.toMatchObject({
+      name: "UploadEntitlementError",
+      payload: { reason: "feature_disabled", feature: "document_upload" },
+    });
+    // The typed error exposes the payload so the caller can render the offered upgrade tiers.
+    const err = await uploadFile(TOKEN, file, "temporary").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UploadEntitlementError);
+    expect((err as UploadEntitlementError).payload.upgradeOptions).toEqual([
+      { key: "plus", name: "Plus" },
+    ]);
+  });
+
+  it("uploadFile treats a non-entitlement 402 as a plain error", async () => {
+    mockApi("POST", "/uploads", { status: 402, body: { message: "payment required" } });
+    const file = new File(["x"], "f.pdf", { type: "application/pdf" });
+    await expect(uploadFile(TOKEN, file, "temporary")).rejects.toThrow("payment required");
   });
 });
 

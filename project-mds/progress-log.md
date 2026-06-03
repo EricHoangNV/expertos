@@ -4920,3 +4920,26 @@ Both carry approver checklists. Tasks remain `[~]` — committing the drafts doe
 **Notes for next iteration:**
 - Host-run the 8 new tests via `scripts/test-e2e-users.sh` + `scripts/test-e2e-admin.sh`; if any selector drifts, the most likely suspects are the conv→knowledge "From chat" cell and the voice-profile list row (extracted, not live-verified).
 - The 9 pre-existing uncommitted source edits (knowledge/ingestion/i18n) in the working tree are unrelated to this task and were left untouched — they predate it (likely a ralph iteration that didn't commit).
+
+---
+
+## Product Cycle 1 Medium — Free-plan upload 402 now shows a localized upgrade prompt (not "Http Exception") (2026-06-03)
+
+**Task:** Close the open Product Cycle 1 Medium (found via E2E M15.3.7): a Free-plan document upload was correctly rejected (402, before any parse/embed — DIRECTIVE #44) but surfaced as a red badge reading the framework's bare **"Http Exception"** — no plan-limit indication, no path forward.
+
+**Root cause:** The 402 `EntitlementDeniedPayload` (`packages/shared/src/entitlements.ts`) carries `reason`/`feature`/`currentPlan`/`upgradeOptions`/`remainingQuota` but no user-facing `message`. `AllExceptionsFilter.extractHttpMessage` falls back to the `HttpException` default message ("Http Exception") and echoes it as `body.message`; the web upload client's old `errorMessage()` returned that non-empty string verbatim, rendered in a `.badge-red`.
+
+**Fix (client/UX only — enforcement unchanged):**
+- `apps/web/src/lib/upload-client.ts` — new exported `UploadEntitlementError extends Error` carrying the payload. `uploadFile` reads the error body once and branches: a 402 matching the entitlement-denied shape (`reason ∈ {feature_disabled, quota_exceeded}` + string `feature` + array `upgradeOptions`) throws the typed error; everything else (415/413/422/400) keeps surfacing Nest's `{ message }` via the new `messageFrom()` helper. Added `isEntitlementDenied()` shape guard + `readErrorBody()` (best-effort JSON).
+- `apps/web/app/chat/page.tsx` `UploadPanel` — imports `UploadEntitlementError`, adds a `denied` state, catches the typed error and renders a localized prompt (`uploadNotInPlan` / `uploadQuotaReached`) + an "Upgrade to add documents →" ghost-button `<a>` to `/account`. Non-entitlement errors still render their message badge.
+- `apps/web/src/lib/i18n/dictionaries.ts` — 3 new `chat` keys (`uploadNotInPlan`, `uploadQuotaReached`, `uploadUpgradeLink`), EN + VI, lockstep-verified by the i18n dictionary test.
+- `e2e/specs/web-entitlements.spec.ts` — updated the stale "Http Exception" comments (no assertion change; still asserts the `.badge-red` rejection + no indexing, so it stays green regardless of copy).
+
+**Tests:** +3 (web 99 → 102, total 1547 → 1550). `api-clients.test.ts`: typed `UploadEntitlementError` on a 402 entitlement payload (incl. exposed `upgradeOptions`) + a non-entitlement 402 stays a plain `Error`. `chat/page.test.tsx`: Free-plan upload → opens the attach popover, 402 mock → asserts the localized "isn't included in your plan." prompt + the `/account` upgrade link, and that the bare "Http Exception" string is **not** rendered.
+
+**Gates:** web `tsc` clean, `next lint` clean, jest 102 pass; root `knip` + `lint:css` clean.
+
+**Docs:** FEEDBACKS verdict line → ADDRESSED + developer remediation note; LEARNINGS #33 (a structured `HttpException` object response with no `message` leaks the framework default — branch on payload shape / typed error, or include a `message`).
+
+**Notes for next iteration:**
+- A fresh **Security Cycle 3 — PASS** landed (2026-06-03) with one open Medium: the draft-knowledge edit path runs chunk/summarize/embed work *before* the draft-status existence check (cost-amplification on a non-draft id). In-sandbox-codeable; reorder to reserve-before-work (existence/status check first), mirroring DIRECTIVE #44/#28 guard ordering. This is the highest-priority remaining code task.

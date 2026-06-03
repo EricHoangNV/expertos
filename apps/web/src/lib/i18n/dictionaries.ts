@@ -76,6 +76,12 @@ const en = {
     tempHint: "Send a message first — temporary files attach to this conversation.",
     uploadSignIn: "Please sign in to upload a document.",
     uploadFailed: "Upload failed.",
+    // Entitlement-denied 402 (DIRECTIVE #44): a friendly, actionable prompt instead of the
+    // framework's bare "Http Exception" string. `feature_disabled` = plan doesn't include uploads;
+    // `quota_exceeded` = metered cap hit. Both pair with the upgrade link to /account.
+    uploadNotInPlan: "Document upload isn't included in your plan.",
+    uploadQuotaReached: "You've reached your document upload limit for this period.",
+    uploadUpgradeLink: "Upgrade to add documents →",
     modeBadgePersistent: "persistent",
     modeBadgeTemporary: "temporary",
     searchableChunks: "{count} searchable chunks",
@@ -206,6 +212,9 @@ const vi = {
     tempHint: "Hãy gửi tin nhắn trước — tệp tạm thời sẽ đính kèm vào cuộc trò chuyện này.",
     uploadSignIn: "Vui lòng đăng nhập để tải tài liệu lên.",
     uploadFailed: "Tải lên thất bại.",
+    uploadNotInPlan: "Gói của bạn không bao gồm tải tài liệu lên.",
+    uploadQuotaReached: "Bạn đã đạt giới hạn tải tài liệu lên cho kỳ này.",
+    uploadUpgradeLink: "Nâng cấp để thêm tài liệu →",
     modeBadgePersistent: "lưu trữ",
     modeBadgeTemporary: "tạm thời",
     searchableChunks: "{count} đoạn có thể tìm kiếm",

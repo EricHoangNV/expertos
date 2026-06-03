@@ -12,7 +12,10 @@ import { gotoChat } from "../fixtures/web-actions";
  *
  * There is no client-side entitlement gate (both upload modes always render); the block is the
  * server 402, surfaced by the upload client as a red error badge. The entitlement-denied payload
- * carries no `message`, so the badge shows the generic "upload failed (402)".
+ * carries no `message`, so the upload client throws a typed `UploadEntitlementError` the panel
+ * localizes into a friendly upgrade prompt ("Document upload isn't included in your plan." + an
+ * "Upgrade to add documents →" link to /account); this spec asserts the *rejection* (the red badge
+ * + no indexing), deliberately not the wording, so it stays green regardless of copy.
  */
 test.describe("upload entitlement enforcement (Free plan)", () => {
   test("a Free-plan user's document upload is rejected by the entitlement guard", async ({ page }) => {
@@ -35,8 +38,8 @@ test.describe("upload entitlement enforcement (Free plan)", () => {
 
     // The document_upload guard rejects (402) before any parse/embed work: a red error badge shows
     // and the file never indexes. We assert the *rejection* (the security contract), not the badge
-    // wording — the server currently surfaces a generic "Http Exception" message rather than an
-    // upgrade prompt (a known UX gap: the 402 entitlement payload carries no user-facing message).
+    // wording — the panel localizes the entitlement-denied 402 into a friendly upgrade prompt
+    // (EN/VI), so the copy may evolve while the red-badge rejection contract holds.
     await expect(page.locator(".badge-red")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/searchable chunks/i)).toHaveCount(0);
   });

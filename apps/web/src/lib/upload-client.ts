@@ -1,4 +1,19 @@
-import type { UploadedFileDto, UploadMode } from "@expertos/shared";
+import type { EntitlementDeniedPayload, UploadedFileDto, UploadMode } from "@expertos/shared";
+
+/**
+ * Thrown when an upload is blocked by the `@RequiresEntitlement("document_upload")` guard (402):
+ * the acting plan doesn't include document upload, or a metered cap was hit. Carries the API's
+ * {@link EntitlementDeniedPayload} so the caller can render a friendly, localized upgrade prompt
+ * (with the offered higher tiers) instead of the framework's bare "Http Exception" string — the 402
+ * body has no user-facing `message`, only the structured entitlement fields. Enforcement is
+ * unchanged; this only improves how the rejection surfaces (DIRECTIVE #44, FEEDBACKS Product Cycle 1).
+ */
+export class UploadEntitlementError extends Error {
+  constructor(readonly payload: EntitlementDeniedPayload) {
+    super(payload.reason);
+    this.name = "UploadEntitlementError";
+  }
+}
 
 /**
  * Base URL of the API. Defaults to the local dev port; production passes `NEXT_PUBLIC_API_URL`
@@ -46,24 +61,50 @@ export async function uploadFile(
     body: form,
   });
   if (!res.ok) {
-    throw new Error(await errorMessage(res));
+    // Read the body once, then branch: an entitlement-denied 402 carries the structured upgrade
+    // payload (no user-facing `message`) and becomes a typed error the UI can localize; everything
+    // else (415 unsupported, 413 too large, 422 malware, 400 spoof) carries Nest's `{ message }`.
+    const body = await readErrorBody(res);
+    if (res.status === 402 && isEntitlementDenied(body)) {
+      throw new UploadEntitlementError(body);
+    }
+    throw new Error(messageFrom(body, res.status));
   }
   return (await res.json()) as UploadedFileDto;
 }
 
-/**
- * Extracts a human-readable message from a failed upload response. The API returns Nest's
- * `{ message }` body for a rejected upload (415 unsupported, 413 too large, 422 malware, 400 spoof);
- * fall back to the status code when the body isn't the expected JSON shape.
- */
-async function errorMessage(res: Response): Promise<string> {
+/** Reads a response body as JSON, best-effort (a non-JSON body yields `null`). */
+async function readErrorBody(res: Response): Promise<unknown> {
   try {
-    const body = (await res.json()) as { message?: unknown };
-    if (typeof body.message === "string" && body.message.length > 0) {
-      return body.message;
-    }
+    return await res.json();
   } catch {
-    // Non-JSON body — fall through to the generic status message.
+    return null;
   }
-  return `upload failed (${res.status})`;
+}
+
+/** Narrows a parsed body to the 402 entitlement-denied payload shape. */
+function isEntitlementDenied(body: unknown): body is EntitlementDeniedPayload {
+  if (typeof body !== "object" || body === null) {
+    return false;
+  }
+  const candidate = body as Record<string, unknown>;
+  return (
+    (candidate.reason === "feature_disabled" || candidate.reason === "quota_exceeded") &&
+    typeof candidate.feature === "string" &&
+    Array.isArray(candidate.upgradeOptions)
+  );
+}
+
+/**
+ * Extracts a human-readable message from a failed upload body. The API returns Nest's `{ message }`
+ * for a rejected upload; fall back to the status code when the body isn't the expected JSON shape.
+ */
+function messageFrom(body: unknown, status: number): string {
+  if (typeof body === "object" && body !== null) {
+    const message = (body as { message?: unknown }).message;
+    if (typeof message === "string" && message.length > 0) {
+      return message;
+    }
+  }
+  return `upload failed (${status})`;
 }

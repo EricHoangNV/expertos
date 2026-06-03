@@ -230,4 +230,38 @@ describe("ChatPage", () => {
       await screen.findByText(/Answered with a lighter model/),
     ).toBeInTheDocument();
   });
+
+  it("shows a friendly upgrade prompt (not 'Http Exception') when an upload is blocked by the plan", async () => {
+    const user = userEvent.setup();
+    mockMountFetches();
+    // The entitlement guard's 402 carries the structured upgrade payload and the framework's
+    // bare `message: "Http Exception"`; the UI must localize the rejection, not surface that string.
+    mockApi("POST", "/uploads", {
+      status: 402,
+      body: {
+        reason: "feature_disabled",
+        feature: "document_upload",
+        currentPlan: "free",
+        upgradeOptions: [{ key: "plus", name: "Plus" }],
+        remainingQuota: null,
+        message: "Http Exception",
+      },
+    });
+    renderWithProviders(<ChatPage />);
+    await screen.findByLabelText("Your question");
+
+    await user.click(screen.getByRole("button", { name: "Attach document" }));
+    const fileInput = await screen.findByLabelText("Choose a document to upload");
+    await user.upload(
+      fileInput,
+      new File(["a,b\n1,2"], "data.csv", { type: "text/csv" }),
+    );
+
+    expect(
+      await screen.findByText("Document upload isn't included in your plan."),
+    ).toBeInTheDocument();
+    const upgrade = screen.getByRole("link", { name: /Upgrade to add documents/ });
+    expect(upgrade).toHaveAttribute("href", "/account");
+    expect(screen.queryByText("Http Exception")).not.toBeInTheDocument();
+  });
 });

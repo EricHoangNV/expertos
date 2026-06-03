@@ -2,16 +2,12 @@
 
 ## Latest Review Verdicts (read this section first — stop at the breaker line)
 
-### Security: Cycle 2 — FAIL (2026-06-03)
-- auth & access control: FAIL (removed/demoted whitelist entries do not revoke mirrored API roles) — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
-- data exposure / secrets: FAIL (expert-voice-knowledge-boundary + raw-upload-object deletion both REMEDIATED 2026-06-03, pending re-review)
-- input validation: PASS (zod route validation, constant raw SQL with bound params, citation-marker neutralization, webhook raw-body signature checks)
-- dependency / supply chain: PASS (no new dependency risk reviewed in latest changes)
-- Critical: stale admin/expert roles can keep calling privileged APIs after whitelist removal — REMEDIATED 2026-06-03, pending re-review
-- Critical: selected expert voice can answer from another expert/global published knowledge — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
-- Critical: document-upload entitlement is defined but not enforced before parse/embed work — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
-- High: retention/user deletion removes DB rows but not raw upload objects — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
-- High: TidyCal fallback idempotency can skip later cancel/reschedule lifecycle events — REMEDIATED 2026-06-03, pending re-review (fallback eventId now `fallback:<ref>:<type>:<lifecycleStamp>`, distinct per transition)
+### Security: Cycle 3 — PASS (2026-06-03)
+- auth & access control: PASS (Cycle 2 whitelist-demotion/revocation role mirror is now same-transaction write-through)
+- data exposure / secrets: PASS (expert retrieval boundary and raw-upload object deletion remediations verified)
+- input validation: PASS (zod route validation, raw SQL bound params, prompt citation-marker neutralization, raw-body webhook signatures)
+- dependency / supply chain: PASS (no new risky dependency or lockfile expansion in reviewed changes)
+- Medium: draft knowledge edit performs chunk/summarize/embed work before the draft-status existence check
 
 ### Code Review: Cycle 0 — (no review yet)
 - (awaiting first code review)
@@ -22,7 +18,87 @@
 - data handling / privacy: PASS
 - High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
 - Mediums (trust-signal wording): analytics "grounded" bucket label + chat "Verified" badge wording — ADDRESSED 2026-06-03 (see remediation note below)
-- Medium (NEW, OPEN — 2026-06-03, found via E2E M15.3.7): Free-plan document-upload 402 surfaces to the user as a bare "Http Exception" badge instead of an upgrade prompt — enforcement is correct (DIRECTIVE #44), UX wording only (see finding note below)
+- Medium (found via E2E M15.3.7): Free-plan document-upload 402 surfaced as a bare "Http Exception" badge instead of an upgrade prompt — ADDRESSED 2026-06-03 (upload client throws a typed `UploadEntitlementError`; the chat upload panel renders a localized EN/VI upgrade prompt + a link to /account; enforcement unchanged, DIRECTIVE #44 — see remediation note below)
+
+---
+
+## Developer Remediation Note (2026-06-03) — Product Cycle 1 Medium: Free-plan upload 402 now shows an upgrade prompt
+
+**Author:** implementing agent (not a review cycle). Closes the open Product Cycle 1 Medium logged via E2E M15.3.7 — a Free-plan document upload was rejected correctly (402, before any parse/embed — DIRECTIVE #44 intact) but surfaced as a red badge reading the framework's bare **"Http Exception"**.
+
+**Root cause (confirmed):** the 402 `EntitlementDeniedPayload` (`packages/shared/src/entitlements.ts`) carries `reason`/`feature`/`currentPlan`/`upgradeOptions`/`remainingQuota` but **no user-facing `message`**. `AllExceptionsFilter.extractHttpMessage` therefore falls back to `HttpException`'s default `message` ("Http Exception") and echoes it on the body; the web upload client's old `errorMessage()` found that non-empty string and returned it verbatim, which `UploadPanel` rendered in a `.badge-red`.
+
+**Fix (enforcement unchanged — client/UX only):**
+- `apps/web/src/lib/upload-client.ts` — new exported `UploadEntitlementError extends Error` carrying the `EntitlementDeniedPayload`. `uploadFile` now reads the error body once and branches: a 402 whose body matches the entitlement-denied shape (`reason` ∈ {feature_disabled, quota_exceeded} + string `feature` + array `upgradeOptions`) throws the typed error; everything else (415/413/422/400) keeps surfacing Nest's `{ message }` via `messageFrom()`.
+- `apps/web/app/chat/page.tsx` `UploadPanel` — catches `UploadEntitlementError`, sets a `denied` state, and renders a localized prompt ("Document upload isn't included in your plan." / quota variant) + an "Upgrade to add documents →" ghost-button link to `/account`. A non-entitlement error still renders its message badge.
+- `apps/web/src/lib/i18n/dictionaries.ts` — 3 new `chat` keys (`uploadNotInPlan`, `uploadQuotaReached`, `uploadUpgradeLink`), EN + VI, lockstep-verified by the i18n dictionary test.
+
+**Tests:** +3 (web 99→102) — `api-clients.test.ts` (typed `UploadEntitlementError` on a 402 entitlement payload incl. exposed `upgradeOptions`; a non-entitlement 402 stays a plain error) + `chat/page.test.tsx` (Free-plan upload → localized "isn't included in your plan" prompt + `/account` upgrade link, and the bare "Http Exception" string is **not** rendered). The E2E `web-entitlements.spec.ts` keeps asserting the `.badge-red` rejection (not the wording), so it stays green; its stale "Http Exception" comment was updated. Gates: web `tsc`+`next lint`+jest, root `knip`+`lint:css` all clean.
+
+---
+
+## Daily Architecture Review — Security Cycle 3 (2026-06-03)
+
+### Review scope
+
+Reviewed the ExpertOS architecture surface requested for the daily pass, excluding `requirements/` per instruction. Scope included:
+
+- Project docs: `project-mds/DIRECTIVES.md`, `project-mds/progress-state.md`, relevant `project-mds/PRD.md` sections, and latest `project-mds/FEEDBACKS.MD` verdict block.
+- Recent commits since the prior architecture review, especially Security Cycle 2 remediations and `60f925e knowledge: edit draft content during review (re-chunk + re-embed)` plus `6f83004 test(e2e): negative-space coverage expansion`.
+- API trust boundaries in `apps/api/src/`: auth/RBAC guards, entitlement guard, upload, chat, retrieval, knowledge, admin access-control, retention, billing/booking webhooks, concierge, analytics.
+- Data isolation and persistence: `packages/db/prisma/` migrations/schema, `packages/db/src/rls.ts`, RLS-related integration coverage.
+- AI/prompt/citation boundary: `packages/ai/src/prompt/*`, chat final-citation handling, retrieval filters/cache invalidation behavior.
+- Cost/resilience surfaces: rate limiting, entitlement reserve-before-work, upload/retention cleanup, draft-edit ingestion work ordering, analytics/query bounds, infrastructure notes.
+- Dependency manifests at repo root and `e2e/package.json`.
+
+### Findings ordered by severity
+
+#### Medium — Draft knowledge edit burns chunk/summarize/embed work before proving the version is editable
+
+**File and line references:**
+
+- `apps/api/src/knowledge/knowledge.controller.ts:73-80`
+- `apps/api/src/ingestion/ingestion.service.ts:102-112`
+- `apps/api/src/ingestion/document-version.repository.ts:136-146`
+- `packages/shared/src/knowledge.ts:47-49`
+
+**What I found:**
+
+`PATCH /knowledge/versions/:versionId/content` is correctly role-gated at `@Roles("expert")`, UUID-validates `versionId`, and caps `content` at 200,000 characters. However, `IngestionService.editDraftContent` calls `chunkAndEmbed(content, ...)` before `DocumentVersionRepository.replaceDraftChunks` performs the cheap RLS-scoped existence and `status === "draft"` check. A direct caller can therefore submit maximum-size content against a nonexistent, foreign, submitted, published, or archived version and force chunking/summarization/embedding work before the request fails with 404/409.
+
+**Architectural consequence:**
+
+Today this is bounded and role-scoped: global rate limiting applies, the body size is capped, RLS prevents mutation, new chunks are written `pending`, and the current default summarizer/embedding provider is offline deterministic. So this is not an immediate public entitlement bypass, private-data exposure, or external-AI spend leak. The ordering is still a cost-resilience and efficiency defect: once production paid embedding/summarization providers are introduced, the route can become a repeatable paid-provider invocation path for work that should have been rejected before provider calls. It also makes stale UI retries or concurrent review-state transitions more expensive than necessary.
+
+**Recommended remediation:**
+
+Move a cheap authorization/state preflight before `chunkAndEmbed`, while preserving the existing in-transaction guard before replacement:
+
+- Add a repository method such as `assertDraftEditable(user, versionId)` or `loadDraftMetadataForEdit` that runs under RLS, returns the document scope/language, and throws 404/409 before any provider work.
+- Keep `replaceDraftChunks` checking `status === "draft"` in the same transaction immediately before `deleteMany`/insert, so a concurrent submit cannot race the write.
+- Add a regression test proving `embeddings.embed` and `summarizer.summarize` are not called for nonexistent/non-draft versions.
+- Consider a lower edit-specific content/chunk ceiling or a quota counter if production embeddings are later enabled for admin/expert draft editing.
+
+### Remediation re-review notes
+
+- **Whitelist revocation / stale role:** PASS. `AccessControlService.updateRole` and `remove` now call `syncUserRole` inside the same admin RLS transaction, demoting/removing mirrored `users.role` immediately while preserving self-lockout checks (`apps/api/src/admin/access-control.service.ts:87-151`).
+- **Expert-voice retrieval boundary:** PASS. `PgVectorStore` applies the selected `expertId` in both vector and keyword SQL through an `EXISTS` join to `document_versions`/`documents`, admitting only that expert's documents plus `expert_id IS NULL` global corpus (`apps/api/src/retrieval/pgvector.store.ts:112-126`).
+- **Document-upload entitlement:** PASS. `UploadController.create` is decorated with `@RequiresEntitlement("document_upload")` before the multipart interceptor path, so Free-plan upload is rejected by the global entitlement guard before parse/chunk/embed work (`apps/api/src/uploads/upload.controller.ts:48-61`).
+- **Raw upload object deletion:** PASS. Retention and GDPR user deletion collect `gcsUri` values before DB rows/cascades are deleted, then call best-effort object deletion after commit (`apps/api/src/admin/retention.service.ts:107-168`, `apps/api/src/admin/admin-user.service.ts:274-309`, `apps/api/src/uploads/storage-cleanup.ts:15-37`).
+- **TidyCal fallback idempotency:** PASS. Missing provider event IDs now synthesize `fallback:<bookingRef>:<eventType>:<lifecycleStamp>`, avoiding create/reschedule/cancel lifecycle collapse while preserving redelivery idempotency (`apps/api/src/consultation/http-tidycal-provider.ts:93-103`, `apps/api/src/consultation/http-tidycal-provider.ts:159-184`).
+- **Citationless final answer trust signal:** PASS from the security/trust-boundary angle. `ChatService` now treats the final answer as ungrounded when `built.citations.length === 0`, not merely when retrieval found no facts, and avoids caching uncited answers (`apps/api/src/chat/chat.service.ts:179-196`, `apps/api/src/chat/chat.service.ts:233-241`).
+
+### Residual risks and unverified assumptions
+
+- Host Playwright E2E for the expanded negative-space suite remains externally pending per `progress-state.md`; I did not run live browser E2E in this review.
+- Production GCS deletion still depends on a future concrete GCS `StorageProvider.delete` implementation; the application seam and callers are ready, but the deployed driver was not present to verify.
+- Production embedding providers are not currently wired in `createDefaultEmbeddingProvider`; the draft-edit finding is a forward-looking cost-resilience issue for when paid embedding/summarization drivers are added.
+- Analytics queries were reviewed for bounded windows and admin route guards, but I did not run database EXPLAIN plans against production-scale data.
+- Working tree contains unrelated user changes in `apps/web/src/lib/i18n/dictionaries.ts`, `apps/web/src/lib/upload-client.ts`, and `.claude/`; this review did not inspect or modify them.
+
+### Final verdict
+
+PASS. No Critical or High issue was found that plausibly causes unauthorized access, cross-user/tenant data exposure, fabricated citations, prompt-injection-driven provenance failure, entitlement abuse, unbounded public AI/ingestion cost, unreliable subscription/booking state, private-data retention beyond policy, or expert-review gate bypass. One Medium efficiency/cost-resilience issue should be fixed before paid embedding/summarization providers are attached to draft editing.
 
 ---
 

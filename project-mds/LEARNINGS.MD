@@ -393,3 +393,15 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Same class of trap also bit the build itself: `output: "standalone"` (Cloud Run) leaves a nested `.next/standalone/.../esbuild` symlink that `next build`'s pre-clean chokes on with `recursiveDelete ENOENT` — `rm -rf apps/{web,admin}/.next` before building clears it.
 
 **Rule:** Any client-read `NEXT_PUBLIC_*`/build-time-inlined config that an E2E (or prod) flow depends on must be present in the **build** environment, not just the server's runtime env. When a feature gated on such a var silently fails to activate under `next start`, suspect a build done without it before debugging the runtime. Verify the value is actually baked into the emitted bundle.
+
+---
+
+## 33. A structured `HttpException` object response with no `message` leaks the framework's bare "Http Exception" string to any client reading `message`
+
+**Context:** Product Cycle 1 Medium (2026-06-03), found via E2E M15.3.7 — a Free-plan document upload was correctly rejected (402) but surfaced to the user as a red badge reading literally **"Http Exception"**.
+
+- The entitlement guard throws `new HttpException(payload, 402)` where `payload` is a *structured* object (`reason`/`feature`/`currentPlan`/`upgradeOptions`/`remainingQuota`) — intentionally carrying no human-facing `message`. `AllExceptionsFilter.extractHttpMessage` looks for `"message" in response`; finding none, it falls back to `exception.message`, which for an object-response `HttpException` is the class default **"Http Exception"**. The filter then echoes that as `body.message`.
+- Any client that pulls `body.message` for its error UI (the web upload client's old `errorMessage()`) renders that leaked framework string verbatim — the user sees a meaningless error with no path forward, even on a screen that already shows an "UPGRADE →" affordance.
+- Fix: don't rely on a `message` that the payload never set. The client recognizes the structured payload by shape (a 402 whose body has `reason ∈ {feature_disabled, quota_exceeded}` + string `feature` + array `upgradeOptions`) and throws a **typed** error (`UploadEntitlementError` carrying the payload); the UI then renders a localized, actionable prompt + an upgrade link from the typed payload, and falls back to `{ message }` only for the genuinely message-bearing errors (415/413/422/400). Alternatively the server could add a derived `message` to the payload — but a typed client error keeps localization (EN/VI) on the side that owns the dictionaries.
+
+**Rule:** When you throw a structured `HttpException(objectPayload, status)` whose payload omits `message`, the client will receive the framework's default "Http Exception" string, not your payload — so either include a user-facing `message` in the payload, or have clients branch on the payload's *shape* (typed error) rather than reading a `message` that isn't there. Never render a raw error `message` to users without confirming the producing path actually sets one.

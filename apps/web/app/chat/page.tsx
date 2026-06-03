@@ -75,7 +75,7 @@ import {
   searchConversations,
 } from "../../src/lib/history-client";
 import { fetchEntitlements } from "../../src/lib/account-client";
-import { uploadFile, UPLOAD_ACCEPT } from "../../src/lib/upload-client";
+import { uploadFile, UploadEntitlementError, UPLOAD_ACCEPT } from "../../src/lib/upload-client";
 import { useMediaQuery } from "../../src/lib/use-media-query";
 
 /** localStorage key for the persisted chat layout direction (M12.7.2). */
@@ -514,6 +514,9 @@ function UploadPanel({
   const [mode, setMode] = useState<UploadMode>("temporary");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when an upload is blocked by the plan's `document_upload` entitlement (402): we render a
+  // friendly upgrade prompt + a link to /account instead of a bare error string (DIRECTIVE #44).
+  const [denied, setDenied] = useState<"feature_disabled" | "quota_exceeded" | null>(null);
   const [files, setFiles] = useState<UploadedFileDto[]>([]);
   // Bumped after each upload to reset the native file input (it has no controlled value).
   const [inputKey, setInputKey] = useState(0);
@@ -522,6 +525,7 @@ function UploadPanel({
     async (file: File) => {
       setBusy(true);
       setError(null);
+      setDenied(null);
       try {
         const token = await getIdToken();
         if (!token) {
@@ -531,7 +535,11 @@ function UploadPanel({
         const uploaded = await uploadFile(token, file, mode, conversationId);
         setFiles((prev) => [uploaded, ...prev]);
       } catch (e) {
-        setError(e instanceof Error ? e.message : t("uploadFailed"));
+        if (e instanceof UploadEntitlementError) {
+          setDenied(e.payload.reason);
+        } else {
+          setError(e instanceof Error ? e.message : t("uploadFailed"));
+        }
       } finally {
         setBusy(false);
         setInputKey((k) => k + 1);
@@ -576,6 +584,16 @@ function UploadPanel({
         <span className="muted">{t("tempHint")}</span>
       )}
       {error && <Badge tone="red">{error}</Badge>}
+      {denied && (
+        <div className="row gap2 wrap">
+          <Badge tone="red">
+            {denied === "quota_exceeded" ? t("uploadQuotaReached") : t("uploadNotInPlan")}
+          </Badge>
+          <a className="btn btn-ghost btn-sm" href="/account">
+            {t("uploadUpgradeLink")}
+          </a>
+        </div>
+      )}
       {files.length > 0 && (
         <div className="col gap1">
           {files.map((f) => (
