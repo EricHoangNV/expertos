@@ -4714,3 +4714,22 @@ Closed M15.2.6: jest coverage for the expert-portal concierge review queue (`app
 **Docs:** FEEDBACKS.MD (remediation note + verdict annotations), LEARNINGS #27, DIRECTIVES #43, progress-state.md, progress-log.md.
 
 **Gates:** `@expertos/api` build + eslint + jest (702 pass) + `@expertos/shared`/`@expertos/ai` build+lint+jest + root knip — all green. Rebuilt `shared`/`ai` dist (apps consume dist/).
+
+---
+
+## Security Cycle 2 Critical — Document-upload entitlement is not enforced (REMEDIATED 2026-06-03)
+
+**Task:** Close the Security Cycle 2 Critical "document-upload entitlement is defined but not enforced before parse/embed work." Highest-priority open FAIL finding; in-sandbox codeable.
+
+**Root cause:** the `plan_entitlements` catalog defines `document_upload` (boolean, disabled for Free) and surfaces it in the admin matrix editor + `GET /me/entitlements`, but `POST /uploads` carried only `@Roles("user")` — the `@RequiresEntitlement` decorator the `EntitlementGuard` keys off was never applied. The validate→scan→parse→chunk→embed→store pipeline ran for any authenticated user regardless of plan (a cost-amplification path the per-IP throttle + 10 MiB cap don't close). A *phantom control*: enforced from every angle except the route.
+
+**Fix (reserve-before-work):**
+- `apps/api/src/uploads/upload.controller.ts` — added `@RequiresEntitlement("document_upload")` to `UploadController.create` + the import. NestJS runs **guards before interceptors**, so the global `EntitlementGuard` rejects a disabled boolean entitlement with `402` (`EntitlementService.enforce` → `deny(..., "feature_disabled")` + upgrade payload) before the `FileInterceptor` buffers the multipart body or any service work begins. Plus/Premium have the feature enabled → allowed. No service change; reuses the same M6.1 choke point chat gates through (`@RequiresEntitlement("ask_question")`).
+
+**Deferred (named, not done):** the reviewer's secondary suggestion to *meter* uploads by file/chunk/token volume with per-upload hard caps is a larger product/economics change (new metered feature + chunk cap); this remediation closes the access-control gap the Critical names.
+
+**Tests:** new `apps/api/src/uploads/upload.controller.test.ts` (+3) — asserts the `document_upload` entitlement metadata is present on the route (the security guarantee, via `Reflect.getMetadata(REQUIRES_ENTITLEMENT_KEY, …)`), the file-required `BadRequestException` guard (synchronous throw — `create` isn't `async`), and the multipart→service delegation shape. (Controllers aren't under the `*.service.ts` coverage gate, but the metadata assertion is the durable regression guard.) Full `@expertos/api` suite 702→705 pass.
+
+**Docs:** FEEDBACKS.MD (remediation note + verdict annotation), LEARNINGS #28, DIRECTIVES #44, progress-state.md, progress-log.md.
+
+**Gates:** `@expertos/api` build + eslint + jest (705 pass, coverage gate green) + root knip — all green.

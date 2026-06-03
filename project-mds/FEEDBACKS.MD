@@ -9,7 +9,7 @@
 - dependency / supply chain: PASS (no new dependency risk reviewed in latest changes)
 - Critical: stale admin/expert roles can keep calling privileged APIs after whitelist removal — REMEDIATED 2026-06-03, pending re-review
 - Critical: selected expert voice can answer from another expert/global published knowledge — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
-- Critical: document-upload entitlement is defined but not enforced before parse/embed work
+- Critical: document-upload entitlement is defined but not enforced before parse/embed work — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
 - High: retention/user deletion removes DB rows but not raw upload objects
 - High: TidyCal fallback idempotency can skip later cancel/reschedule lifecycle events
 
@@ -21,6 +21,22 @@
 - core user flow: FAIL
 - data handling / privacy: PASS
 - High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state
+
+---
+
+## Developer Remediation Note (2026-06-03) — Critical: Document-upload entitlement is not enforced
+
+**Author:** implementing agent (not a review cycle). Addresses the Security Cycle 2 / Architecture Cycle 2 Critical "document-upload entitlement is defined but not enforced before parse/embed work."
+
+**Root cause:** the entitlement catalog defines `document_upload` (boolean) and disables it for Free, but `POST /uploads` carried only `@Roles("user")`. The route's validate→scan→parse→chunk→embed→store pipeline therefore ran for any authenticated user regardless of plan — a cost-amplification path the per-IP throttle and 10 MiB size cap don't close.
+
+**Fix (reserve-before-work):** added `@RequiresEntitlement("document_upload")` to `UploadController.create` (`apps/api/src/uploads/upload.controller.ts`). The global `EntitlementGuard` is a NestJS guard, and guards run **before** interceptors, so the entitlement check fires before the `FileInterceptor` even buffers the multipart body and before any service work — a disabled boolean entitlement (Free) is rejected with `402` + an upgrade payload at the wall (`EntitlementService.enforce` → `deny(..., "feature_disabled")`). Plus/Premium have the feature enabled → allowed. No new service logic; reuses the same M6.1 choke point chat already gates through.
+
+**Note on the metered upsell:** the reviewer suggested *metering* uploads by file/chunk/token volume with hard caps per upload. That's a larger product/economics change (a new metered feature + per-upload chunk cap) deferred as a follow-up; this remediation closes the access-control gap the Critical names — an unentitled user can no longer trigger upload embedding work at all.
+
+**Tests:** new `apps/api/src/uploads/upload.controller.test.ts` (+3) asserts the `document_upload` entitlement metadata is present on the route (the security guarantee), plus the controller's file-required guard and multipart→service delegation. Full `@expertos/api` suite 705 pass. Gates: api build + eslint + jest (coverage) + root knip green.
+
+**Not addressed here (still open in the Security Cycle 2 verdict):** raw-upload-object deletion on retention/user-deletion, TidyCal fallback idempotency.
 
 ---
 
