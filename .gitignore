@@ -43,3 +43,7 @@ requirements/
 
 # temporary files
 tmp/
+
+# local-only e2e convenience scripts (the scripts/ folder itself stays tracked via .gitkeep)
+/scripts/test-e2e-users.sh
+/scripts/test-e2e-admin.sh
