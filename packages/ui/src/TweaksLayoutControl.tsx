@@ -10,6 +10,12 @@ export interface TweaksLayoutControlProps {
   value: LayoutDirection;
   /** Fired when a direction is chosen — the caller switches + persists it (localStorage). */
   onChange: (direction: LayoutDirection) => void;
+  /** Section header label (i18n M13). Defaults to English. */
+  label?: string;
+  /** Accessible label for the segmented control (i18n M13). Defaults to English. */
+  ariaLabel?: string;
+  /** Per-direction label + description copy (i18n M13). Defaults to {@link LAYOUT_DIRECTION_INFO}. */
+  optionInfo?: Record<LayoutDirection, { label: string; description: string }>;
   className?: string;
 }
 
@@ -24,13 +30,20 @@ export interface TweaksLayoutControlProps {
  * passes it back as `value` (the {@link layoutPanes} mapping drives which panes
  * live in the persistent grid).
  */
-export function TweaksLayoutControl({ value, onChange, className }: TweaksLayoutControlProps) {
+export function TweaksLayoutControl({
+  value,
+  onChange,
+  label = "Chat layout — 3 directions",
+  ariaLabel = "Chat layout direction",
+  optionInfo = LAYOUT_DIRECTION_INFO,
+  className,
+}: TweaksLayoutControlProps) {
   return (
     <div className={cx("tweaks-section", className)}>
-      <span className="label">Chat layout — 3 directions</span>
-      <div className="seg" role="group" aria-label="Chat layout direction">
+      <span className="label">{label}</span>
+      <div className="seg" role="group" aria-label={ariaLabel}>
         {LAYOUT_DIRECTIONS.map((direction) => {
-          const info = LAYOUT_DIRECTION_INFO[direction];
+          const info = optionInfo[direction];
           const active = direction === value;
           return (
             <button
@@ -46,7 +59,7 @@ export function TweaksLayoutControl({ value, onChange, className }: TweaksLayout
           );
         })}
       </div>
-      <p className="muted tweaks-section-desc">{LAYOUT_DIRECTION_INFO[value].description}</p>
+      <p className="muted tweaks-section-desc">{optionInfo[value].description}</p>
     </div>
   );
 }

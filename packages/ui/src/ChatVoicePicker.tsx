@@ -19,6 +19,8 @@ export interface ChatVoicePickerProps {
   onSelect: (expertId: string) => void;
   /** Disables every chip (e.g. mid-stream) so the voice can't change during a turn. */
   disabled?: boolean;
+  /** "Voice" group label (i18n M13). Defaults to English. */
+  label?: string;
 }
 
 /**
@@ -35,10 +37,11 @@ export function ChatVoicePicker({
   activeId = "",
   onSelect,
   disabled = false,
+  label = "Voice",
 }: ChatVoicePickerProps) {
   return (
     <div className="chat-voice-picker">
-      <span className="label">Voice</span>
+      <span className="label">{label}</span>
       {options.map((opt) => {
         const tone = avatarTone(opt.name);
         return (

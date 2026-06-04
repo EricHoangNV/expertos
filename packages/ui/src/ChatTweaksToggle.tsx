@@ -5,6 +5,10 @@ export interface ChatTweaksToggleProps {
   open: boolean;
   /** Toggle the panel open/closed. */
   onToggle: () => void;
+  /** Caption when the panel is hidden (i18n M13). Defaults to English. */
+  showLabel?: string;
+  /** Caption when the panel is showing (i18n M13). Defaults to English. */
+  hideLabel?: string;
   className?: string;
 }
 
@@ -16,7 +20,13 @@ export interface ChatTweaksToggleProps {
  * hidden) and reports its state via `aria-pressed`. Presentational only — the page owns
  * the panel-open state and passes `open`/`onToggle`.
  */
-export function ChatTweaksToggle({ open, onToggle, className }: ChatTweaksToggleProps) {
+export function ChatTweaksToggle({
+  open,
+  onToggle,
+  showLabel = "Show tweaks",
+  hideLabel = "Hide tweaks",
+  className,
+}: ChatTweaksToggleProps) {
   return (
     <button
       type="button"
@@ -38,7 +48,7 @@ export function ChatTweaksToggle({ open, onToggle, className }: ChatTweaksToggle
           <circle cx="10" cy="17" r="2.2" />
         </g>
       </svg>
-      {open ? "Hide tweaks" : "Show tweaks"}
+      {open ? hideLabel : showLabel}
     </button>
   );
 }

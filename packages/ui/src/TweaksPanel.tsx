@@ -9,6 +9,10 @@ export interface TweaksPanelProps {
    * M12.7.3). Rendered below the header in a vertical stack.
    */
   children?: ReactNode;
+  /** Panel heading + accessible dialog label (i18n M13). Defaults to English. */
+  heading?: string;
+  /** Accessible label for the close (X) button (i18n M13). Defaults to English. */
+  closeLabel?: string;
   className?: string;
 }
 
@@ -21,20 +25,26 @@ export interface TweaksPanelProps {
  * `.seg` + `.switch` toggles M12.7.3). The "Hide tweaks"/"Show tweaks" topbar
  * affordance that mounts/unmounts this panel is M12.7.4.
  */
-export function TweaksPanel({ onClose, children, className }: TweaksPanelProps) {
+export function TweaksPanel({
+  onClose,
+  children,
+  heading = "Tweaks",
+  closeLabel = "Close tweaks panel",
+  className,
+}: TweaksPanelProps) {
   return (
     <div
       className={cx("tweaks-panel", className)}
       role="dialog"
-      aria-label="Tweaks"
+      aria-label={heading}
     >
       <div className="tweaks-panel-head">
-        <h3 className="h3">Tweaks</h3>
+        <h3 className="h3">{heading}</h3>
         <button
           type="button"
           className={cx("btn", "btn-subtle", "btn-icon")}
           onClick={onClose}
-          aria-label="Close tweaks panel"
+          aria-label={closeLabel}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path

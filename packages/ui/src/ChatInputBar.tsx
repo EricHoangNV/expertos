@@ -44,6 +44,12 @@ export interface ChatInputBarProps {
    * row (M12.6.3) mount here so they stay inside the sticky bar.
    */
   children?: ReactNode;
+  /** Accessible label for the attach-document button (i18n M13). Defaults to English. */
+  attachLabel?: string;
+  /** Accessible label for the question textarea (i18n M13). Defaults to English. */
+  inputLabel?: string;
+  /** Accessible label for the send button (i18n M13). Defaults to English. */
+  sendLabel?: string;
 }
 
 /**
@@ -65,6 +71,9 @@ export function ChatInputBar({
   onAttach,
   attachActive = false,
   children,
+  attachLabel = "Attach document",
+  inputLabel = "Your question",
+  sendLabel = "Send",
 }: ChatInputBarProps) {
   const canSend = !busy && value.trim().length > 0;
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -84,7 +93,7 @@ export function ChatInputBar({
             className={cx("btn", "btn-subtle", "btn-icon", "input-bar-attach")}
             onClick={onAttach}
             disabled={busy}
-            aria-label="Attach document"
+            aria-label={attachLabel}
             aria-expanded={attachActive}
             aria-pressed={attachActive}
           >
@@ -109,14 +118,14 @@ export function ChatInputBar({
           disabled={busy}
           rows={1}
           placeholder={placeholder}
-          aria-label="Your question"
+          aria-label={inputLabel}
         />
         <button
           type="button"
           className={cx("btn", "btn-primary", "input-bar-send")}
           onClick={onSend}
           disabled={!canSend}
-          aria-label="Send"
+          aria-label={sendLabel}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path

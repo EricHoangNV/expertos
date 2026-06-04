@@ -14,6 +14,16 @@ export interface TweaksDensityControlProps {
   conciergeOffer: boolean;
   /** Toggle the "Concierge review offer" option. */
   onConciergeOfferChange: (on: boolean) => void;
+  /** Section header label (i18n M13). Defaults to English. */
+  label?: string;
+  /** Accessible label for the segmented control (i18n M13). Defaults to English. */
+  ariaLabel?: string;
+  /** Per-density label + description copy (i18n M13). Defaults to {@link DENSITY_INFO}. */
+  densityInfo?: Record<Density, { label: string; description: string }>;
+  /** Label for the citations-resolved-badge toggle (i18n M13). Defaults to English. */
+  verifiedBadgeLabel?: string;
+  /** Label for the concierge-review-offer toggle (i18n M13). Defaults to English. */
+  conciergeOfferLabel?: string;
   className?: string;
 }
 
@@ -42,18 +52,23 @@ export function TweaksDensityControl({
   onVerifiedBadgeChange,
   conciergeOffer,
   onConciergeOfferChange,
+  label = "Density & options",
+  ariaLabel = "Display density",
+  densityInfo = DENSITY_INFO,
+  verifiedBadgeLabel = "Citations-resolved badge",
+  conciergeOfferLabel = "Concierge review offer",
   className,
 }: TweaksDensityControlProps) {
   const toggles: ToggleOption[] = [
     {
       key: "verified-badge",
-      label: "Citations-resolved badge",
+      label: verifiedBadgeLabel,
       value: verifiedBadge,
       onChange: onVerifiedBadgeChange,
     },
     {
       key: "concierge-offer",
-      label: "Concierge review offer",
+      label: conciergeOfferLabel,
       value: conciergeOffer,
       onChange: onConciergeOfferChange,
     },
@@ -61,10 +76,10 @@ export function TweaksDensityControl({
 
   return (
     <div className={cx("tweaks-section", className)}>
-      <span className="label">Density &amp; options</span>
-      <div className="seg" role="group" aria-label="Display density">
+      <span className="label">{label}</span>
+      <div className="seg" role="group" aria-label={ariaLabel}>
         {DENSITIES.map((option) => {
-          const info = DENSITY_INFO[option];
+          const info = densityInfo[option];
           const active = option === density;
           return (
             <button

@@ -28,6 +28,12 @@ export interface ChatSearchProps {
   onSelect: (conversationId: string) => void;
   /** Id of the currently open conversation, highlighted in the results. */
   activeId?: string;
+  /** Placeholder + accessible label for the search input (i18n M13). Defaults to English. */
+  placeholder?: string;
+  /** "Searching…" in-flight note (i18n M13). Defaults to English. */
+  searchingLabel?: string;
+  /** Empty-results note (i18n M13). Defaults to English. */
+  noResultsLabel?: string;
 }
 
 /**
@@ -46,6 +52,9 @@ export function ChatSearch({
   searching = false,
   onSelect,
   activeId,
+  placeholder = "Search all messages…",
+  searchingLabel = "Searching…",
+  noResultsLabel = "No matching conversations.",
 }: ChatSearchProps) {
   const active = query.trim().length > 0;
   return (
@@ -73,15 +82,15 @@ export function ChatSearch({
           type="search"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search all messages…"
-          aria-label="Search all messages"
+          placeholder={placeholder}
+          aria-label={placeholder}
         />
       </div>
       {active && (
         <div className="chat-search-results">
           {results.length === 0 ? (
             <p className="chat-search-empty muted">
-              {searching ? "Searching…" : "No matching conversations."}
+              {searching ? searchingLabel : noResultsLabel}
             </p>
           ) : (
             results.map((r) => (

@@ -18,6 +18,13 @@ export interface ChatUserIdentityProps {
    * next turn. Omit to render the badge as a static, non-interactive label.
    */
   onLanguageToggle?: () => void;
+  /**
+   * Accessible-label template for the language toggle with a `{lang}` token (i18n M13).
+   * Defaults to English. e.g. "Answer language {lang} — switch language".
+   */
+  switchLanguageAriaLabel?: string;
+  /** Tooltip/title for the language toggle (i18n M13). Defaults to English. */
+  switchLanguageLabel?: string;
 }
 
 /**
@@ -28,7 +35,14 @@ export interface ChatUserIdentityProps {
  * clicking it cycles the answer language (EN ↔ VI), which the page reuses on the next turn (M1 EN+VI
  * retrieval). Presentational only — the page owns the name (from Firebase auth) and the language state.
  */
-export function ChatUserIdentity({ name, email, language, onLanguageToggle }: ChatUserIdentityProps) {
+export function ChatUserIdentity({
+  name,
+  email,
+  language,
+  onLanguageToggle,
+  switchLanguageAriaLabel = "Answer language {lang} — switch language",
+  switchLanguageLabel = "Switch answer language",
+}: ChatUserIdentityProps) {
   const local = email?.split("@")[0] ?? null;
   const seed = name?.trim() || local?.trim() || "You";
   const displayName = name?.trim() || local?.trim() || "You";
@@ -46,8 +60,8 @@ export function ChatUserIdentity({ name, email, language, onLanguageToggle }: Ch
           type="button"
           className="badge badge-ink chat-user-lang"
           onClick={onLanguageToggle}
-          aria-label={`Answer language ${langLabel} — switch language`}
-          title="Switch answer language"
+          aria-label={switchLanguageAriaLabel.replace("{lang}", langLabel)}
+          title={switchLanguageLabel}
         >
           {langLabel}
         </button>

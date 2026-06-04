@@ -24,6 +24,12 @@ export interface ChatUsageMeterProps {
   upgradeHref?: string;
   /** Turn amber at this fraction of the threshold (default 0.8). */
   warnRatio?: number;
+  /** "questions this month" label (i18n M13). Defaults to English. */
+  label?: string;
+  /** Word used for the no-cap count ("N · Unlimited") (i18n M13). Defaults to English. */
+  unlimitedLabel?: string;
+  /** "Upgrade →" link text (i18n M13). Defaults to English. */
+  upgradeLabel?: string;
 }
 
 /**
@@ -41,6 +47,9 @@ export function ChatUsageMeter({
   planName,
   upgradeHref,
   warnRatio = DEFAULT_WARN_RATIO,
+  label = "questions this month",
+  unlimitedLabel = "Unlimited",
+  upgradeLabel = "Upgrade →",
 }: ChatUsageMeterProps) {
   const safeUsed = Number.isFinite(used) ? Math.max(0, used) : 0;
   // The hard cap wins when present; otherwise the fair-use soft threshold is the wall we draw.
@@ -51,7 +60,7 @@ export function ChatUsageMeter({
   let pct = 0;
   let warn = false;
   if (threshold === null || threshold <= 0) {
-    countText = `${safeUsed} · Unlimited`;
+    countText = `${safeUsed} · ${unlimitedLabel}`;
   } else {
     pct = Math.min(100, (safeUsed / threshold) * 100);
     warn = overSoft || safeUsed / threshold >= warnRatio;
@@ -61,7 +70,7 @@ export function ChatUsageMeter({
   return (
     <div className={cx("sidebar-usage", warn && "is-warn")}>
       <div className="sidebar-usage-head">
-        <span className="muted">questions this month</span>
+        <span className="muted">{label}</span>
         <span className="sidebar-usage-count">{countText}</span>
       </div>
       <Bar value={pct} warn={warn} />
@@ -69,7 +78,7 @@ export function ChatUsageMeter({
         <span className="label">{planName}</span>
         {upgradeHref && (
           <a className="sidebar-usage-upgrade" href={upgradeHref}>
-            Upgrade →
+            {upgradeLabel}
           </a>
         )}
       </div>

@@ -37,7 +37,9 @@ import {
   isLayoutDirection,
   type LayoutDirection,
   type Locale,
+  localeTag,
   layoutPanes,
+  type RelativeTimeLabels,
   Select,
   SourceCard,
   SourcesDrawer,
@@ -626,6 +628,36 @@ export default function ChatPage() {
   // from the user-identity EN/VI badge in the header; persisted to localStorage + profile.
   const { locale, setLocale } = useLocale();
   const tChat = useT("chat");
+  // Localized copy for the shared chat-chrome components (M13). These default to English
+  // inside @expertos/ui, so the page passes the translated strings in. The relative-time
+  // labels also carry the BCP-47 tag so weekday/short-date branches format in-locale.
+  const timeLabels = useMemo<RelativeTimeLabels>(
+    () => ({
+      now: tChat("timeNow"),
+      minutesAgo: tChat("timeMinutesAgo"),
+      hoursAgo: tChat("timeHoursAgo"),
+      yesterday: tChat("timeYesterday"),
+      lastWeek: tChat("timeLastWeek"),
+      locale: localeTag(locale),
+    }),
+    [tChat, locale],
+  );
+  const layoutOptionInfo = useMemo(
+    () => ({
+      classic: { label: tChat("layoutClassicLabel"), description: tChat("layoutClassicDesc") },
+      studio: { label: tChat("layoutStudioLabel"), description: tChat("layoutStudioDesc") },
+      focus: { label: tChat("layoutFocusLabel"), description: tChat("layoutFocusDesc") },
+    }),
+    [tChat],
+  );
+  const densityOptionInfo = useMemo(
+    () => ({
+      compact: { label: tChat("densityCompactLabel"), description: tChat("densityCompactDesc") },
+      regular: { label: tChat("densityRegularLabel"), description: tChat("densityRegularDesc") },
+      comfy: { label: tChat("densityComfyLabel"), description: tChat("densityComfyDesc") },
+    }),
+    [tChat],
+  );
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
@@ -1099,6 +1131,9 @@ export default function ChatPage() {
         softLimit={questionUsage.softLimit ?? null}
         planName={entitlements.plan.name}
         upgradeHref="/account"
+        label={tChat("questionsThisMonth")}
+        unlimitedLabel={tChat("unlimited")}
+        upgradeLabel={tChat("upgradeArrow")}
       />
     ) : undefined;
   const sidebarBody = (
@@ -1110,6 +1145,9 @@ export default function ChatPage() {
         searching={searching}
         onSelect={(id) => void openConversation(id)}
         activeId={conversationId}
+        placeholder={tChat("searchPlaceholder")}
+        searchingLabel={tChat("searchingLabel")}
+        noResultsLabel={tChat("noMatchingConversations")}
       />
       {searchQuery.trim().length < 2 && (
         <ChatConversationList
@@ -1117,6 +1155,11 @@ export default function ChatPage() {
           activeId={conversationId}
           onSelect={(id) => void openConversation(id)}
           loading={loadingConversations}
+          recentLabel={tChat("recentLabel")}
+          recentAriaLabel={tChat("recentAria")}
+          emptyLabel={tChat("noConversationsYet")}
+          unreadLabel={tChat("unread")}
+          timeLabels={timeLabels}
         />
       )}
     </>
@@ -1135,7 +1178,12 @@ export default function ChatPage() {
         </SourcesRail>
       }
       sidebar={
-        <ChatSidebar onNewConversation={startNewConversation} footer={sidebarFooter}>
+        <ChatSidebar
+          onNewConversation={startNewConversation}
+          footer={sidebarFooter}
+          newConversationLabel={tChat("newConversationButton")}
+          collapseLabel={tChat("collapseSidebar")}
+        >
           {sidebarBody}
         </ChatSidebar>
       }
@@ -1151,17 +1199,26 @@ export default function ChatPage() {
         onCancel={() => setEditingTitle(false)}
         leading={
           sidebarInGrid ? undefined : (
-            <ChatMenuButton onOpen={() => setSidebarDrawerOpen(true)} />
+            <ChatMenuButton
+              onOpen={() => setSidebarDrawerOpen(true)}
+              label={tChat("openNavigation")}
+            />
           )
         }
       >
-        <ChatTweaksToggle open={tweaksOpen} onToggle={() => setTweaksOpen((open) => !open)} />
+        <ChatTweaksToggle
+          open={tweaksOpen}
+          onToggle={() => setTweaksOpen((open) => !open)}
+          showLabel={tChat("showTweaks")}
+          hideLabel={tChat("hideTweaks")}
+        />
         {experts.length > 0 && (
           <ChatVoicePicker
             options={experts.map((e) => ({ id: e.expertId, name: e.displayName }))}
             activeId={expertId}
             onSelect={setExpertId}
             disabled={busy}
+            label={tChat("voiceLabel")}
           />
         )}
         <ChatUserIdentity
@@ -1171,6 +1228,8 @@ export default function ChatPage() {
           onLanguageToggle={
             busy ? undefined : () => setLocale(locale === "en" ? "vi" : "en")
           }
+          switchLanguageAriaLabel={tChat("switchLanguageAria")}
+          switchLanguageLabel={tChat("switchLanguage")}
         />
       </ChatTopbar>
       <main className="card card-pad chat-content">
@@ -1207,6 +1266,9 @@ export default function ChatPage() {
         placeholder={inputPlaceholder}
         onAttach={() => setAttachOpen((open) => !open)}
         attachActive={attachOpen}
+        attachLabel={tChat("attachAria")}
+        inputLabel={tChat("questionAria")}
+        sendLabel={tChat("sendAria")}
       >
         {attachOpen && (
           <UploadPanel conversationId={conversationId} onClose={() => setAttachOpen(false)} />
@@ -1214,6 +1276,10 @@ export default function ChatPage() {
         <ChatInputHelper
           questionsLeft={inputQuota.questionsLeft}
           unlimited={inputQuota.unlimited}
+          hint={tChat("keyboardHint")}
+          unlimitedLabel={tChat("unlimitedQuestions")}
+          questionsLeftLabel={tChat("questionsLeftThisMonth")}
+          questionsLeftLabelOne={tChat("questionsLeftThisMonthOne")}
         />
       </ChatInputBar>
       <SourcesDrawer
@@ -1231,13 +1297,25 @@ export default function ChatPage() {
           onNewConversation={startNewConversation}
           onClose={() => setSidebarDrawerOpen(false)}
           footer={sidebarFooter}
+          newConversationLabel={tChat("newConversationButton")}
+          collapseLabel={tChat("collapseSidebar")}
         >
           {sidebarBody}
         </ChatSidebar>
       </ChatSidebarDrawer>
       {tweaksOpen && (
-        <TweaksPanel onClose={() => setTweaksOpen(false)}>
-          <TweaksLayoutControl value={direction} onChange={changeDirection} />
+        <TweaksPanel
+          onClose={() => setTweaksOpen(false)}
+          heading={tChat("tweaksTitle")}
+          closeLabel={tChat("tweaksClose")}
+        >
+          <TweaksLayoutControl
+            value={direction}
+            onChange={changeDirection}
+            label={tChat("tweaksLayoutLabel")}
+            ariaLabel={tChat("tweaksLayoutAria")}
+            optionInfo={layoutOptionInfo}
+          />
           <TweaksDensityControl
             density={density}
             onDensityChange={changeDensity}
@@ -1245,6 +1323,11 @@ export default function ChatPage() {
             onVerifiedBadgeChange={changeVerifiedBadge}
             conciergeOffer={showConciergeOffer}
             onConciergeOfferChange={changeConciergeOffer}
+            label={tChat("tweaksDensityLabel")}
+            ariaLabel={tChat("tweaksDensityAria")}
+            densityInfo={densityOptionInfo}
+            verifiedBadgeLabel={tChat("verifiedBadgeOption")}
+            conciergeOfferLabel={tChat("conciergeOfferOption")}
           />
         </TweaksPanel>
       )}

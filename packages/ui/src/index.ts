@@ -93,6 +93,7 @@ export type {
   ChatConversationListProps,
   ChatConversationItem,
   AvatarTone,
+  RelativeTimeLabels,
 } from "./ChatConversationList";
 export {
   LAYOUT_DIRECTIONS,

@@ -13,6 +13,18 @@ export interface ChatInputHelperProps {
    * instead of a remaining count. Takes precedence over `questionsLeft`.
    */
   unlimited?: boolean;
+  /** Left keyboard hint (i18n M13). Defaults to English. */
+  hint?: string;
+  /** Right-hand text for an unlimited plan (i18n M13). Defaults to English. */
+  unlimitedLabel?: string;
+  /**
+   * Right-hand remaining-count template with a `{count}` token (i18n M13). Defaults to
+   * English plural. `questionsLeftLabelOne` overrides it when exactly one remains, so
+   * languages with a singular form stay correct (others can pass the same string).
+   */
+  questionsLeftLabel?: string;
+  /** Singular `{count}` template used when exactly one question remains (i18n M13). */
+  questionsLeftLabelOne?: string;
 }
 
 /**
@@ -24,18 +36,26 @@ export interface ChatInputHelperProps {
  * counter is omitted until the quota resolves so it never flashes a placeholder.
  * Mounts inside the {@link ChatInputBar} `children` slot so it stays in the sticky bar.
  */
-export function ChatInputHelper({ questionsLeft = null, unlimited = false }: ChatInputHelperProps) {
+export function ChatInputHelper({
+  questionsLeft = null,
+  unlimited = false,
+  hint = "Enter to send · Shift + Enter for newline",
+  unlimitedLabel = "Unlimited questions this month",
+  questionsLeftLabel = "{count} questions left this month",
+  questionsLeftLabelOne = "{count} question left this month",
+}: ChatInputHelperProps) {
   let quotaText: string | null = null;
   if (unlimited) {
-    quotaText = "Unlimited questions this month";
+    quotaText = unlimitedLabel;
   } else if (questionsLeft != null && Number.isFinite(questionsLeft)) {
     const left = Math.max(0, Math.floor(questionsLeft));
-    quotaText = `${left} ${left === 1 ? "question" : "questions"} left this month`;
+    const template = left === 1 ? questionsLeftLabelOne : questionsLeftLabel;
+    quotaText = template.replace("{count}", String(left));
   }
 
   return (
     <div className={cx("input-bar-help", "muted")}>
-      <span className="input-bar-hint">Enter to send · Shift + Enter for newline</span>
+      <span className="input-bar-hint">{hint}</span>
       {quotaText && <span className="input-bar-quota">{quotaText}</span>}
     </div>
   );

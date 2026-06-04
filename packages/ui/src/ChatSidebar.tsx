@@ -16,6 +16,10 @@ export interface ChatSidebarProps extends HTMLAttributes<HTMLDivElement> {
   children?: ReactNode;
   /** Pinned footer region — usage + plan meter (M12.2.4) mounts here. */
   footer?: ReactNode;
+  /** Label for the "+ New conversation" action (i18n M13). Defaults to English. */
+  newConversationLabel?: string;
+  /** Accessible label for the collapse (X) button (i18n M13). Defaults to English. */
+  collapseLabel?: string;
 }
 
 /**
@@ -31,6 +35,8 @@ export function ChatSidebar({
   onClose,
   children,
   footer,
+  newConversationLabel = "+ New conversation",
+  collapseLabel = "Collapse sidebar",
   className,
   ...rest
 }: ChatSidebarProps) {
@@ -45,7 +51,7 @@ export function ChatSidebar({
           <button
             type="button"
             className="chat-side-collapse"
-            aria-label="Collapse sidebar"
+            aria-label={collapseLabel}
             onClick={onClose}
           >
             <svg
@@ -68,7 +74,7 @@ export function ChatSidebar({
         )}
       </div>
       <Button variant="primary" className="chat-side-new" onClick={onNewConversation}>
-        + New conversation
+        {newConversationLabel}
       </Button>
       {children != null && <div className="chat-side-body">{children}</div>}
       {footer != null && <div className="chat-side-foot">{footer}</div>}

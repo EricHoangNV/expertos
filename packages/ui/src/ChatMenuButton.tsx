@@ -3,6 +3,8 @@ import { cx } from "./cx";
 export interface ChatMenuButtonProps {
   /** Open the sidebar overlay (M12.9.1). */
   onOpen: () => void;
+  /** Accessible label for the hamburger button (i18n M13). Defaults to English. */
+  label?: string;
   className?: string;
 }
 
@@ -14,12 +16,12 @@ export interface ChatMenuButtonProps {
  * sidebar is an overlay, so it never becomes a dead control next to a visible sidebar.
  * Presentational only — the page owns the drawer-open state.
  */
-export function ChatMenuButton({ onOpen, className }: ChatMenuButtonProps) {
+export function ChatMenuButton({ onOpen, label = "Open navigation", className }: ChatMenuButtonProps) {
   return (
     <button
       type="button"
       className={cx("btn", "btn-subtle", "btn-icon", "chat-menu-btn", className)}
-      aria-label="Open navigation"
+      aria-label={label}
       onClick={onOpen}
     >
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
