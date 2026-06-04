@@ -22,12 +22,45 @@ import { env, users, type TestUser } from "./fixtures/env";
  * upsert-by-email role). Reads `DATABASE_URL` (the same URL the API uses); skips the role
  * promotion with a clear warning if it is unset.
  */
+/**
+ * Extract the uid from an emulator ID token. Emulator tokens are unsigned JWTs (`alg: none`); the
+ * uid is the `user_id` (Firebase) / `sub` claim in the base64url payload.
+ */
+function decodeEmulatorUid(idToken: string): string {
+  const payload = JSON.parse(Buffer.from(idToken.split(".")[1], "base64").toString("utf8")) as {
+    user_id?: string;
+    sub?: string;
+  };
+  const uid = payload.user_id ?? payload.sub;
+  if (!uid) throw new Error("global-setup: emulator token carried no user_id/sub claim.");
+  return uid;
+}
+
 async function globalSetup(): Promise<void> {
+  // The Auth emulator is in-memory, so a restart reassigns every identity a new uid while the DB still
+  // holds the prior session's uid for that email. `AuthService.resolveUser` keys on uid → it can't find
+  // the row, tries to create a new one, and hits the email unique constraint (GET /me → 500). Repoint
+  // the existing row to the current uid (by email, admin RLS context) before mirroring, so /me resolves
+  // it. A short-lived client just for this reconcile — step 2 opens its own for the role promotions.
+  const reconcileUrl = process.env.DATABASE_URL;
+  const reconcilePrisma = reconcileUrl
+    ? new PrismaClient({ datasources: { db: { url: reconcileUrl } } })
+    : null;
   const ctx = await playwrightRequest.newContext();
   try {
     // 1. Mirror every identity's user row by exercising an authenticated endpoint.
     for (const user of Object.values(users) as TestUser[]) {
       const token = await getEmulatorIdToken(ctx, user);
+      if (reconcilePrisma) {
+        const uid = decodeEmulatorUid(token);
+        await reconcilePrisma.$transaction(async (tx) => {
+          await applyRlsContext(tx, { tenantId: GLOBAL_TENANT_ID, isAdmin: true });
+          await tx.user.updateMany({
+            where: { email: user.email, firebaseUid: { not: uid } },
+            data: { firebaseUid: uid },
+          });
+        });
+      }
       const res = await ctx.get(`${env.apiBaseUrl}/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -39,6 +72,7 @@ async function globalSetup(): Promise<void> {
     }
   } finally {
     await ctx.dispose();
+    await reconcilePrisma?.$disconnect();
   }
 
   // 2. Promote the privileged identities. The role enum is user | expert | admin.
@@ -122,9 +156,18 @@ async function globalSetup(): Promise<void> {
       // Linked to the e2e-expert@ identity so the expert portal flows see a real expert too.
       const expertUser = await tx.user.findFirst({ where: { email: users.expert.email } });
       const admin = await tx.user.findFirst({ where: { email: users.admin.email } });
+      // The Ada expert is the anchor for the voice-picker (M2.2) + concierge flows. global-teardown
+      // deletes it each run, so this normally hits the create branch — but restore its identity in the
+      // update branch too, so Ada is always present and correctly named even if teardown was skipped
+      // (e.g. DATABASE_URL unset) or the row otherwise lingers.
       const expert = await tx.expert.upsert({
         where: { tenantId_slug: { tenantId: GLOBAL_TENANT_ID, slug: "e2e-expert" } },
-        update: { active: true },
+        update: {
+          active: true,
+          displayName: "Dr. Ada Mentor",
+          title: "Lead Expert",
+          userId: expertUser?.id ?? null,
+        },
         create: {
           tenantId: GLOBAL_TENANT_ID,
           slug: "e2e-expert",

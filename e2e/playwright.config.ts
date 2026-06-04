@@ -14,6 +14,15 @@ import { env } from "./fixtures/env";
  */
 const manageServers = process.env.E2E_NO_WEBSERVER !== "1";
 
+// Which app servers Playwright should boot this run. `webServer` would otherwise start ALL three
+// (api/web/admin) regardless of which specs run, so a flow that only exercises web would still need
+// a production build of admin (and vice-versa) or fail at startup. The test-e2e-{users,admin}.sh
+// scripts set E2E_APPS to just the apps their spec group touches (api is always needed); default to
+// all three so a bare `pnpm test:e2e` still boots the full stack.
+const requestedApps = new Set(
+  (process.env.E2E_APPS ?? "api web admin").split(/[,\s]+/).filter(Boolean),
+);
+
 /** NEXT_PUBLIC_* the web/admin dev servers need to talk to the API + Auth emulator. */
 const webClientEnv: Record<string, string> = {
   NEXT_PUBLIC_API_URL: env.apiBaseUrl,
@@ -28,6 +37,9 @@ export default defineConfig({
   // Mirrors the test identities + promotes the expert/admin roles the gated portal specs
   // need, against the live stack (see global-setup.ts). Runs once before the suite.
   globalSetup: "./global-setup.ts",
+  // Purges everything the run created/seeded so the shared stack returns to baseline
+  // (DIRECTIVE #49 / §3.4.3 — see global-teardown.ts). Runs once after the suite.
+  globalTeardown: "./global-teardown.ts",
   // Each spec mutates shared server state (knowledge, conversations), so run files in
   // order within a worker; keep a single worker to avoid cross-test interference.
   fullyParallel: false,
@@ -83,6 +95,6 @@ export default defineConfig({
           timeout: 120_000,
           env: webClientEnv,
         },
-      ]
+      ].filter((server) => requestedApps.has(server.name))
     : undefined,
 });
