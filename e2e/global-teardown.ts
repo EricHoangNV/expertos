@@ -20,10 +20,14 @@ import { users } from "./fixtures/env";
  * by `global-setup.ts` on the next run (the expert upsert + published-voice seed), so each run starts
  * from a clean, fully-reseeded baseline.
  *
- * The e2e identity *rows* themselves are intentionally kept: they are stable, deterministic anchors that
- * `global-setup.ts` re-mirrors via sign-in, and deleting a user is the app's own cascade concern
- * (AdminUserService — GCS object cleanup etc.), not a raw fixture delete. Reads `DATABASE_URL` (the URL
- * the API uses); skips with a warning if unset. Idempotent: re-running on an already-clean stack is a no-op.
+ * The e2e identity *rows* themselves are deleted last: a run must leave the Users list at baseline, with
+ * no `e2e-*@expertos.test` accounts lingering. The delete is safe as a raw fixture delete because every FK
+ * to `User` is `onDelete: Cascade` or `SetNull` (no `Restrict` blocks it), and it is fully reversible —
+ * `global-setup.ts` re-provisions each identity on the next run by signing into the auth emulator and
+ * mirroring via `/me`. Their GCS uploads are already reclaimed (step 1 purges `UploadedFile` rows), and the
+ * auth-emulator records are in-memory and reseeded per run, so no app-level cascade (AdminUserService) is
+ * needed here. Reads `DATABASE_URL` (the URL the API uses); skips with a warning if unset. Idempotent:
+ * re-running on an already-clean stack is a no-op.
  */
 async function globalTeardown(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
@@ -76,6 +80,13 @@ async function globalTeardown(): Promise<void> {
       //    adds (e.g. access-control's `e2e-whitelist-temp@`). Every test email is `e2e-*`, and a real
       //    admin email never is, so the `e2e-` prefix is a safe, complete filter.
       await tx.allowedEmail.deleteMany({ where: { email: { startsWith: "e2e-" } } });
+
+      // 5. The e2e identity rows themselves — the seeded four plus any runtime-created `e2e-*` account.
+      //    Resolved above; every remaining FK to User is Cascade/SetNull, so this raw delete won't block.
+      //    `global-setup.ts` recreates them on the next run via emulator sign-in + `/me` mirror.
+      if (userIds.length > 0) {
+        await tx.user.deleteMany({ where: { id: { in: userIds } } });
+      }
     });
   } finally {
     await prisma.$disconnect();
