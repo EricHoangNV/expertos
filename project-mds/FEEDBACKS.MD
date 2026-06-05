@@ -2,12 +2,14 @@
 
 ## Latest Review Verdicts (read this section first — stop at the breaker line)
 
-### Security: Cycle 3 — PASS (2026-06-03)
-- auth & access control: PASS (Cycle 2 whitelist-demotion/revocation role mirror is now same-transaction write-through)
-- data exposure / secrets: PASS (expert retrieval boundary and raw-upload object deletion remediations verified)
-- input validation: PASS (zod route validation, raw SQL bound params, prompt citation-marker neutralization, raw-body webhook signatures)
-- dependency / supply chain: PASS (no new risky dependency or lockfile expansion in reviewed changes)
-- Medium: draft knowledge edit performs chunk/summarize/embed work before the draft-status existence check — REMEDIATED 2026-06-03, pending re-review (`IngestionService.editDraftContent` now calls a new cheap `DocumentVersionRepository.assertDraftEditable` precondition BEFORE `chunkAndEmbed`; the in-tx guard in `replaceDraftChunks` is retained to close the concurrent-submit race — see remediation note below)
+### Security: Cycle 4 — FAIL (2026-06-05)
+- auth & access control: FAIL (bulk publish CLI can bypass the expert-review publication gate)
+- data exposure / secrets: PASS (per-expert TidyCal token is write-only/encrypted; no new plaintext echo found)
+- input validation: PASS (reviewed changed API routes use zod/UUID validation and bound SQL parameters)
+- dependency / supply chain: PASS (no new runtime dependency expansion; script entries only)
+- Critical: bulk draft-publish CLI makes draft chunks retrieval-visible while intentionally skipping AI-processing and expert-review gates
+- High: TidyCal decrypt failure falls through to the global/default provider while bookings remain attributed to the failing expert
+- Medium: bulk publish CLI does not invalidate tenant response caches after publishing new retrieval-visible knowledge
 
 ### Code Review: Cycle 0 — (no review yet)
 - (awaiting first code review)
@@ -19,6 +21,106 @@
 - High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
 - Mediums (trust-signal wording): analytics "grounded" bucket label + chat "Verified" badge wording — ADDRESSED 2026-06-03 (see remediation note below)
 - Medium (found via E2E M15.3.7): Free-plan document-upload 402 surfaced as a bare "Http Exception" badge instead of an upgrade prompt — ADDRESSED 2026-06-03 (upload client throws a typed `UploadEntitlementError`; the chat upload panel renders a localized EN/VI upgrade prompt + a link to /account; enforcement unchanged, DIRECTIVE #44 — see remediation note below)
+
+---
+
+## Daily Architecture Review — Security Cycle 4 (2026-06-05)
+
+### Review scope
+
+Reviewed the daily architecture surface across security, performance, efficiency, cost resilience, reliability, and data isolation. I did not read or reference anything under `requirements/`.
+
+Files and changes inspected:
+
+- Project docs: `project-mds/DIRECTIVES.md`, `project-mds/progress-state.md`, relevant `project-mds/PRD.md` matches, and the latest `project-mds/FEEDBACKS.MD` verdict block.
+- Recent commits since the prior security cycle: citation click-through, bulk draft publishing, per-expert TidyCal polling/credentials, admin knowledge UI refactor, M16 docs, E2E teardown/i18n changes.
+- API surfaces in `apps/api/src/`: auth/RBAC, entitlements, chat, retrieval, knowledge, uploads, billing, booking/reconcile, concierge, analytics, retention, admin/expert portals, logging.
+- Persistence/isolation surfaces in `packages/db/prisma/`, `packages/db/src/`, migrations, RLS usage, raw SQL paths.
+- Prompt/citation surfaces in `packages/ai/src/` and citation rendering in `apps/web/`/`packages/ui/`.
+- Infrastructure/dependency manifests and changed package scripts.
+
+### Findings ordered by severity
+
+#### Critical — Bulk draft-publish CLI bypasses expert-review publication gates
+
+**File and line references:**
+
+- `apps/api/src/knowledge/publish-drafts.cli.ts:4-8`
+- `apps/api/src/knowledge/publish-drafts.cli.ts:160-182`
+- `apps/api/src/knowledge/knowledge.service.ts:191-247`
+
+**What I found:**
+
+The new `publish-drafts` command explicitly publishes every matching `Document` whose latest version is still `draft`, and its header says it intentionally skips both AI-processing and expert-review gates. On `--commit`, it updates the latest draft `document_versions.status` to `published`, flips all chunks for that version to `published`, and points the parent document at that version. That makes the chunks retrieval-visible without passing through the normal `KnowledgeService.approve` state machine, which only publishes versions already in `expert_review` and records the approving user.
+
+**Architectural consequence:**
+
+This directly violates the system trust promise that published expert knowledge is expert-reviewed. A server-side operator or deployment job can make unreviewed draft material ground future answers, produce citations that look authoritative, and damage an expert's reputation with content they never signed off. Because retrieval treats `published` chunks as live, the bypass can lead to supported-looking answers grounded in unsupported operationally-published drafts. This is a material expert-review gate bypass and therefore a FAIL condition.
+
+**Recommended remediation:**
+
+Remove this command from normal package scripts, or change it to preserve the publication invariant: only publish versions already in `expert_review`, require an explicit allowlist of document/version IDs, and call the same domain service path or a shared publication helper used by `KnowledgeService.approve`. If a one-time migration truly must bypass review, keep it outside the app package, require a separate break-glass environment flag, write immutable admin audit records, record the human approver/source of authorization, and delete it after use.
+
+#### High — TidyCal token decrypt failure can misattribute global-calendar bookings to one expert
+
+**File and line references:**
+
+- `apps/api/src/consultation/tidycal-provider.factory.ts:38-50`
+- `apps/api/src/consultation/booking.service.ts:175-205`
+- `apps/api/src/consultation/booking.service.ts:319-383`
+
+**What I found:**
+
+`BookingService.resolveTargets` selects experts with a configured encrypted token and preserves each selected `expertId` as the poll target. `TidyCalProviderFactory.forExpert` then attempts to decrypt that expert token, but on decrypt failure it logs a warning and falls through to `this.default()`, which may be the legacy global `TIDYCAL_API_TOKEN`. The poll still scopes and attributes all events from that fallback provider to the original expert target.
+
+**Architectural consequence:**
+
+A rotated/missing `CREDENTIALS_ENCRYPTION_KEY`, corrupt ciphertext, or bad migration can cause bookings from the global/default calendar to be processed as if they came from a specific expert's calendar. The correlation path can update existing consultations by `bookingRef`, claim a user's pending consultation for the wrong expert, or create a new booked consultation with the wrong `expertId`. That creates unreliable booking state, consultation/revenue attribution drift, and expert portal misreporting.
+
+**Recommended remediation:**
+
+Do not fall back when an expert row has `tidycalApiTokenEnc` but decryption fails. Return an explicit disabled/error provider for that expert, skip the target, increment a failed-target counter, and alert/log with no secret material. Keep the env-global fallback only for experts with no configured token or for the no-expert legacy target. Add a regression test where a decrypt failure plus `TIDYCAL_API_TOKEN` does not call the global provider and does not apply any booking under that expert.
+
+#### Medium — Bulk publish leaves retrieval and answer caches stale after publishing new knowledge
+
+**File and line references:**
+
+- `apps/api/src/knowledge/publish-drafts.cli.ts:174-195`
+- `apps/api/src/knowledge/knowledge.service.ts:244-247`
+- `apps/api/src/cache/response-cache.service.ts:201-214`
+
+**What I found:**
+
+The normal knowledge approval path invalidates the tenant response caches immediately after live content changes. The bulk publish command updates document/version/chunk status directly, then prints that the live response cache is not invalidated and that new answers reflect published content only after TTL expiry or API restart.
+
+**Architectural consequence:**
+
+Immediately after a bulk publish, users can receive stale cached answers and stale retrieval results that do not reflect newly published source material. In a grounded-answer product, that means the operational act of publishing reviewed knowledge may not affect user answers when users need it most. Combined with the review-bypass issue above, it also makes rollback/repair behavior harder to reason about.
+
+**Recommended remediation:**
+
+If the CLI remains, add a cache invalidation path equivalent to `ResponseCacheService.invalidateTenant` for every affected tenant after commit. Prefer calling a shared publication service so cache invalidation, audit, and retrieval-visibility side effects cannot drift across entry points.
+
+### Baseline health notes
+
+- Browser-to-API trust boundary: changed API routes remain guarded with `@Roles(...)`; chat and upload retain server-side `@RequiresEntitlement(...)` gates.
+- Prompt/citation boundary: `buildAnswerPrompt` remains the single prompt choke point with instruction hierarchy and citation-marker neutralization; `ChatService` treats the final answer as ungrounded when resolved citations are empty and avoids caching uncited answers.
+- Retrieval/data isolation: `PgVectorStore` continues to require `chunks.status = published` and applies selected expert scope through `document_versions -> documents`; RLS context is applied inside transaction seams.
+- Upload/retention: upload path still validates type/size, scans before storage, scopes uploaded chunks to the user/conversation, and retention/user deletion paths collect object URIs before row deletion.
+- Stripe: webhook verification remains HMAC-over-raw-body with replay tolerance and idempotent service handling.
+- Analytics: reviewed raw SQL usages are constant strings with bound parameters and date windows; I did not run production-scale EXPLAIN plans.
+- Dependencies: recent manifest change adds API script entries only; I found no new dependency sprawl in the reviewed diff.
+
+### Residual risks and unverified assumptions
+
+- Host Playwright E2E and live provider polling remain externally pending per `progress-state.md`; I did not run live E2E in this review.
+- I did not verify actual TidyCal API pagination/timeout behavior against the network. The current driver issues one `GET /bookings` request and depends on the returned `data` array.
+- The review assumes production operators can run package scripts or deploy one-off commands; if the `publish-drafts` script is never built/deployed/run in production, its blast radius is lower, but the code path still exists in the monorepo.
+- Production Cloud Scheduler authentication/Cloud Run IAM for the admin reconcile endpoint was not verified in Terraform in this pass.
+
+### Final verdict
+
+FAIL. The bulk draft-publish command can bypass the expert-review gate and make unreviewed draft chunks retrieval-visible, and the TidyCal fallback behavior can misattribute booking state under credential failure. Both are architecture-level trust/reliability risks for ExpertOS.
 
 ---
 
