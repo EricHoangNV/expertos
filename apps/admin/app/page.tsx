@@ -268,16 +268,16 @@ function FunnelCard({ data }: { data: FunnelAnalyticsDto }) {
 
 /**
  * Knowledge Pipeline card (M13.2.6): how many knowledge documents currently sit in each stage of the
- * M8.1 publish lifecycle, as a status row (badge tone + count) per stage — DRAFT (ink) → AI PROCESSING
- * (info) → EXPERT REVIEW (amber) → PUBLISHED (green) — plus a "Review queue →" link to the full
- * approval view. `archived` is omitted (retired docs aren't part of the active pipeline). Wired to
- * {@link getKnowledgePipeline} (`/admin/analytics/knowledge-pipeline`).
+ * M8.1 publish lifecycle, as a status row (badge tone + count) per stage — DRAFT (ink) → EXPERT
+ * REVIEW (amber) → PUBLISHED (green) — plus a "Review queue →" link to the full approval view.
+ * `archived` is omitted (retired docs aren't part of the active pipeline); `ai_processing` is a
+ * retained enum value with no row (parse → chunk → embed runs synchronously at ingest, so no doc
+ * ever dwells in it). Wired to {@link getKnowledgePipeline} (`/admin/analytics/knowledge-pipeline`).
  */
 function KnowledgePipelineCard({ data }: { data: KnowledgePipelineDto }) {
   const t = useT("dashboard");
   const stages: { status: PublishStatusValue; label: string; tone: "ink" | "info" | "amber" | "green" }[] = [
     { status: "draft", label: t("pipeline.draft"), tone: "ink" },
-    { status: "ai_processing", label: t("pipeline.aiProcessing"), tone: "info" },
     { status: "expert_review", label: t("pipeline.expertReview"), tone: "amber" },
     { status: "published", label: t("pipeline.published"), tone: "green" },
   ];

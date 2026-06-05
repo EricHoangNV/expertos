@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Badge, Bar, Button, Table, cx, type BadgeTone, type Translator } from "@expertos/ui";
+import { Badge, Button, Table, cx, type BadgeTone, type Translator } from "@expertos/ui";
 import type {
   KnowledgeDocumentDto,
   KnowledgeDraftSummaryDto,
@@ -23,8 +23,12 @@ import { useStatusLabel, useT } from "../../src/lib/i18n";
 /**
  * Knowledge approval — kanban board (M13.3, PRD §"Admin & Expert portals" / ui-reference-spec
  * "Screen 2"). Replaces the flat review-queue table with the approved mockup: a numbered status
- * pipeline (Draft → AI Processing → Expert Review → Published, Expert Review the active stage) over
- * a 4-column `.kanban` board, then a Conversation → Knowledge table below.
+ * pipeline (Draft → Expert Review → Published) over a 3-column `.kanban` board, then a
+ * Conversation → Knowledge table below.
+ *
+ * The `ai_processing` lifecycle value is retained in the `publish_status` enum (parse → chunk →
+ * embed runs synchronously at ingest, before a note reaches the board), but is intentionally not
+ * shown as a column: no note ever dwells in it under the current synchronous pipeline.
  *
  * Wiring: per-column cards come from the existing `/knowledge/documents?status=` list (M8.1); the
  * accurate column count badges come from `/admin/analytics/knowledge-pipeline` (M13.2.6) — the list
@@ -36,8 +40,6 @@ import { useStatusLabel, useT } from "../../src/lib/i18n";
  *   • File-type / expert-name chips from the mockup are omitted — `KnowledgeDocumentDto` has neither;
  *     `scope`/`language` stand in as the available provenance.
  *   • Published "N answers cite this" citation count is omitted — not tracked per document.
- *   • AI Processing "progress" is approximated from `chunkCount` (chunks embedded ⇒ further along),
- *     the only real signal of pipeline progress.
  *   • The "Upload (MD / PDF / XLSX)" header action is omitted — admin knowledge ingestion is
  *     seed/CLI (M1.1); there is no browser-upload endpoint in the admin API. "+ New note" routes to
  *     the conversation-to-knowledge draft pipeline, which is the real authoring path.
@@ -47,7 +49,6 @@ import { useStatusLabel, useT } from "../../src/lib/i18n";
  *  resolves against the `knowledge.columns.*` dictionary so the column/step labels are localized. */
 const COLUMNS: { status: PublishStatusValue; labelKey: string; tone: BadgeTone }[] = [
   { status: "draft", labelKey: "columns.draft", tone: "ink" },
-  { status: "ai_processing", labelKey: "columns.aiProcessing", tone: "info" },
   { status: "expert_review", labelKey: "columns.expertReview", tone: "amber" },
   { status: "published", labelKey: "columns.published", tone: "green" },
 ];
@@ -90,17 +91,6 @@ function DocCard({
         <span className="mono muted">· {doc.language}</span>
         {version != null && <span className="mono muted">· v{version.versionNumber}</span>}
       </div>
-
-      {status === "ai_processing" && (
-        <>
-          <p className="kanban-card-summary mono">{t("card.processingStages")}</p>
-          <Bar
-            className="kanban-card-progress"
-            value={version != null && version.chunkCount > 0 ? 66 : 33}
-            aria-label={t("card.processingProgress")}
-          />
-        </>
-      )}
 
       {status === "expert_review" && (
         <>
@@ -159,10 +149,9 @@ export default function KnowledgeApprovalPage() {
         setError(t("errors.signIn"));
         return;
       }
-      const [pipeline, draft, ai, review, published, drafts] = await Promise.all([
+      const [pipeline, draft, review, published, drafts] = await Promise.all([
         getKnowledgePipeline(token),
         listDocuments(token, "draft"),
-        listDocuments(token, "ai_processing"),
         listDocuments(token, "expert_review"),
         listDocuments(token, "published"),
         listDrafts(token),
@@ -171,7 +160,8 @@ export default function KnowledgeApprovalPage() {
         pipeline,
         docs: {
           draft,
-          ai_processing: ai,
+          // `ai_processing` is a retained enum value with no board column (see file header).
+          ai_processing: [],
           expert_review: review,
           published,
           archived: [],

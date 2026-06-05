@@ -4,7 +4,7 @@ import { env, users } from "../fixtures/env";
 
 /**
  * Expert voice-profile sign-off (M2.3 / M13.5). The voice profile lifecycle is a state machine
- * (draft → ai_processing → expert_review → published); from `expert_review` an "Approve" publishes
+ * (draft → expert_review → published); from `expert_review` an "Approve" publishes
  * the voice ("Approving publishes this voice — it becomes eligible to render answers"). There is no
  * single "Publish" button.
  *

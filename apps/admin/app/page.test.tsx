@@ -340,15 +340,14 @@ describe("AdminHomePage — Knowledge Pipeline card", () => {
     await waitFor(() => {
       const card = container.querySelector(".pipeline-card") as HTMLElement | null;
       expect(card).not.toBeNull();
-      // Four stage rows: Draft(ink) 3, AI Processing(info) 1, Expert Review(amber) 5, Published(green) 42.
-      // archived (8) is not part of the active pipeline.
-      expect(card!.querySelectorAll(".pipeline-row")).toHaveLength(4);
+      // Three stage rows: Draft(ink) 3, Expert Review(amber) 5, Published(green) 42.
+      // archived (8) is not part of the active pipeline; ai_processing has no row (retained enum).
+      expect(card!.querySelectorAll(".pipeline-row")).toHaveLength(3);
       expect(card!.querySelector(".badge.badge-ink")?.textContent).toBe("Draft");
-      expect(card!.querySelector(".badge.badge-info")?.textContent).toBe("AI Processing");
       expect(card!.querySelector(".badge.badge-amber")?.textContent).toBe("Expert Review");
       expect(card!.querySelector(".badge.badge-green")?.textContent).toBe("Published");
       const counts = Array.from(card!.querySelectorAll(".pipeline-count")).map((c) => c.textContent);
-      expect(counts).toEqual(["3", "1", "5", "42"]);
+      expect(counts).toEqual(["3", "5", "42"]);
       expect(screen.getByRole("link", { name: "Review queue →" })).toHaveAttribute("href", "/knowledge");
     });
   });

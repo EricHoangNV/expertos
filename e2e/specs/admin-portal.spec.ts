@@ -39,9 +39,9 @@ test.describe("admin portal", () => {
     await page.goto(`${env.adminBaseUrl}/knowledge`);
 
     await expect(page.getByRole("heading", { name: "Knowledge approval" })).toBeVisible();
-    // The board (M13.3.3) is four status columns (Draft / AI Processing / Expert Review /
-    // Published), always present even when empty against a freshly-seeded stack.
-    await expect(page.locator(".kanban-col")).toHaveCount(4);
+    // The board (M13.3.3) is three status columns (Draft / Expert Review / Published), always
+    // present even when empty against a freshly-seeded stack.
+    await expect(page.locator(".kanban-col")).toHaveCount(3);
 
     // The numbered step indicator (M13.3.2) narrows the board to a single stage without error.
     // Its buttons carry the stable English stage names.

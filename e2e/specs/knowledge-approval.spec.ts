@@ -21,9 +21,9 @@ test.describe("knowledge approval (kanban)", () => {
     await page.goto(`${env.adminBaseUrl}/knowledge`);
     await expect(page.getByRole("heading", { name: "Knowledge approval" })).toBeVisible();
 
-    // Four status columns (Draft / AI Processing / Expert Review / Published), Published last.
+    // Three status columns (Draft / Expert Review / Published), Published last.
     const columns = page.locator(".kanban-col");
-    await expect(columns).toHaveCount(4);
+    await expect(columns).toHaveCount(3);
 
     // The seeded card sits in Expert Review with an "Approve & publish" action. Multiple
     // Expert-Review cards may exist, so scope the action to the card carrying our title.
@@ -45,7 +45,7 @@ test.describe("knowledge approval (kanban)", () => {
   test("the status pipeline narrows the board to a single stage", async ({ page }) => {
     await signInAdmin(page, users.admin);
     await page.goto(`${env.adminBaseUrl}/knowledge`);
-    await expect(page.locator(".kanban-col")).toHaveCount(4);
+    await expect(page.locator(".kanban-col")).toHaveCount(3);
 
     // The numbered step indicator filters the board to one stage without error; the other stage
     // buttons stay reachable so the view can be re-widened.

@@ -13,7 +13,6 @@ export const en = {
   // Kanban column / pipeline-step labels (also the status DISPLAY labels on the board).
   columns: {
     draft: "Draft",
-    aiProcessing: "AI Processing",
     expertReview: "Expert Review",
     published: "Published",
   },
@@ -25,8 +24,6 @@ export const en = {
   },
   // Kanban cards.
   card: {
-    processingStages: "parse → chunk → embed",
-    processingProgress: "Processing progress",
     approve: "Approve & publish",
     diff: "Diff",
     versionLive: "v{version} live",
@@ -105,7 +102,6 @@ export const vi = {
   newNote: "+ Ghi chú mới",
   columns: {
     draft: "Bản nháp",
-    aiProcessing: "AI xử lý",
     expertReview: "Chuyên gia duyệt",
     published: "Đã xuất bản",
   },
@@ -115,8 +111,6 @@ export const vi = {
     note: "→ Lưu trữ / Ngừng dùng · mỗi câu trả lời đều ghi lại phiên bản đã xuất bản tạo ra nó",
   },
   card: {
-    processingStages: "phân tích → chia khối → nhúng",
-    processingProgress: "Tiến độ xử lý",
     approve: "Duyệt & xuất bản",
     diff: "So sánh",
     versionLive: "v{version} đang hoạt động",

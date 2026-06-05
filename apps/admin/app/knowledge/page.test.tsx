@@ -1,7 +1,7 @@
 // Admin knowledge-approval kanban tests (M15.2.4) — the `app/knowledge/page.tsx` board (M13.3).
-// Covers the 4-column kanban (column headers + pipeline count badges), the per-status card bodies
-// (Draft summary, AI Processing progress bar, Expert Review approve/diff actions, Published live
-// badge), the "Approve & publish" action (→ `POST /knowledge/versions/:id/approve` + reload), the
+// Covers the 3-column kanban (column headers + pipeline count badges), the per-status card bodies
+// (Draft summary, Expert Review approve/diff actions, Published live badge), the "Approve &
+// publish" action (→ `POST /knowledge/versions/:id/approve` + reload), the
 // status-pipeline step filter, the Conversation → Knowledge table (rows + empty state), and the
 // load-error path. Renders through the real Auth + Locale providers (M15.2.1 harness), so the
 // `POST /me/admin-session` admin-role resolution + the six board fetches run for real.
@@ -103,18 +103,19 @@ function mockBoard(over: {
 }
 
 describe("KnowledgeApprovalPage — kanban board", () => {
-  it("renders four columns with status labels + pipeline count badges", async () => {
+  it("renders three columns with status labels + pipeline count badges", async () => {
     mockBoard();
     const { container } = renderWithProviders(<KnowledgeApprovalPage />, { role: "admin" });
 
     await waitFor(() => {
       const heads = container.querySelectorAll(".kanban-col-head");
-      expect(heads).toHaveLength(4);
+      expect(heads).toHaveLength(3);
       const labels = Array.from(heads).map((h) => h.querySelector(".label")?.textContent);
-      expect(labels).toEqual(["Draft", "AI Processing", "Expert Review", "Published"]);
+      // `ai_processing` is a retained enum value with no board column (synchronous ingest).
+      expect(labels).toEqual(["Draft", "Expert Review", "Published"]);
       // Count badges come from the pipeline rollup, not the (take:50-bounded) doc lists.
       const counts = Array.from(heads).map((h) => h.querySelector(".badge")?.textContent);
-      expect(counts).toEqual(["3", "1", "5", "42"]);
+      expect(counts).toEqual(["3", "5", "42"]);
     });
   });
 
@@ -129,22 +130,6 @@ describe("KnowledgeApprovalPage — kanban board", () => {
     await waitFor(() => {
       expect(screen.getByRole("link", { name: "Pricing FAQ" })).toHaveAttribute("href", "/knowledge/d_draft");
       expect(screen.getByText("Initial draft")).toBeInTheDocument();
-    });
-  });
-
-  it("renders an AI-Processing card with the processing stages + progress bar", async () => {
-    mockBoard({
-      docs: {
-        ai_processing: [doc({ id: "d_ai", title: "Onboarding guide", status: "ai_processing", latestVersion: version({ status: "ai_processing", chunkCount: 5 }) })],
-      },
-    });
-    const { container } = renderWithProviders(<KnowledgeApprovalPage />, { role: "admin" });
-
-    await waitFor(() => {
-      expect(screen.getByText("parse → chunk → embed")).toBeInTheDocument();
-      // chunkCount > 0 → the progress bar fills further (66% per the page).
-      const bar = container.querySelector('[aria-label="Processing progress"] i') as HTMLElement | null;
-      expect(bar?.style.width).toBe("66%");
     });
   });
 
@@ -186,7 +171,7 @@ describe("KnowledgeApprovalPage — kanban board", () => {
 
     await waitFor(() => {
       const empties = container.querySelectorAll(".kanban-empty");
-      expect(empties).toHaveLength(4);
+      expect(empties).toHaveLength(3);
       expect(empties[0].textContent).toBe("Nothing here.");
     });
   });
@@ -234,7 +219,7 @@ describe("KnowledgeApprovalPage — status pipeline filter", () => {
     mockBoard();
     const { container } = renderWithProviders(<KnowledgeApprovalPage />, { role: "admin" });
 
-    await waitFor(() => expect(container.querySelectorAll(".kanban-col")).toHaveLength(4));
+    await waitFor(() => expect(container.querySelectorAll(".kanban-col")).toHaveLength(3));
 
     // The step buttons share their labels with the column heads; pick the step toolbar's button.
     const step = container.querySelector('.kanban-step[aria-pressed]') as HTMLElement;
