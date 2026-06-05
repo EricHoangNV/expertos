@@ -39,6 +39,8 @@ export interface SourceCardProps {
    */
   onSelect?: (ordinal: number) => void;
   className?: string;
+  /** DOM id on the card root — lets the host scroll a specific source into view (click-to-passage). */
+  id?: string;
 }
 
 /**
@@ -63,6 +65,7 @@ export function SourceCard({
   active = false,
   onSelect,
   className,
+  id,
 }: SourceCardProps): ReactElement {
   const interactive = onSelect != null;
   const classes = cx("source-card", kind === "upload" && "upload", active && "active", className);
@@ -89,10 +92,20 @@ export function SourceCard({
 
   if (interactive) {
     return (
-      <button type="button" className={classes} onClick={() => onSelect(ordinal)} aria-pressed={active}>
+      <button
+        type="button"
+        id={id}
+        className={classes}
+        onClick={() => onSelect(ordinal)}
+        aria-pressed={active}
+      >
         {content}
       </button>
     );
   }
-  return <div className={classes}>{content}</div>;
+  return (
+    <div id={id} className={classes}>
+      {content}
+    </div>
+  );
 }

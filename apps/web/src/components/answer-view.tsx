@@ -19,6 +19,13 @@ interface AnswerViewProps {
    * the drawer always shows once resolved, preserving the M4.2 default.
    */
   sourcesOpen?: boolean;
+  /**
+   * Click-to-passage hook to the host's sources surface. When provided (the chat page, whose sources
+   * live in the page-level rail/drawer rather than this inline list), an inline marker click also
+   * forwards its ordinal here so the host can open + highlight + scroll to the matching source. The
+   * inline drawer's own highlight still runs, so the history view (which omits this) is unchanged.
+   */
+  onCite?: (ordinal: number) => void;
 }
 
 /**
@@ -28,14 +35,19 @@ interface AnswerViewProps {
  * scrolls to the matching source row (click-to-passage). Shared by the live chat turn and the
  * history transcript so the two never drift.
  */
-export function AnswerView({ content, citations, interactive, sourcesOpen }: AnswerViewProps) {
+export function AnswerView({ content, citations, interactive, sourcesOpen, onCite }: AnswerViewProps) {
   const [activeOrdinal, setActiveOrdinal] = useState<number | null>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
 
-  const focusSource = useCallback((ordinal: number) => {
-    setActiveOrdinal(ordinal);
-    rowRefs.current.get(ordinal)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, []);
+  const focusSource = useCallback(
+    (ordinal: number) => {
+      setActiveOrdinal(ordinal);
+      rowRefs.current.get(ordinal)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      // Forward to the host's sources surface (chat rail/drawer); a no-op in the history view.
+      onCite?.(ordinal);
+    },
+    [onCite],
+  );
 
   // Show the drawer once citations resolved (M4.2), but honor the action-bar toggle when the chat
   // page controls it (M12.4.4): `sourcesOpen === undefined` keeps the always-show history default.

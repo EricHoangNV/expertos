@@ -67,6 +67,18 @@ const DONE_WITH_CITATION: ChatStreamEvent = {
   insufficientKnowledge: false,
 };
 
+/** A `done` frame with two resolved knowledge citations (for the click-to-passage test). */
+const DONE_WITH_TWO_CITATIONS: ChatStreamEvent = {
+  type: "done",
+  conversationId: "conv-1",
+  messageId: "msg-1",
+  citations: [
+    { ordinal: 1, chunkId: "chunk-1", documentVersionId: "dv-1", quote: "First source.", kind: "knowledge" },
+    { ordinal: 2, chunkId: "chunk-2", documentVersionId: "dv-2", quote: "Second source.", kind: "knowledge" },
+  ],
+  insufficientKnowledge: false,
+};
+
 /** Mock a chat turn: an SSE stream of the given prose delta + a done frame. */
 function mockChatTurn(delta: string, done: ChatStreamEvent = DONE_WITH_CITATION) {
   mockApi("POST", "/chat", { sse: [{ type: "delta", text: delta }, done] });
@@ -129,6 +141,30 @@ describe("ChatPage", () => {
     expect(
       screen.getByText("All citations resolved to a real chunk"),
     ).toBeInTheDocument();
+  });
+
+  it("clicking an inline citation marker highlights the matching source in the rail (M12.5.5)", async () => {
+    const user = userEvent.setup();
+    mockMountFetches();
+    mockChatTurn("Cash is king. [1] Profit matters too. [2]", DONE_WITH_TWO_CITATIONS);
+    renderWithProviders(<ChatPage />);
+    await screen.findByLabelText("Your question");
+
+    await ask(user, "What matters most?");
+
+    // Both sources resolve into the rail.
+    expect(await screen.findByText("2 passages")).toBeInTheDocument();
+    // Nothing is highlighted until a marker is clicked.
+    expect(document.getElementById("source-rail-2")).toHaveAttribute("aria-pressed", "false");
+
+    // Click the inline [2] marker → its rail card becomes the active (highlighted) source.
+    await user.click(screen.getByLabelText("Source 2"));
+
+    await waitFor(() =>
+      expect(document.getElementById("source-rail-2")).toHaveAttribute("aria-pressed", "true"),
+    );
+    // …and the other source is not highlighted.
+    expect(document.getElementById("source-rail-1")).toHaveAttribute("aria-pressed", "false");
   });
 
   it("sends the selected expert voice on the next turn", async () => {

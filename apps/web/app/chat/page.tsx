@@ -172,17 +172,32 @@ function sourceCardProvenance(citation: ChatCitationDto): string | undefined {
  * The numbered source cards (M12.5.3) for an answer's resolved citations — shared by the persistent
  * sources rail (M12.5.1) and the slide-over drawer fallback (M12.5.4) so the two never drift. Returns
  * `undefined` when there are no citations, so the host (`SourcesRail`) shows its empty state instead.
+ *
+ * `opts` wires click-to-passage (M12.5.5): `surface` namespaces each card's DOM id so the page can
+ * scroll the matching one into view, `activeOrdinal` highlights the clicked-to card, and `onSelect`
+ * makes a card click highlight it too (mirrors the inline `[n]` marker).
  */
-function sourceCards(citations: ChatCitationDto[], t: Translator) {
+function sourceCards(
+  citations: ChatCitationDto[],
+  t: Translator,
+  opts?: {
+    surface?: "rail" | "drawer";
+    activeOrdinal?: number | null;
+    onSelect?: (ordinal: number) => void;
+  },
+) {
   if (citations.length === 0) return undefined;
   return citations.map((citation) => (
     <SourceCard
       key={citation.ordinal}
+      id={opts?.surface ? `source-${opts.surface}-${citation.ordinal}` : undefined}
       ordinal={citation.ordinal}
       kind={citation.kind}
       title={sourceCardTitle(citation, t)}
       provenance={sourceCardProvenance(citation)}
       excerpt={citation.quote}
+      active={opts?.activeOrdinal === citation.ordinal}
+      onSelect={opts?.onSelect}
     />
   ));
 }
@@ -284,7 +299,15 @@ function ConsultationPrompt({
  * Before any prose arrives, a streaming turn shows the {@link ChatTypingIndicator} (M12.9.4);
  * a finished-but-empty turn (e.g. an aborted stream) renders nothing.
  */
-function AssistantAnswer({ message, sourcesOpen }: { message: UiMessage; sourcesOpen: boolean }) {
+function AssistantAnswer({
+  message,
+  sourcesOpen,
+  onCite,
+}: {
+  message: UiMessage;
+  sourcesOpen: boolean;
+  onCite?: (ordinal: number) => void;
+}) {
   if (!message.content) {
     return message.done ? null : <ChatTypingIndicator />;
   }
@@ -294,6 +317,7 @@ function AssistantAnswer({ message, sourcesOpen }: { message: UiMessage; sources
       citations={message.citations}
       interactive={message.done}
       sourcesOpen={sourcesOpen}
+      onCite={onCite}
     />
   );
 }
@@ -423,10 +447,16 @@ function AnswerActions({
 function AssistantTurn({
   message,
   onOpenSourcesDrawer,
+  onCiteSelect,
   showVerifiedBadge = true,
 }: {
   message: UiMessage;
   onOpenSourcesDrawer?: (citations: ChatCitationDto[]) => void;
+  /**
+   * Click-to-passage (M12.5.5): an inline `[n]` marker click forwards this answer's citations + the
+   * clicked ordinal so the page opens + highlights + scrolls to the matching source in the rail/drawer.
+   */
+  onCiteSelect?: (citations: ChatCitationDto[], ordinal: number) => void;
   /** When false, the "Verified" trust badge is suppressed (Tweaks toggle, M12.7.3). */
   showVerifiedBadge?: boolean;
 }) {
@@ -451,7 +481,13 @@ function AssistantTurn({
         !message.insufficientKnowledge
       }
     >
-      <AssistantAnswer message={message} sourcesOpen={inlineOpen} />
+      <AssistantAnswer
+        message={message}
+        sourcesOpen={inlineOpen}
+        onCite={
+          onCiteSelect ? (ordinal) => onCiteSelect(message.citations, ordinal) : undefined
+        }
+      />
       {message.done && message.degraded && (
         <ChatStateNotice tone="info" label={t("fairUseLabel")} variant="note">
           {t("fairUseBody")}
@@ -716,6 +752,11 @@ export default function ChatPage() {
   const railVisible = layoutPanes(direction).rail && wideViewport;
   // The answer whose sources the slide-over drawer is showing, or null when closed.
   const [drawerCitations, setDrawerCitations] = useState<ChatCitationDto[] | null>(null);
+  // Click-to-passage (M12.5.5): the highlighted source ordinal, and the answer whose sources the
+  // rail is showing — set when a `[n]` marker is clicked so the rail follows that answer (and an
+  // older answer's marker doesn't highlight the latest answer's card). Both reset on a new turn.
+  const [activeSourceOrdinal, setActiveSourceOrdinal] = useState<number | null>(null);
+  const [selectedCitations, setSelectedCitations] = useState<ChatCitationDto[] | null>(null);
   // Whether the attach-document popover (M12.6.2) is open above the input bar.
   const [attachOpen, setAttachOpen] = useState(false);
   // Sidebar surface (M12.9.1): the persistent sidebar is in the grid only when the
@@ -736,6 +777,31 @@ export default function ChatPage() {
   useEffect(() => {
     if (sidebarInGrid) setSidebarDrawerOpen(false);
   }, [sidebarInGrid]);
+
+  // Click-to-passage (M12.5.5): an inline `[n]` marker click points the sources surface at that
+  // answer and highlights the clicked ordinal. When the persistent rail isn't on screen, open the
+  // slide-over drawer so the source is actually visible.
+  const handleCiteSelect = useCallback(
+    (citations: ChatCitationDto[], ordinal: number) => {
+      setSelectedCitations(citations);
+      setActiveSourceOrdinal(ordinal);
+      if (!railVisible) setDrawerCitations(citations);
+    },
+    [railVisible],
+  );
+
+  // Scroll the highlighted source into view in whichever surface is showing (drawer when open, else
+  // the rail). A rAF lets a just-opened drawer mount before we scroll — and there may be many
+  // sources, so the selected one is scrolled to, not assumed visible.
+  useEffect(() => {
+    if (activeSourceOrdinal == null) return undefined;
+    const surface = drawerCitations !== null ? "drawer" : "rail";
+    const targetId = `source-${surface}-${activeSourceOrdinal}`;
+    const raf = requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [activeSourceOrdinal, drawerCitations]);
   // Conversation search (M12.2.2) — full-text search across the user's chats
   // (M3.3). The sidebar input is debounced into `searchQuery`; results render
   // under the field and selecting one loads that conversation into the chat.
@@ -874,6 +940,9 @@ export default function ChatPage() {
     return [];
   }, [messages]);
 
+  // What the rail actually shows: the answer the user clicked a marker on (M12.5.5), else the latest.
+  const shownCitations = selectedCitations ?? railCitations;
+
   // The RECENT rows (M12.2.3): map summaries to list items, resolving the expert
   // display name from the loaded voices for the avatar, and sorting most-recent
   // first (the API already does, but lexicographic ISO sort is a cheap guard).
@@ -943,6 +1012,9 @@ export default function ChatPage() {
     setEditingTitle(false);
     setDraft("");
     setError(null);
+    // Clear any click-to-passage selection (M12.5.5) so the rail returns to its empty state.
+    setSelectedCitations(null);
+    setActiveSourceOrdinal(null);
     // Selecting from the sidebar overlay (M12.9.1) dismisses it.
     setSidebarDrawerOpen(false);
   }, [busy]);
@@ -977,6 +1049,9 @@ export default function ChatPage() {
         setExpertId(detail.expertId ?? "");
         setDraft("");
         setSearchQuery("");
+        // Reset any prior click-to-passage selection (M12.5.5) for the newly opened transcript.
+        setSelectedCitations(null);
+        setActiveSourceOrdinal(null);
         // Selecting from the sidebar overlay (M12.9.1) dismisses it.
         setSidebarDrawerOpen(false);
       } catch {
@@ -1023,6 +1098,9 @@ export default function ChatPage() {
     const text = draft.trim();
     if (!text || busy) return;
     setError(null);
+    // A new turn re-baselines the rail to the latest answer (M12.5.5): drop any marker selection.
+    setSelectedCitations(null);
+    setActiveSourceOrdinal(null);
 
     const token = await getIdToken();
     if (!token) {
@@ -1173,8 +1251,12 @@ export default function ChatPage() {
       // overlaying it (see `.chat-layout.chat-sources-open` in ds.css).
       className={drawerCitations !== null ? "chat-sources-open" : undefined}
       rail={
-        <SourcesRail header={<SourcesRailHeader count={railCitations.length} />}>
-          {sourceCards(railCitations, tChat)}
+        <SourcesRail header={<SourcesRailHeader count={shownCitations.length} />}>
+          {sourceCards(shownCitations, tChat, {
+            surface: "rail",
+            activeOrdinal: activeSourceOrdinal,
+            onSelect: setActiveSourceOrdinal,
+          })}
         </SourcesRail>
       }
       sidebar={
@@ -1248,6 +1330,7 @@ export default function ChatPage() {
                   <AssistantTurn
                     message={m}
                     onOpenSourcesDrawer={railVisible ? undefined : setDrawerCitations}
+                    onCiteSelect={handleCiteSelect}
                     showVerifiedBadge={showVerifiedBadge}
                   />
                 </Card>
@@ -1287,7 +1370,13 @@ export default function ChatPage() {
         onClose={() => setDrawerCitations(null)}
         header={<SourcesRailHeader count={drawerCitations?.length ?? 0} />}
       >
-        {drawerCitations ? sourceCards(drawerCitations, tChat) : undefined}
+        {drawerCitations
+          ? sourceCards(drawerCitations, tChat, {
+              surface: "drawer",
+              activeOrdinal: activeSourceOrdinal,
+              onSelect: setActiveSourceOrdinal,
+            })
+          : undefined}
       </SourcesDrawer>
       <ChatSidebarDrawer
         open={sidebarDrawerOpen && !sidebarInGrid}
