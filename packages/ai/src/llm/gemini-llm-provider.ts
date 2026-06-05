@@ -5,7 +5,7 @@
  * `systemInstruction`, and usage is reported as cumulative `usageMetadata` on each SSE frame (last
  * one wins). The key is sent via the `x-goog-api-key` header (not the URL) so it can't leak in logs.
  */
-import type { ChatMessage, LlmStreamChunk } from "../providers";
+import type { ChatMessage, LlmCallOptions, LlmStreamChunk } from "../providers";
 import {
   StreamingLlmProvider,
   defaultFetch,
@@ -33,7 +33,7 @@ interface GeminiFrame {
 export class GeminiLlmProvider extends StreamingLlmProvider {
   readonly name: string;
   private readonly apiKey: string;
-  private readonly url: string;
+  private readonly baseUrl: string;
   private readonly fetch: FetchLike;
 
   constructor(config: GeminiLlmConfig) {
@@ -41,12 +41,17 @@ export class GeminiLlmProvider extends StreamingLlmProvider {
     if (!config.apiKey) throw new Error("GeminiLlmProvider requires an apiKey");
     this.apiKey = config.apiKey;
     this.name = config.model ?? "gemini-1.5-flash";
-    const base = (config.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta").replace(/\/+$/, "");
-    this.url = `${base}/models/${this.name}:streamGenerateContent?alt=sse`;
+    this.baseUrl = (config.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta").replace(/\/+$/, "");
     this.fetch = config.fetch ?? defaultFetch();
   }
 
-  async *completeStream(messages: ChatMessage[]): AsyncGenerator<LlmStreamChunk> {
+  async *completeStream(
+    messages: ChatMessage[],
+    options?: LlmCallOptions,
+  ): AsyncGenerator<LlmStreamChunk> {
+    // Gemini carries the model in the path, so a per-call model override rebuilds the URL.
+    const model = options?.model ?? this.name;
+    const url = `${this.baseUrl}/models/${model}:streamGenerateContent?alt=sse`;
     const system = messages
       .filter((m) => m.role === "system")
       .map((m) => m.content)
@@ -58,7 +63,7 @@ export class GeminiLlmProvider extends StreamingLlmProvider {
         parts: [{ text: m.content }],
       }));
 
-    const res = await this.fetch(this.url, {
+    const res = await this.fetch(url, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -67,6 +72,9 @@ export class GeminiLlmProvider extends StreamingLlmProvider {
       body: JSON.stringify({
         contents,
         ...(system.length > 0 ? { systemInstruction: { parts: [{ text: system }] } } : {}),
+        ...(options?.temperature != null
+          ? { generationConfig: { temperature: options.temperature } }
+          : {}),
       }),
     });
     if (!res.ok || res.body == null) {

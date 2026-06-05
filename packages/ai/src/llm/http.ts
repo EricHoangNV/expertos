@@ -10,7 +10,7 @@
  *     `completeStream()`, so each driver writes the streaming path once and the non-streaming
  *     contract ("concatenated deltas === complete().text") holds by construction.
  */
-import type { ChatMessage, LlmCompletion, LlmProvider, LlmStreamChunk } from "../providers";
+import type { ChatMessage, LlmCallOptions, LlmCompletion, LlmProvider, LlmStreamChunk } from "../providers";
 import { estimateTokens } from "../ingestion/chunk";
 
 /** Minimal request init a provider sends (always JSON over POST). */
@@ -116,12 +116,15 @@ export function estimateUsage(messages: ChatMessage[], text: string): LlmComplet
  */
 export abstract class StreamingLlmProvider implements LlmProvider {
   abstract readonly name: string;
-  abstract completeStream(messages: ChatMessage[]): AsyncIterable<LlmStreamChunk>;
+  abstract completeStream(
+    messages: ChatMessage[],
+    options?: LlmCallOptions,
+  ): AsyncIterable<LlmStreamChunk>;
 
-  async complete(messages: ChatMessage[]): Promise<LlmCompletion> {
+  async complete(messages: ChatMessage[], options?: LlmCallOptions): Promise<LlmCompletion> {
     let text = "";
     let usage: LlmCompletion["usage"] | undefined;
-    for await (const chunk of this.completeStream(messages)) {
+    for await (const chunk of this.completeStream(messages, options)) {
       if (chunk.delta != null) text += chunk.delta;
       if (chunk.usage != null) usage = chunk.usage;
     }

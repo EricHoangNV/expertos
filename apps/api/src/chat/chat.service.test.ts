@@ -9,7 +9,8 @@ import type { ResponseCacheService } from "../cache/response-cache.service";
 import type { CachedAnswer } from "../cache/cache.types";
 import type { RecommendationService } from "../consultation/recommendation.service";
 import type { ConciergeQueueService } from "../concierge/concierge-queue.service";
-import type { ChatMessage, LlmProvider, RetrievedChunk } from "@expertos/ai";
+import type { SettingsService } from "../settings/settings.service";
+import type { ChatMessage, LlmCallOptions, LlmProvider, RetrievedChunk } from "@expertos/ai";
 import type { ChatRequestInput, ChatStreamEvent } from "@expertos/shared";
 
 const USER: AuthUser = {
@@ -50,11 +51,15 @@ function makeService(
     deltas?: string[];
     cacheHit?: CachedAnswer;
     recommendation?: unknown;
+    settings?: { llmTemperature: number; defaultChatModel: string; retrievalScoreFloor: number };
   } = {},
 ) {
   const streaming = opts.streaming ?? true;
   const deltas = opts.deltas ?? ["Answer [1]", "[2]."];
   const seenMessages: ChatMessage[][] = [];
+  // Captures the per-call tuning the chat layer threads into the LLM call (M17.3). `undefined`
+  // is recorded for the degraded tier, which is deliberately left untouched.
+  const seenOptions: (LlmCallOptions | undefined)[] = [];
 
   const retrieve = jest.fn().mockResolvedValue(CHUNKS);
   const retrieveUploads = jest.fn().mockResolvedValue([]);
@@ -75,8 +80,9 @@ function makeService(
       ? {
           name,
           complete: jest.fn(),
-          completeStream: async function* (messages: ChatMessage[]) {
+          completeStream: async function* (messages: ChatMessage[], options?: LlmCallOptions) {
             seenMessages.push(messages);
+            seenOptions.push(options);
             for (const delta of deltas) {
               yield { delta };
             }
@@ -85,8 +91,9 @@ function makeService(
         }
       : {
           name,
-          complete: jest.fn(async (messages: ChatMessage[]) => {
+          complete: jest.fn(async (messages: ChatMessage[], options?: LlmCallOptions) => {
             seenMessages.push(messages);
+            seenOptions.push(options);
             return { text: "full answer", usage: { promptTokens: 5, completionTokens: 2 } };
           }),
         };
@@ -107,6 +114,13 @@ function makeService(
   const enqueueIfTriggered = jest.fn().mockResolvedValue(undefined);
   const concierge = { enqueueIfTriggered } as unknown as ConciergeQueueService;
 
+  // Default the runtime tuning's model to the standard provider's own name so the existing
+  // model-identity assertions hold; the override-threading test below supplies a distinct model.
+  const getCached = jest.fn().mockResolvedValue(
+    opts.settings ?? { llmTemperature: 0.2, defaultChatModel: "stub-llm", retrievalScoreFloor: 0 },
+  );
+  const settings = { getCached } as unknown as SettingsService;
+
   const service = new ChatService(
     { retrieve, retrieveUploads } as unknown as RetrievalService,
     { retrieveVoice } as unknown as VoiceService,
@@ -118,6 +132,7 @@ function makeService(
     cache,
     recommendation,
     concierge,
+    settings,
   );
 
   return {
@@ -132,11 +147,13 @@ function makeService(
       info,
       error,
       seenMessages,
+      seenOptions,
       answerKey,
       lookupAnswer,
       storeAnswer,
       recommend,
       enqueueIfTriggered,
+      getCached,
     },
   };
 }
@@ -336,6 +353,48 @@ describe("ChatService.answerStream", () => {
 
     expect(stubs.persistTurn.mock.calls[0][1].assistant.model).toBe("stub-llm");
     expect(events.at(-1)).toMatchObject({ type: "done", degraded: false });
+  });
+
+  it("threads the runtime temperature + model override into the standard-tier LLM call (M17.3)", async () => {
+    const { service, stubs } = makeService({
+      settings: { llmTemperature: 0.15, defaultChatModel: "gpt-4o", retrievalScoreFloor: 0 },
+    });
+
+    await drain(service.answerStream(USER, baseInput()));
+
+    // The tunable triple is read once and passed as per-call options on the standard tier.
+    expect(stubs.getCached).toHaveBeenCalledTimes(1);
+    expect(stubs.seenOptions[0]).toEqual({ temperature: 0.15, model: "gpt-4o" });
+
+    // The *effective* model (the override, not the provider's own name) is the identity used for
+    // the cache key, the persisted turn, the usage/cost log, and the completion log line.
+    expect(stubs.answerKey).toHaveBeenCalledWith(
+      USER.tenantId,
+      expect.objectContaining({ model: "gpt-4o" }),
+    );
+    expect(stubs.persistTurn.mock.calls[0][1].assistant.model).toBe("gpt-4o");
+    expect(stubs.record).toHaveBeenCalledWith(USER, expect.objectContaining({ model: "gpt-4o" }));
+    expect(stubs.info).toHaveBeenCalledWith(
+      "chat answer completed",
+      expect.objectContaining({ model: "gpt-4o" }),
+    );
+  });
+
+  it("leaves the degraded/fair-use tier untouched — no tuning override, its own model (M17.3)", async () => {
+    const { service, stubs } = makeService({
+      settings: { llmTemperature: 0.15, defaultChatModel: "gpt-4o", retrievalScoreFloor: 0 },
+    });
+
+    await drain(service.answerStream(USER, baseInput(), { degraded: true }));
+
+    // The degraded tier never reads the settings override; its provider is called with no options
+    // and stays on its own cheap model for cost logging.
+    expect(stubs.getCached).not.toHaveBeenCalled();
+    expect(stubs.seenOptions[0]).toBeUndefined();
+    expect(stubs.record).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ model: "stub-llm-mini" }),
+    );
   });
 
   it("folds the user's own uploads in as upload citations after knowledge (M5.4)", async () => {

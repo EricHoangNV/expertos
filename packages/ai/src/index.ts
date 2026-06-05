@@ -26,6 +26,7 @@ export {
 export type { FetchLike, FetchRequestInit, FetchResponseLike } from "./llm/http";
 export type {
   ChatMessage,
+  LlmCallOptions,
   LlmCompletion,
   LlmStreamChunk,
   LlmProvider,

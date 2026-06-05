@@ -12,7 +12,13 @@
  * lands when network access is wired, swapped in one place via `createDefaultLlmProvider`.
  */
 
-import type { ChatMessage, LlmCompletion, LlmProvider, LlmStreamChunk } from "../providers";
+import type {
+  ChatMessage,
+  LlmCallOptions,
+  LlmCompletion,
+  LlmProvider,
+  LlmStreamChunk,
+} from "../providers";
 import { estimateTokens } from "../ingestion/chunk";
 
 /** Returns the content of the last `user` message — the answer-builder's SOURCES + QUESTION block. */
@@ -68,12 +74,18 @@ export class EchoLlmProvider implements LlmProvider {
     this.name = name;
   }
 
-  complete(messages: ChatMessage[]): Promise<LlmCompletion> {
+  // The offline echo is deterministic, so `temperature`/`model` overrides have no effect on its
+  // output; the params exist only to satisfy the {@link LlmProvider} contract (the effective model
+  // for cost logging is computed by the chat layer from `options.model ?? provider.name`).
+  complete(messages: ChatMessage[], _options?: LlmCallOptions): Promise<LlmCompletion> {
     const text = render(messages);
     return Promise.resolve({ text, usage: usageFor(messages, text) });
   }
 
-  async *completeStream(messages: ChatMessage[]): AsyncGenerator<LlmStreamChunk> {
+  async *completeStream(
+    messages: ChatMessage[],
+    _options?: LlmCallOptions,
+  ): AsyncGenerator<LlmStreamChunk> {
     const text = render(messages);
     // Emit fixed-size slices so the concatenation of deltas is exactly `text` — the
     // streaming/non-streaming interchangeability the contract requires — with no edge case.

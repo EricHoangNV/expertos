@@ -84,6 +84,23 @@ describe("AnthropicLlmProvider", () => {
     expect(result.usage).toEqual({ promptTokens: 20, completionTokens: 5 });
   });
 
+  it("threads a per-call temperature + model override into the request body (M17.3)", async () => {
+    const { fetch, calls } = recordingFetch(sseResponse(STREAM));
+    const provider = new AnthropicLlmProvider({ apiKey: "key", model: "claude-haiku-4-5", fetch });
+    await drain(provider.completeStream(MESSAGES, { temperature: 0.1, model: "claude-sonnet-4-6" }));
+    const body = JSON.parse(calls[0].init.body);
+    expect(body.model).toBe("claude-sonnet-4-6");
+    expect(body.temperature).toBe(0.1);
+    expect(provider.name).toBe("claude-haiku-4-5");
+  });
+
+  it("omits temperature when no override is given (M17.3)", async () => {
+    const { fetch, calls } = recordingFetch(sseResponse(STREAM));
+    const provider = new AnthropicLlmProvider({ apiKey: "key", fetch });
+    await drain(provider.completeStream(MESSAGES));
+    expect(JSON.parse(calls[0].init.body)).not.toHaveProperty("temperature");
+  });
+
   it("omits the system field when there is no system message", async () => {
     const { fetch, calls } = recordingFetch(sseResponse(STREAM));
     const provider = new AnthropicLlmProvider({ apiKey: "key", fetch });

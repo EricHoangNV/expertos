@@ -32,15 +32,30 @@ export interface LlmStreamChunk {
   usage?: { promptTokens: number; completionTokens: number };
 }
 
+/**
+ * Per-request tuning the chat layer threads into a single completion (M17.3). Both fields are
+ * optional overrides sourced from the admin runtime answer-tuning settings; when omitted the driver
+ * uses its own configured defaults (the provider's default temperature; `this.name` as the model).
+ * Threading these per-call — rather than rebuilding the provider — lets a Save take effect on the
+ * next message with no restart. The chat layer records the *effective* model (`options.model ??
+ * provider.name`) for cost logging, so the pricing table entry matches what was actually called.
+ */
+export interface LlmCallOptions {
+  /** Sampling temperature for this call; lower = more deterministic. Omitted = provider default. */
+  temperature?: number;
+  /** Model id override for this call. Omitted = the driver's configured {@link LlmProvider.name}. */
+  model?: string;
+}
+
 export interface LlmProvider {
   readonly name: string;
-  complete(messages: ChatMessage[]): Promise<LlmCompletion>;
+  complete(messages: ChatMessage[], options?: LlmCallOptions): Promise<LlmCompletion>;
   /**
    * Optional streaming variant. When present, the chat layer streams `delta`s to the client and
    * reads the terminal frame's `usage`; when absent, the caller falls back to {@link complete}.
    * Optional so providers (and the M2 voice-eval harness) that only need `complete` are unaffected.
    */
-  completeStream?(messages: ChatMessage[]): AsyncIterable<LlmStreamChunk>;
+  completeStream?(messages: ChatMessage[], options?: LlmCallOptions): AsyncIterable<LlmStreamChunk>;
 }
 
 export interface EmbeddingProvider {

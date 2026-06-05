@@ -5062,3 +5062,29 @@ Foundation for M17 (runtime answer-tuning settings). Purely additive — a new g
 - Turbo root `pnpm typecheck` SIGILLs in this sandbox (LEARNINGS #25) — ran per-workspace `pnpm --filter @expertos/api exec tsc --noEmit` (clean).
 - No DI-boot/e2e test in-sandbox; wiring confidence from typecheck + mirroring the proven concierge import shape (same `AdminModule`/`AuthModule`, no new cycle).
 - +9 api tests → **api 788 pass / 0 fail** (settings.service.ts 100% cov); api lint + root knip clean.
+
+---
+
+## M17.3 — Thread temperature + model through the LLM call (2026-06-05)
+
+**Task:** Make the admin-tunable LLM temperature + default chat model (M17.1/M17.2 `AppSettings`) take effect on the standard-tier answer path in real time, threaded as a per-request override rather than a provider rebuild.
+
+**Implementation:**
+- `packages/ai/src/providers.ts` — added `LlmCallOptions { temperature?, model? }` and a trailing `options?: LlmCallOptions` to `LlmProvider.complete` + `completeStream`. Exported the type from `index.ts`.
+- `packages/ai/src/llm/http.ts` — `StreamingLlmProvider.complete`/`completeStream` accept + forward `options`.
+- OpenAI + Anthropic drivers — body uses `model: options?.model ?? this.name`; `temperature` is spread into the body only when provided (no `temperature: undefined` ever sent, so the provider default stays authoritative when unset).
+- Gemini driver — the model lives in the URL path, so it was restructured: store `this.baseUrl` instead of a precomputed `this.url`, and build the URL per-call from `options?.model ?? this.name`. Temperature goes in `generationConfig`.
+- Echo driver — accepts (and ignores) the options; deterministic output is unaffected. Params prefixed `_` to satisfy eslint `argsIgnorePattern: "^_"`.
+- `apps/api/src/chat/chat.service.ts` — injected `SettingsService` (ChatModule already imported SettingsModule). The **standard tier** reads `settings.getCached()` once and threads `callOptions = { temperature, model }` into the single `completeStream`/`complete` call; the **degraded/fair-use tier (M6.3) is deliberately untouched** (`callOptions` stays `undefined`). Introduced `effectiveModel = callOptions?.model ?? llm.name` and replaced every model-*identity* use of `llm.name` with it: the answer-cache key, the `lookupAnswer` model filter, the persisted assistant model, the usage/cost record, and a new `model` field on the "chat answer completed" log line.
+
+**Key decisions:**
+- Effective-model threading is the load-bearing correctness point. If the model override changed only the request body and not the cache key, a `gpt-4o` answer could be served from / written to a `gpt-4o-mini`-keyed cache entry. Routing all identity through `effectiveModel` keeps the cached/persisted/priced model equal to what actually ran. `gpt-4o` is already priced PREMIUM in `model-pricing.ts`.
+- Temperature is omitted from the request body when unset, not defaulted to a number inside the driver — keeps each provider's own default authoritative and the request minimal.
+- The cache-hit path also calls `getCached()` (before the lookup) — cheap (30s TTL in-process snapshot); the hit's own `hit.model` still drives its persistence, so no behavior change there.
+- Chat test harness: the new `SettingsService` stub defaults `getCached().defaultChatModel` to the standard provider's own name (`"stub-llm"`) so all pre-existing model-identity assertions stay valid without rewrites; two new tests supply a distinct model (`gpt-4o`) to prove the override threads and that the degraded tier reads no settings.
+
+**Tests/gates:**
+- +6 ai: OpenAI/Anthropic/Gemini each get an override test (model+temperature into body/URL, `provider.name` unchanged) + a no-override test (temperature/generationConfig omitted). → **ai 201 pass**.
+- +2 api chat: standard tier threads `{temperature: 0.15, model: "gpt-4o"}` into the call and `effectiveModel` flows to cache key + persist + usage + log; degraded tier never calls `getCached`, passes no options, keeps `stub-llm-mini`. → **api 790 pass**.
+- ai + api typecheck + lint clean; root knip clean. Turbo root scripts SIGILL in this sandbox (LEARNINGS #25) → ran per-workspace. Rebuilt `packages/ai` (apps consume `dist/`) before the api run.
+- No bug fixed (pure feature) → no new LEARNINGS/DIRECTIVES entry.

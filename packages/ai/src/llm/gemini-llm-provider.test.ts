@@ -79,6 +79,28 @@ describe("GeminiLlmProvider", () => {
     expect(result.usage).toEqual({ promptTokens: 8, completionTokens: 2 });
   });
 
+  it("threads a per-call model (into the URL) + temperature override (M17.3)", async () => {
+    const { fetch, calls } = recordingFetch(sseResponse(STREAM));
+    const provider = new GeminiLlmProvider({ apiKey: "key", model: "gemini-1.5-flash", fetch });
+    await drain(provider.completeStream(MESSAGES, { temperature: 0.2, model: "gemini-1.5-pro" }));
+    // Gemini carries the model in the path, so the override rebuilds the URL.
+    expect(calls[0].url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:streamGenerateContent?alt=sse",
+    );
+    expect(JSON.parse(calls[0].init.body).generationConfig).toEqual({ temperature: 0.2 });
+    expect(provider.name).toBe("gemini-1.5-flash");
+  });
+
+  it("omits generationConfig and uses the configured model when no override is given (M17.3)", async () => {
+    const { fetch, calls } = recordingFetch(sseResponse(STREAM));
+    const provider = new GeminiLlmProvider({ apiKey: "key", fetch });
+    await drain(provider.completeStream(MESSAGES));
+    expect(calls[0].url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse",
+    );
+    expect(JSON.parse(calls[0].init.body)).not.toHaveProperty("generationConfig");
+  });
+
   it("does not abort the answer on an empty/keep-alive data frame mid-stream", async () => {
     const { fetch } = recordingFetch(
       sseResponse([

@@ -5,7 +5,7 @@
  * grounded prompt the answer-builder emits is sent verbatim. Network/key handling lives in the
  * factory ({@link createDefaultLlmProvider}); this class is pure given an injected `fetch`.
  */
-import type { ChatMessage, LlmStreamChunk } from "../providers";
+import type { ChatMessage, LlmCallOptions, LlmStreamChunk } from "../providers";
 import {
   StreamingLlmProvider,
   defaultFetch,
@@ -46,7 +46,10 @@ export class OpenAiLlmProvider extends StreamingLlmProvider {
     this.fetch = config.fetch ?? defaultFetch();
   }
 
-  async *completeStream(messages: ChatMessage[]): AsyncGenerator<LlmStreamChunk> {
+  async *completeStream(
+    messages: ChatMessage[],
+    options?: LlmCallOptions,
+  ): AsyncGenerator<LlmStreamChunk> {
     const res = await this.fetch(this.url, {
       method: "POST",
       headers: {
@@ -54,10 +57,11 @@ export class OpenAiLlmProvider extends StreamingLlmProvider {
         authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
-        model: this.name,
+        model: options?.model ?? this.name,
         messages: messages.map((m) => ({ role: m.role, content: m.content })),
         stream: true,
         stream_options: { include_usage: true },
+        ...(options?.temperature != null ? { temperature: options.temperature } : {}),
       }),
     });
     if (!res.ok || res.body == null) {

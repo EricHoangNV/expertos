@@ -5,7 +5,7 @@
  * `system`, so system turns are lifted out of `messages`; (2) usage arrives split across the
  * `message_start` (input tokens) and `message_delta` (output tokens) SSE events.
  */
-import type { ChatMessage, LlmStreamChunk } from "../providers";
+import type { ChatMessage, LlmCallOptions, LlmStreamChunk } from "../providers";
 import {
   StreamingLlmProvider,
   defaultFetch,
@@ -54,7 +54,10 @@ export class AnthropicLlmProvider extends StreamingLlmProvider {
     this.fetch = config.fetch ?? defaultFetch();
   }
 
-  async *completeStream(messages: ChatMessage[]): AsyncGenerator<LlmStreamChunk> {
+  async *completeStream(
+    messages: ChatMessage[],
+    options?: LlmCallOptions,
+  ): AsyncGenerator<LlmStreamChunk> {
     const system = messages
       .filter((m) => m.role === "system")
       .map((m) => m.content)
@@ -71,9 +74,10 @@ export class AnthropicLlmProvider extends StreamingLlmProvider {
         "anthropic-version": this.apiVersion,
       },
       body: JSON.stringify({
-        model: this.name,
+        model: options?.model ?? this.name,
         max_tokens: this.maxTokens,
         ...(system.length > 0 ? { system } : {}),
+        ...(options?.temperature != null ? { temperature: options.temperature } : {}),
         messages: turns,
         stream: true,
       }),

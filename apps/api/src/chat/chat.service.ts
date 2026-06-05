@@ -4,6 +4,7 @@ import {
   buildCitations,
   detectHighStakes,
   type ChatMessage,
+  type LlmCallOptions,
   type LlmProvider,
   type PromptFact,
   type ResolvedCitation,
@@ -24,6 +25,7 @@ import { ResponseCacheService } from "../cache/response-cache.service";
 import type { CachedAnswer } from "../cache/cache.types";
 import { RecommendationService } from "../consultation/recommendation.service";
 import { ConciergeQueueService } from "../concierge/concierge-queue.service";
+import { SettingsService } from "../settings/settings.service";
 import { CHAT_DEGRADED_LLM_PROVIDER, CHAT_LLM_PROVIDER } from "./chat.tokens";
 import { ConversationService } from "./conversation.service";
 
@@ -59,6 +61,7 @@ export class ChatService {
     private readonly cache: ResponseCacheService,
     private readonly recommendation: RecommendationService,
     private readonly concierge: ConciergeQueueService,
+    private readonly settings: SettingsService,
   ) {}
 
   /**
@@ -77,6 +80,20 @@ export class ChatService {
   ): AsyncGenerator<ChatStreamEvent> {
     const degraded = options?.degraded ?? false;
     const llm = degraded ? this.degradedLlm : this.llm;
+
+    // M17.3 runtime answer tuning: the standard tier reads the admin-tunable temperature + default
+    // model from the 30s-TTL settings snapshot and threads them into the single LLM call below.
+    // The degraded/fair-use tier (M6.3) is deliberately left untouched — it stays on its own cheap
+    // provider/model with no override. `effectiveModel` is the model actually called (the override
+    // for the standard tier, else the provider's own name); it — not `llm.name` — is the identity
+    // used for the answer-cache key, persisted turn, and usage/cost log so each matches what ran.
+    let callOptions: LlmCallOptions | undefined;
+    if (!degraded) {
+      const tuning = await this.settings.getCached();
+      callOptions = { temperature: tuning.llmTemperature, model: tuning.defaultChatModel };
+    }
+    const effectiveModel = callOptions?.model ?? llm.name;
+
     // High-stakes detection (NT.4) is a pure function of the (NFC-normalized) question, so it is
     // computed once up front and reused across the fresh and cached paths: it scopes the prompt to
     // educational context, flags the persisted answer + usage log, drives the disclaimer on the
@@ -110,11 +127,11 @@ export class ChatService {
             topK: input.topK,
             expertId: input.expertId,
             language: input.language,
-            model: llm.name,
+            model: effectiveModel,
           })
         : null;
       if (answerKey) {
-        const hit = await this.cache.lookupAnswer(user, answerKey, llm.name);
+        const hit = await this.cache.lookupAnswer(user, answerKey, effectiveModel);
         if (hit) {
           yield* this.serveCachedAnswer(user, input, hit, degraded, highStakes);
           return;
@@ -158,7 +175,7 @@ export class ChatService {
       let answer = "";
       let usage = { promptTokens: 0, completionTokens: 0 };
       if (llm.completeStream) {
-        for await (const chunk of llm.completeStream(messages)) {
+        for await (const chunk of llm.completeStream(messages, callOptions)) {
           if (chunk.delta) {
             answer += chunk.delta;
             yield { type: "delta", text: chunk.delta };
@@ -168,7 +185,7 @@ export class ChatService {
           }
         }
       } else {
-        const completion = await llm.complete(messages);
+        const completion = await llm.complete(messages, callOptions);
         answer = completion.text;
         usage = completion.usage;
         yield { type: "delta", text: answer };
@@ -208,7 +225,7 @@ export class ChatService {
         assistant: {
           content: built.text,
           sourceVersionIds,
-          model: llm.name,
+          model: effectiveModel,
           confidence: null,
           highStakes,
           citations: built.citations.map((c) => ({
@@ -223,7 +240,7 @@ export class ChatService {
 
       await this.usage.record(user, {
         featureKey: "chat.answer",
-        model: llm.name,
+        model: effectiveModel,
         promptTokens: usage.promptTokens,
         completionTokens: usage.completionTokens,
         conversationId: persisted.conversationId,
@@ -236,7 +253,7 @@ export class ChatService {
       if (answerKey && built.citations.length > 0) {
         await this.cache.storeAnswer(user, answerKey, {
           text: built.text,
-          model: llm.name,
+          model: effectiveModel,
           sourceVersionIds,
           citations: built.citations.map((c) => ({
             ordinal: c.ordinal,
@@ -253,6 +270,7 @@ export class ChatService {
         sources: facts.length,
         voiced: voice?.profile != null,
         degraded,
+        model: effectiveModel,
       });
 
       // M9.2 concierge: when Mode B (auto-silent) is enabled and the answer is low-confidence, quietly

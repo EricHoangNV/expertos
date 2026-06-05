@@ -81,6 +81,27 @@ describe("OpenAiLlmProvider", () => {
     ]);
   });
 
+  it("threads a per-call temperature + model override into the request body (M17.3)", async () => {
+    const { fetch, calls } = recordingFetch(sseResponse(STREAM));
+    const provider = new OpenAiLlmProvider({ apiKey: "sk-test", model: "gpt-4o-mini", fetch });
+    await drain(provider.completeStream(MESSAGES, { temperature: 0.15, model: "gpt-4o" }));
+    const body = JSON.parse(calls[0].init.body);
+    expect(body.model).toBe("gpt-4o");
+    expect(body.temperature).toBe(0.15);
+    // The provider's reported name is unchanged by a per-call override (the chat layer logs the
+    // effective model from the options, not from `provider.name`).
+    expect(provider.name).toBe("gpt-4o-mini");
+  });
+
+  it("omits temperature when no override is given, keeping the provider default (M17.3)", async () => {
+    const { fetch, calls } = recordingFetch(sseResponse(STREAM));
+    const provider = new OpenAiLlmProvider({ apiKey: "sk-test", model: "gpt-4o-mini", fetch });
+    await drain(provider.completeStream(MESSAGES));
+    const body = JSON.parse(calls[0].init.body);
+    expect(body).not.toHaveProperty("temperature");
+    expect(body.model).toBe("gpt-4o-mini");
+  });
+
   it("estimates usage when the API omits a usage frame", async () => {
     const { fetch } = recordingFetch(
       sseResponse(['data: {"choices":[{"delta":{"content":"hi there"}}]}\n\n', "data: [DONE]\n\n"]),
