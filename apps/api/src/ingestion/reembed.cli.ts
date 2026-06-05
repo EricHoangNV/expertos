@@ -52,12 +52,20 @@ function parseArgs(argv: string[]): Args {
   };
 }
 
+// A full --batch=256 of sequential UPDATEs overruns Prisma's default 5s interactive-transaction
+// timeout, which fails the batch with "Transaction already closed". Give the write transaction
+// generous headroom so the documented default batch works.
+const TX_TIMEOUT_MS = 30_000;
+
 /** Run `work` inside a transaction scoped to the admin RLS context (spans all tenants). */
 function withAdminRls<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-  return prisma.$transaction(async (tx) => {
-    await applyRlsContext(tx, { tenantId: GLOBAL_TENANT_ID, isAdmin: true });
-    return work(tx);
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      await applyRlsContext(tx, { tenantId: GLOBAL_TENANT_ID, isAdmin: true });
+      return work(tx);
+    },
+    { timeout: TX_TIMEOUT_MS },
+  );
 }
 
 /* eslint-disable no-console */
