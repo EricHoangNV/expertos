@@ -13,6 +13,7 @@ import {
   ExtractiveSummarizer,
   GeminiLlmProvider,
   HashingEmbeddingProvider,
+  OpenAiEmbeddingProvider,
   OpenAiLlmProvider,
   type EmbeddingProvider,
   type LlmProvider,
@@ -27,7 +28,29 @@ export function createDefaultParserRegistry(): ParserRegistry {
   return new ParserRegistry([new TextParser(), new CsvParser(), new XlsxParser()]);
 }
 
-export function createDefaultEmbeddingProvider(): EmbeddingProvider {
+/**
+ * Default embedding provider (M1.1 / M17.6). Opt-in to the real OpenAI embedder
+ * (`text-embedding-3-small`, 1536-dim) via `EMBEDDING_PROVIDER=openai` + `OPENAI_API_KEY`; otherwise
+ * the offline, deterministic {@link HashingEmbeddingProvider} (dev/seed/CI). This is the single swap
+ * point shared by ingestion DI, retrieval, voice/concierge matching, and the re-embed CLI, so chunk
+ * vectors and the query vector are always produced by the same model (same vector space).
+ *
+ * Switching embedders is **env + restart, not a live toggle** — existing vectors become incompatible,
+ * so a cutover sets the env, restarts, and runs the re-embed CLI. We fail loudly when the flag is set
+ * without a key rather than silently writing hashing vectors into what is meant to be the OpenAI space.
+ */
+export function createDefaultEmbeddingProvider(
+  env: NodeJS.ProcessEnv = process.env,
+): EmbeddingProvider {
+  if (env.EMBEDDING_PROVIDER?.trim().toLowerCase() === "openai") {
+    const apiKey = env.OPENAI_API_KEY?.trim();
+    if (!apiKey) {
+      throw new Error(
+        "EMBEDDING_PROVIDER=openai requires OPENAI_API_KEY; set the key or unset EMBEDDING_PROVIDER to use the dev hashing embedder.",
+      );
+    }
+    return new OpenAiEmbeddingProvider({ apiKey });
+  }
   return new HashingEmbeddingProvider();
 }
 

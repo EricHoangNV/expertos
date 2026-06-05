@@ -9,6 +9,8 @@ export {
 } from "./ingestion/summarize";
 export type { Summarizer, ExtractiveOptions } from "./ingestion/summarize";
 export { HashingEmbeddingProvider } from "./embedding/hashing-embedding-provider";
+export { OpenAiEmbeddingProvider } from "./embedding/openai-embedding-provider";
+export type { OpenAiEmbeddingConfig } from "./embedding/openai-embedding-provider";
 export { EchoLlmProvider } from "./llm/echo-llm-provider";
 export { OpenAiLlmProvider } from "./llm/openai-llm-provider";
 export type { OpenAiLlmConfig } from "./llm/openai-llm-provider";

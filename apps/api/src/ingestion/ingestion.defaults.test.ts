@@ -2,9 +2,15 @@ import {
   AnthropicLlmProvider,
   EchoLlmProvider,
   GeminiLlmProvider,
+  HashingEmbeddingProvider,
+  OpenAiEmbeddingProvider,
   OpenAiLlmProvider,
 } from "@expertos/ai";
-import { createDefaultLlmProvider, createDegradedLlmProvider } from "./ingestion.defaults";
+import {
+  createDefaultEmbeddingProvider,
+  createDefaultLlmProvider,
+  createDegradedLlmProvider,
+} from "./ingestion.defaults";
 
 /** The factory reads keys/overrides from an injected env, so selection is testable without network. */
 describe("createDefaultLlmProvider (env-based selection)", () => {
@@ -52,6 +58,34 @@ describe("createDefaultLlmProvider (env-based selection)", () => {
       GEMINI_API_KEY: "key",
     });
     expect(provider).toBeInstanceOf(OpenAiLlmProvider);
+  });
+});
+
+describe("createDefaultEmbeddingProvider (env-gated, M17.6)", () => {
+  it("uses the offline hashing embedder by default", () => {
+    expect(createDefaultEmbeddingProvider({})).toBeInstanceOf(HashingEmbeddingProvider);
+  });
+
+  it("uses the OpenAI embedder when EMBEDDING_PROVIDER=openai and a key is set", () => {
+    const provider = createDefaultEmbeddingProvider({
+      EMBEDDING_PROVIDER: "openai",
+      OPENAI_API_KEY: "sk-test",
+    });
+    expect(provider).toBeInstanceOf(OpenAiEmbeddingProvider);
+    expect(provider.name).toBe("text-embedding-3-small");
+    expect(provider.dimensions).toBe(1536);
+  });
+
+  it("fails loudly when EMBEDDING_PROVIDER=openai but no key is configured", () => {
+    expect(() => createDefaultEmbeddingProvider({ EMBEDDING_PROVIDER: "openai" })).toThrow(
+      /OPENAI_API_KEY/,
+    );
+  });
+
+  it("ignores an unrelated EMBEDDING_PROVIDER value and stays on hashing", () => {
+    expect(
+      createDefaultEmbeddingProvider({ EMBEDDING_PROVIDER: "vertex", OPENAI_API_KEY: "sk" }),
+    ).toBeInstanceOf(HashingEmbeddingProvider);
   });
 });
 

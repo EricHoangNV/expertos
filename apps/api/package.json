@@ -7,6 +7,7 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "ingest": "node dist/ingestion/ingest.cli.js",
+    "reembed": "node dist/ingestion/reembed.cli.js",
     "bulk-publish": "node dist/knowledge/bulk-publish.cli.js",
     "backfill-tidycal": "node dist/consultation/backfill-tidycal.cli.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",

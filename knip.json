@@ -34,6 +34,7 @@
       "entry": [
         "src/main.ts",
         "src/ingestion/ingest.cli.ts",
+        "src/ingestion/reembed.cli.ts",
         "src/knowledge/bulk-publish.cli.ts",
         "src/consultation/backfill-tidycal.cli.ts"
       ],

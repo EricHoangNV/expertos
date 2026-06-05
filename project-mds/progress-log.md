@@ -5127,3 +5127,23 @@ Built the admin **Answer settings** page wiring the M17 runtime answer-tuning si
 **Gates**: admin `tsc --noEmit` clean; `next lint` 0 warnings; admin jest green (first run had 5 jsdom cold-start timeouts that cleared on a clean re-run — no source cause; AdminFrame role-filter test unaffected by the new nav item); root `knip` + `lint:css` clean. (Turbo root scripts SIGILL in-sandbox per LEARNINGS #25 — ran per-workspace.)
 
 **Next**: M17.6 OpenAI embedding provider + re-embed CLI → M17.7 cutover.
+
+---
+
+## M17.6 — OpenAI embedding provider + re-embed CLI (2026-06-05)
+
+**What**: Wired the real semantic embedder (`text-embedding-3-small`, 1536-dim) as an opt-in production driver and shipped an operator CLI that re-embeds every existing chunk, so the embedding cutover (M17.7) is a coherent env-flip + one-time backfill.
+
+**Driver** (`packages/ai/src/embedding/openai-embedding-provider.ts`): `OpenAiEmbeddingProvider implements EmbeddingProvider`, `POST /v1/embeddings` with `{ model, input, dimensions }`. Reuses the LLM layer's `defaultFetch`/`LlmRequestError`/`FetchLike` (no new HTTP plumbing — PRD direction). `name="text-embedding-3-small"` (priced in `model-pricing.ts` → usage logs cost correctly), `dimensions=1536` (matches `chunks.embedding vector(1536)` + HNSW). Batches at 256/request and reassembles by each response item's `index` (API may reorder within a batch), concatenating batches in input order → the `EmbeddingProvider` index-aligned/same-length contract holds. Validates count, per-item index range, per-vector dim; throws `LlmRequestError("openai-embedding", …)` on any mismatch. Empty input → `[]`, no request. Exported (+`OpenAiEmbeddingConfig`) from `index.ts`; `packages/ai` rebuilt so apps consume the new `dist/`.
+
+**Gate** (`apps/api/src/ingestion/ingestion.defaults.ts`): `createDefaultEmbeddingProvider(env=process.env)` returns the OpenAI driver iff `EMBEDDING_PROVIDER=openai` AND `OPENAI_API_KEY` present; **throws** when the flag is set but keyless (fail loud — never silently write hashing vectors into the OpenAI space); else `HashingEmbeddingProvider`. Stays a zero-arg `useFactory` for every NestJS module (back-compat). Matches the read-only gate `resolveEmbeddingProviderName` already surfaces in the admin Settings UI (M17.5).
+
+**Re-embed CLI** (`apps/api/src/ingestion/reembed.cli.ts`, mirrors `bulk-publish.cli.ts`): dry-run default, `--commit` writes. Resolves the active provider via the same factory (set cutover env → get OpenAI vectors). Snapshots every chunk `id`+`content` under a single admin RLS ctx (`USING app.is_admin()` spans all tenants), re-embeds the stored `content` (the exact text `IngestionService` embeds → re-embed and fresh-ingest share a vector space), `UPDATE chunks SET embedding = $1::vector` via `toVectorLiteral` in per-batch txns. `--batch=N` (clamp 1..256), `--limit=N` (smoke). Warns when the active provider is the offline `hashing-dev`. `"reembed"` npm script + `knip.json` api entry. CLI is coverage-exempt (api `collectCoverageFrom` = `*.service.ts`).
+
+**Decisions**: (1) Order reassembly by `index` is the load-bearing correctness bit — a positional store of out-of-order vectors silently transposes embeddings. (2) Fail-loud on flag-without-key prevents a silent half-cutover. (3) Re-embed reads `content` (not summary) because ingestion embeds `content` — keeps the two paths in one space. (4) Per-batch write txns (not one giant txn) avoid a multi-minute lock; a failed batch is isolated + counted, the run continues.
+
+**Cutover (M17.7, next, external)**: ship (default hashing) → set env + restart → `reembed --commit` over ~2,414 chunks (~1–2 min); vector search degraded during the window but keyword search keeps serving (hybrid retrieval).
+
+**Tests/gates**: +9 ai (`openai-embedding-provider.test.ts`: name/dims, request shape, out-of-order reassembly, >256 batching with global order, empty no-request, non-2xx, count mismatch, wrong-dim, keyless ctor) → ai 210. +4 api (`ingestion.defaults.test.ts`: hashing default, OpenAI on flag+key, throw flag-without-key, ignore unrelated value) → api 800. ai+api typecheck+lint+test, root knip + lint:css + all-workspace tsc green. (Turbo root scripts SIGILL in-sandbox per LEARNINGS #25 — ran per-workspace.)
+
+**Next**: M17.7 cutover + verification (external deploy/run gate).
