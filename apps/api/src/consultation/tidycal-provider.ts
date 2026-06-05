@@ -1,39 +1,41 @@
 import type { ConsultationStatus } from "@expertos/db";
 
 /**
- * The booking-provider seam (M7.3, resolves Open Decision #10). **All booking-confirmation traffic
- * goes through this interface — no app code talks to TidyCal directly**, so swapping to a native
- * scheduler later (Phase 3) is a new driver, not a rewrite. The offline default
- * ({@link OfflineTidyCalProvider}) keeps the whole book → webhook → consultation-sync path runnable
- * without TidyCal or network (mirroring the {@link PaymentProvider} / `EchoLlmProvider` pattern); the
- * real {@link TidyCalProvider} driver swaps in behind the `TIDYCAL_PROVIDER` token when its webhook
- * secret is present.
+ * The booking-provider seam (M7.3, resolves Open Decision #10; reworked to polling in M16). **All
+ * booking traffic goes through this interface — no app code talks to TidyCal directly**, so swapping
+ * to a native scheduler later (Phase 3) is a new driver, not a rewrite.
  *
- * TidyCal is the booking **source of truth**; {@link BookingService} mirrors every event into our own
- * `consultations` + `booking_webhook_events` tables ({@link parseEvent} normalizes the provider's event
- * shape into {@link BookingEvent}) so the funnel attribution (M10.2) and missed-event recovery never
- * depend on the TidyCal dashboard.
+ * **TidyCal has no native webhooks** (confirmed against TidyCal's FAQ), so the production driver
+ * ({@link HttpTidyCalProvider}) syncs bookings by **polling** {@link listBookings} (`GET /bookings`
+ * with the expert's API token) on a schedule. Its {@link verifyWebhook}/{@link parseEvent} reject /
+ * no-op — only the {@link OfflineTidyCalProvider} implements the JSON-envelope webhook seam, which
+ * exists solely so local/dev/test can drive the book → consultation-sync path deterministically
+ * without TidyCal or network (mirroring the {@link PaymentProvider} / `EchoLlmProvider` pattern).
+ *
+ * TidyCal is the booking **source of truth**; {@link BookingService} mirrors every polled event into
+ * our own `consultations` + `booking_webhook_events` tables so the funnel attribution (M10.2) never
+ * depends on the TidyCal dashboard.
  */
 export interface TidyCalProvider {
   /** Stable driver name, recorded on `booking_webhook_events.provider` (e.g. `tidycal`, `offline`). */
   readonly name: string;
 
   /**
-   * Verify a webhook delivery's signature over the **raw** request bytes and return the provider's
-   * event object. Throws {@link BookingWebhookVerificationError} on a missing/invalid signature — the
-   * body is attacker-reachable, so an unverified payload is never trusted.
+   * Offline/test seam only: verify a JSON-envelope delivery and return the provider's event object.
+   * The {@link OfflineTidyCalProvider} trusts the local payload; {@link HttpTidyCalProvider} throws
+   * {@link BookingWebhookVerificationError} because TidyCal never posts webhooks.
    */
   verifyWebhook(req: BookingWebhookRequest): Promise<unknown>;
 
   /**
-   * Map a verified provider event onto our normalized {@link BookingEvent}, or `null` for an event
-   * type we deliberately ignore. Pure — no IO — so it is exhaustively unit-testable.
+   * Offline/test seam only: map a verified envelope onto our normalized {@link BookingEvent}, or
+   * `null` to ignore it. Pure — no IO. The production driver returns `null` (it receives no webhooks).
    */
   parseEvent(rawEvent: unknown): BookingEvent | null;
 
   /**
    * Poll the provider for bookings updated at/after `since`, normalized to {@link BookingEvent}s — the
-   * missed-event recovery path. Each entry uses a deterministic synthetic `eventId`
+   * **production sync path**. Each entry uses a deterministic synthetic `eventId`
    * (`reconcile:<bookingRef>:<eventType>`) so replaying the poll is idempotent against the ledger. The
    * default driver needs live network (exercised at deploy, not in CI — the M11 caveat).
    */

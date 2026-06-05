@@ -83,13 +83,16 @@ export interface RecommendationResponseResultDto {
 }
 
 /**
- * Admin-triggered missed-event recovery for TidyCal bookings (M7.3, resolves Open Decision #10).
- * Booking confirmation normally arrives by webhook; this polls TidyCal for bookings since `since`
- * (default: a recent lookback window) and idempotently applies any the webhook missed, so a
- * booked-but-unconfirmed consultation never silently vanishes. `since` is an ISO timestamp.
+ * TidyCal booking sync (M16 — per-expert polling; supersedes the M7.3 webhook recovery framing).
+ * TidyCal has no native webhooks, so this poll **is** the sync path: it fetches each expert's bookings
+ * since `since` (default: per-expert watermark, else a recent lookback) via that expert's API token and
+ * idempotently applies them, so a booked consultation is never lost. Runs on a schedule (Cloud
+ * Scheduler) and on demand from the admin portal. `since` is an ISO timestamp; `expertId` optionally
+ * narrows the run to one expert (omitted ⇒ every expert with a configured token).
  */
 export const bookingReconcileSchema = z.object({
   since: z.coerce.date().optional(),
+  expertId: z.string().uuid().optional(),
 });
 
 export type BookingReconcileInput = z.infer<typeof bookingReconcileSchema>;

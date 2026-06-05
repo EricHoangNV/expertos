@@ -215,7 +215,7 @@ export type {
   ReviewEscalateInput,
   ReviewEscalationDto,
 } from "./concierge";
-export { expertAnswerListQuerySchema } from "./expert";
+export { expertAnswerListQuerySchema, expertCalendarSettingsUpdateSchema } from "./expert";
 export type {
   ConsultationStatusValue,
   RecommendationFunnelResponse,
@@ -223,6 +223,8 @@ export type {
   ExpertConversionsDto,
   ExpertAnswerListQueryInput,
   ExpertAnswerReviewDto,
+  ExpertCalendarSettingsDto,
+  ExpertCalendarSettingsUpdateInput,
 } from "./expert";
 export {
   adminAuditListQuerySchema,

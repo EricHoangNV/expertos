@@ -1,9 +1,11 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { applyRlsContext, type Prisma, type PrismaClient } from "@expertos/db";
 import type {
   ConsultationStatusValue,
   ExpertAnswerListQueryInput,
   ExpertAnswerReviewDto,
+  ExpertCalendarSettingsDto,
+  ExpertCalendarSettingsUpdateInput,
   ExpertConversionItemDto,
   ExpertConversionsDto,
   RecommendationFunnelResponse,
@@ -11,6 +13,13 @@ import type {
 } from "@expertos/shared";
 import { PRISMA } from "../database/database.module";
 import type { AuthUser } from "../auth/auth.types";
+import { StructuredLogger } from "../observability/logger.service";
+import {
+  buildCalendarUpdate,
+  CALENDAR_SELECT,
+  type CalendarRow,
+  toCalendarSettingsDto,
+} from "./calendar-settings.util";
 
 /** Stable key sets so every grouped count starts at zero (a `Record<Union, number>` needs all keys). */
 const TRIGGERS: readonly RecommendationTriggerValue[] = [
@@ -43,6 +52,13 @@ const REVENUE_STATUSES: ReadonlySet<ConsultationStatusValue> = new Set([
 
 /** How many recent recommendations the conversions feed carries. */
 const RECENT_LIMIT = 25;
+
+/** The unconfigured calendar view (no expert / no token). */
+const EMPTY_CALENDAR_SETTINGS: ExpertCalendarSettingsDto = {
+  apiTokenConfigured: false,
+  apiTokenLast4: null,
+  tidycalLink: null,
+};
 
 /** Raw row shape the answer-review SQL returns (snake_case columns from Postgres). */
 interface AnswerRow {
@@ -81,7 +97,10 @@ interface AnswerRow {
  */
 @Injectable()
 export class ExpertPortalService {
-  constructor(@Inject(PRISMA) private readonly prisma: PrismaClient) {}
+  constructor(
+    @Inject(PRISMA) private readonly prisma: PrismaClient,
+    private readonly logger: StructuredLogger,
+  ) {}
 
   /** The consultation-conversion summary for one expert's voice. */
   async conversions(
@@ -166,6 +185,58 @@ export class ExpertPortalService {
         query.offset,
       );
       return rows.map(toAnswerDto);
+    });
+  }
+
+  /**
+   * The caller's own TidyCal calendar settings (M16). The token is never returned — only whether one
+   * is configured + a last4 hint + the public booking link. A non-admin expert with no linked `Expert`
+   * row gets the empty (unconfigured) view rather than an error.
+   */
+  async getCalendarSettings(
+    user: AuthUser,
+    requestedExpertId: string | null,
+  ): Promise<ExpertCalendarSettingsDto> {
+    return this.runReviewer(user, async (tx) => {
+      const expert = await this.resolveExpert(tx, user, requestedExpertId);
+      if (!expert) {
+        return EMPTY_CALENDAR_SETTINGS;
+      }
+      const row = (await tx.expert.findUnique({
+        where: { id: expert.id },
+        select: CALENDAR_SELECT,
+      })) as CalendarRow | null;
+      return row ? toCalendarSettingsDto(row) : EMPTY_CALENDAR_SETTINGS;
+    });
+  }
+
+  /**
+   * Update the caller's own calendar settings — write the (encrypted) API token and/or booking link.
+   * Scoped to the caller's own `Expert` row via {@link resolveExpert} (an expert can never write
+   * another's credentials); a caller with no expert profile gets a 404. The plaintext token is
+   * encrypted in {@link buildCalendarUpdate} and never logged.
+   */
+  async updateCalendarSettings(
+    user: AuthUser,
+    requestedExpertId: string | null,
+    input: ExpertCalendarSettingsUpdateInput,
+  ): Promise<ExpertCalendarSettingsDto> {
+    return this.runReviewer(user, async (tx) => {
+      const expert = await this.resolveExpert(tx, user, requestedExpertId);
+      if (!expert) {
+        throw new NotFoundException("no expert profile to configure");
+      }
+      const { data, changedFields } = buildCalendarUpdate(input);
+      const row = (await tx.expert.update({
+        where: { id: expert.id },
+        data,
+        select: CALENDAR_SELECT,
+      })) as CalendarRow;
+      this.logger.info("expert calendar settings updated", {
+        expertId: expert.id,
+        fields: changedFields, // names only — never the token value
+      });
+      return toCalendarSettingsDto(row);
     });
   }
 

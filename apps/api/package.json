@@ -7,6 +7,8 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "ingest": "node dist/ingestion/ingest.cli.js",
+    "publish-drafts": "node dist/knowledge/publish-drafts.cli.js",
+    "backfill-tidycal": "node dist/consultation/backfill-tidycal.cli.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src --ext .ts",
     "test": "jest --coverage",

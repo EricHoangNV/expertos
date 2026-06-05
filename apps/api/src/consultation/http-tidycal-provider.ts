@@ -1,4 +1,3 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   type BookingEvent,
   type BookingEventType,
@@ -20,85 +19,47 @@ export interface TidyCalHttpClient {
 }
 
 interface HttpTidyCalProviderOptions {
-  webhookSecret: string;
-  /** API token for the reconcile poll (`listBookings`); absent ⇒ poll yields nothing. */
+  /** API token for the booking poll (`listBookings`); absent ⇒ poll yields nothing. */
   apiToken?: string;
   /** Swappable transport (defaults to a `fetch`-based client over `https://tidycal.com/api`). */
   httpClient?: TidyCalHttpClient;
 }
 
-/** TidyCal webhook event names → our normalized {@link BookingEventType} (others are ignored). */
-const EVENT_NAME_MAP: Record<string, BookingEventType> = {
-  "booking.created": "booking.created",
-  "booking_created": "booking.created",
-  "booking.cancelled": "booking.cancelled",
-  "booking.canceled": "booking.cancelled",
-  "booking_cancelled": "booking.cancelled",
-  "booking.rescheduled": "booking.rescheduled",
-  "booking_rescheduled": "booking.rescheduled",
-};
-
 /**
- * TidyCal driver (Phase-1's only real {@link TidyCalProvider}). The security-critical, network-free
- * parts — webhook **signature verification** (HMAC-SHA256 over the raw body) and **event parsing** —
- * are implemented directly with `node:crypto` and are exhaustively unit-tested. The reconcile poll
- * ({@link listBookings}) issues a REST call through the injected {@link TidyCalHttpClient}; the default
- * transport needs live network (verified at deploy, not in CI — the M11 caveat, same as the Stripe
- * `FetchStripeHttpClient`), but the param construction + page mapping stay testable via the fake.
+ * TidyCal driver (M16 — per-expert polling). **TidyCal has no native webhooks** (confirmed against
+ * TidyCal's FAQ), so this driver never receives inbound deliveries: {@link verifyWebhook} rejects and
+ * {@link parseEvent} is a no-op. Booking sync is the **poll** ({@link listBookings} → `GET /bookings`)
+ * driven by {@link BookingService.reconcile} on a schedule, idempotent against the
+ * `booking_webhook_events` ledger via deterministic `reconcile:<bookingRef>:<eventType>` ids. The
+ * default transport needs live network (verified at deploy, not in CI — the M11 caveat, same as the
+ * Stripe `FetchStripeHttpClient`), but the param construction + page mapping stay testable via the fake.
+ *
+ * The offline JSON-envelope webhook seam still exists for local/dev/test ({@link OfflineTidyCalProvider});
+ * it is the only provider whose {@link verifyWebhook}/{@link parseEvent} do anything.
  */
 export class HttpTidyCalProvider implements TidyCalProvider {
   readonly name = "tidycal";
-  private readonly webhookSecret: string;
   private readonly apiToken?: string;
   private readonly http: TidyCalHttpClient;
 
   constructor(opts: HttpTidyCalProviderOptions) {
-    this.webhookSecret = opts.webhookSecret;
     this.apiToken = opts.apiToken;
     this.http = opts.httpClient ?? new FetchTidyCalHttpClient(opts.apiToken);
   }
 
-  async verifyWebhook(req: BookingWebhookRequest): Promise<unknown> {
-    if (!req.signature) {
-      throw new BookingWebhookVerificationError("Missing tidycal-signature header");
-    }
-    const expected = createHmac("sha256", this.webhookSecret)
-      .update(req.payload)
-      .digest("hex");
-    if (!safeEqualHex(req.signature, expected)) {
-      throw new BookingWebhookVerificationError("Booking webhook signature does not match");
-    }
-    try {
-      return JSON.parse(req.payload.toString("utf8"));
-    } catch {
-      throw new BookingWebhookVerificationError("Booking webhook body is not valid JSON");
-    }
+  /**
+   * TidyCal never posts webhooks, so any inbound delivery routed to this driver is unexpected and
+   * untrusted — reject it rather than process an unverifiable body. Production booking sync is the poll.
+   */
+  async verifyWebhook(_req: BookingWebhookRequest): Promise<unknown> {
+    throw new BookingWebhookVerificationError(
+      "TidyCal has no native webhooks; bookings sync via the polling reconcile path",
+    );
   }
 
-  parseEvent(rawEvent: unknown): BookingEvent | null {
-    if (!isRecord(rawEvent)) {
-      return null;
-    }
-    const eventName = typeof rawEvent.event === "string" ? rawEvent.event : "";
-    const eventType = EVENT_NAME_MAP[eventName];
-    if (!eventType) {
-      return null;
-    }
-    const booking = isRecord(rawEvent.payload) ? rawEvent.payload : rawEvent;
-    const normalized = toBookingEvent(booking, eventType);
-    if (!normalized) {
-      return null;
-    }
-    // Prefer a delivery-unique webhook id. When TidyCal omits it, the fallback MUST stay unique per
-    // lifecycle transition — keying it on `bookingRef` alone collapses a later reschedule/cancel into
-    // the create's idempotency key, so `BookingService` would skip it as a duplicate and the
-    // consultation status/schedule would go stale (Security Cycle 2 High). Synthesize from booking
-    // ref + event type + the transition's lifecycle timestamp instead.
-    const eventId =
-      typeof rawEvent.id === "string" && rawEvent.id.length > 0
-        ? rawEvent.id
-        : fallbackEventId(booking, normalized);
-    return { ...normalized, eventId };
+  /** Unreachable in practice (no inbound webhooks reach this driver); a no-op for interface parity. */
+  parseEvent(_rawEvent: unknown): BookingEvent | null {
+    return null;
   }
 
   async listBookings(input: { since: Date }): Promise<BookingEvent[]> {
@@ -125,7 +86,7 @@ export class HttpTidyCalProvider implements TidyCalProvider {
   }
 }
 
-/** Build the booking fields shared by webhook + poll. Returns null when the booking id is absent. */
+/** Build the booking fields from a poll row. Returns null when the booking id is absent. */
 function toBookingEvent(
   booking: Record<string, unknown>,
   eventType: BookingEventType,
@@ -145,48 +106,6 @@ function toBookingEvent(
     scheduledAt: toDate(booking.starts_at),
     status: statusForBookingEvent(eventType),
   };
-}
-
-/**
- * Synthesize an idempotency key for a webhook with no provider `id`. It must be **deterministic** (a
- * redelivery of the *same* transition is still a no-op against the ledger) yet **distinct per
- * transition** (a later reschedule/cancel for the same booking is not collapsed into the create). We
- * combine the booking ref, the normalized event type, and the lifecycle timestamp of *this*
- * transition (cancel time / reschedule time / create time, depending on the event).
- */
-function fallbackEventId(
-  booking: Record<string, unknown>,
-  normalized: Omit<BookingEvent, "eventId">,
-): string {
-  const stamp = lifecycleStamp(booking, normalized.eventType, normalized.scheduledAt);
-  return `fallback:${normalized.bookingRef}:${normalized.eventType}:${stamp}`;
-}
-
-/**
- * The epoch-ms timestamp of the lifecycle transition this event represents, used to disambiguate
- * repeated transitions (e.g. two reschedules) when the provider gives no delivery-unique id. Prefers
- * the field that actually advances on that transition, then the new scheduled time (which moves on a
- * reschedule), and finally `na` when the payload carries no usable timestamp.
- */
-function lifecycleStamp(
-  booking: Record<string, unknown>,
-  eventType: BookingEventType,
-  scheduledAt: Date | null,
-): string {
-  const candidates =
-    eventType === "booking.cancelled"
-      ? [booking.cancelled_at, booking.updated_at]
-      : eventType === "booking.rescheduled"
-        ? [booking.rescheduled_at, booking.updated_at]
-        : [booking.created_at, booking.updated_at];
-  for (const candidate of candidates) {
-    const date = toDate(candidate);
-    if (date) {
-      return String(date.getTime());
-    }
-  }
-  // The scheduled time changes on a reschedule, so it keeps distinct transitions apart as a backstop.
-  return scheduledAt ? String(scheduledAt.getTime()) : "na";
 }
 
 /** TidyCal ids may arrive as a number or string — coerce to a non-empty string, else null. */
@@ -210,18 +129,6 @@ function toDate(value: unknown): Date | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-/** Constant-time hex-string comparison (guards against a timing side channel). */
-function safeEqualHex(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  try {
-    return timingSafeEqual(Buffer.from(a, "hex"), Buffer.from(b, "hex"));
-  } catch {
-    return false;
-  }
 }
 
 /**

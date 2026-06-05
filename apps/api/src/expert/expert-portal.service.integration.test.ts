@@ -83,7 +83,11 @@ describeLive("ExpertPortalService live integration (app_user role)", () => {
     prisma = new PrismaClient({
       datasources: { db: { url: RLS_TEST_DATABASE_URL } },
     });
-    service = new ExpertPortalService(prisma);
+    service = new ExpertPortalService(prisma, {
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+    } as unknown as ConstructorParameters<typeof ExpertPortalService>[1]);
 
     await prisma.$executeRawUnsafe(
       `INSERT INTO tenants (id, slug, name, updated_at) VALUES ($1::uuid, $2, $3, now())`,

@@ -1,8 +1,11 @@
-import { Controller, Get, ParseUUIDPipe, Query } from "@nestjs/common";
+import { Body, Controller, Get, ParseUUIDPipe, Patch, Query } from "@nestjs/common";
 import {
   expertAnswerListQuerySchema,
+  expertCalendarSettingsUpdateSchema,
   type ExpertAnswerListQueryInput,
   type ExpertAnswerReviewDto,
+  type ExpertCalendarSettingsDto,
+  type ExpertCalendarSettingsUpdateInput,
   type ExpertConversionsDto,
 } from "@expertos/shared";
 import { CurrentUser } from "../auth/current-user.decorator";
@@ -40,5 +43,25 @@ export class ExpertPortalController {
     @Query("expertId", new ParseUUIDPipe({ optional: true })) expertId?: string,
   ): Promise<ExpertAnswerReviewDto[]> {
     return this.service.answers(user, expertId ?? null, query);
+  }
+
+  /** The caller's own TidyCal calendar settings (M16). The API token is never returned. */
+  @Get("calendar-settings")
+  getCalendarSettings(
+    @CurrentUser() user: AuthUser,
+    @Query("expertId", new ParseUUIDPipe({ optional: true })) expertId?: string,
+  ): Promise<ExpertCalendarSettingsDto> {
+    return this.service.getCalendarSettings(user, expertId ?? null);
+  }
+
+  /** Set/clear the caller's TidyCal API token (stored encrypted) and/or booking link. */
+  @Patch("calendar-settings")
+  updateCalendarSettings(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(expertCalendarSettingsUpdateSchema))
+    body: ExpertCalendarSettingsUpdateInput,
+    @Query("expertId", new ParseUUIDPipe({ optional: true })) expertId?: string,
+  ): Promise<ExpertCalendarSettingsDto> {
+    return this.service.updateCalendarSettings(user, expertId ?? null, body);
   }
 }

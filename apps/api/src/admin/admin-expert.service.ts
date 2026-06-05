@@ -7,11 +7,19 @@ import type {
   AdminExpertListQueryInput,
   AdminExpertSummaryDto,
   AdminExpertUpdateInput,
+  ExpertCalendarSettingsDto,
+  ExpertCalendarSettingsUpdateInput,
 } from "@expertos/shared";
 import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { StructuredLogger } from "../observability/logger.service";
 import { AdminAuditService } from "./admin-audit.service";
+import {
+  buildCalendarUpdate,
+  CALENDAR_SELECT,
+  type CalendarRow,
+  toCalendarSettingsDto,
+} from "../expert/calendar-settings.util";
 
 /** `select` for the management list row → {@link AdminExpertSummaryDto}. */
 const SUMMARY_SELECT = {
@@ -236,6 +244,57 @@ export class AdminExpertService {
       });
       this.logger.info("expert active state changed", { expertId, active: input.active });
       return toDetail(row);
+    });
+  }
+
+  /** Read an expert's TidyCal calendar settings (M16) — token never returned, only configured/last4. */
+  async getCalendar(user: AuthUser, expertId: string): Promise<ExpertCalendarSettingsDto> {
+    return this.rls.run(user, async (tx) => {
+      const row = (await tx.expert.findUnique({
+        where: { id: expertId },
+        select: CALENDAR_SELECT,
+      })) as CalendarRow | null;
+      if (!row) {
+        throw new NotFoundException("expert not found");
+      }
+      return toCalendarSettingsDto(row);
+    });
+  }
+
+  /**
+   * Set/clear an expert's TidyCal API token (stored encrypted) and/or booking link, on the expert's
+   * behalf. Audited in-transaction (field names only — never the token value).
+   */
+  async updateCalendar(
+    actor: AuthUser,
+    expertId: string,
+    input: ExpertCalendarSettingsUpdateInput,
+  ): Promise<ExpertCalendarSettingsDto> {
+    return this.rls.run(actor, async (tx) => {
+      const current = await tx.expert.findUnique({
+        where: { id: expertId },
+        select: { id: true },
+      });
+      if (!current) {
+        throw new NotFoundException("expert not found");
+      }
+      const { data, changedFields } = buildCalendarUpdate(input);
+      const row = (await tx.expert.update({
+        where: { id: expertId },
+        data,
+        select: CALENDAR_SELECT,
+      })) as CalendarRow;
+      await this.audit.record(tx, actor, {
+        action: "expert.calendar_updated",
+        targetType: "expert",
+        targetId: expertId,
+        metadata: { fields: changedFields }, // names only, never the token
+      });
+      this.logger.info("expert calendar settings updated (admin)", {
+        expertId,
+        fields: changedFields,
+      });
+      return toCalendarSettingsDto(row);
     });
   }
 

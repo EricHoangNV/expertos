@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@expertos/db";
 import { ExpertPortalService } from "./expert-portal.service";
 import type { AuthUser } from "../auth/auth.types";
+import type { StructuredLogger } from "../observability/logger.service";
 
 const EXPERT_USER: AuthUser = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -27,7 +28,11 @@ function makeTx() {
   return {
     $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
     $queryRawUnsafe: jest.fn().mockResolvedValue([]),
-    expert: { findFirst: jest.fn().mockResolvedValue(null) },
+    expert: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn().mockResolvedValue(null),
+      update: jest.fn(),
+    },
     consultationRecommendation: {
       groupBy: jest.fn().mockResolvedValue([]),
       findMany: jest.fn().mockResolvedValue([]),
@@ -40,7 +45,8 @@ function makeService(tx: ReturnType<typeof makeTx>) {
   const prisma = {
     $transaction: jest.fn((work: (t: unknown) => Promise<unknown>) => work(tx)),
   } as unknown as PrismaClient;
-  return { service: new ExpertPortalService(prisma), tx };
+  const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as unknown as StructuredLogger;
+  return { service: new ExpertPortalService(prisma, logger), tx };
 }
 
 describe("ExpertPortalService.conversions", () => {
@@ -308,5 +314,81 @@ describe("ExpertPortalService.answers", () => {
     expect(call[2]).toBe(OTHER_EXPERT_ID);
     expect(call[3]).toBe(10);
     expect(call[4]).toBe(20);
+  });
+});
+
+describe("ExpertPortalService calendar settings (M16)", () => {
+  const prevKey = process.env.CREDENTIALS_ENCRYPTION_KEY;
+  beforeEach(() => {
+    process.env.CREDENTIALS_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+  });
+  afterAll(() => {
+    if (prevKey === undefined) delete process.env.CREDENTIALS_ENCRYPTION_KEY;
+    else process.env.CREDENTIALS_ENCRYPTION_KEY = prevKey;
+  });
+
+  it("returns the caller's own settings (token never echoed)", async () => {
+    const tx = makeTx();
+    tx.expert.findFirst.mockResolvedValue(EXPERT_ROW); // resolveExpert → own row
+    tx.expert.findUnique.mockResolvedValue({
+      tidycalApiTokenEnc: "iv:tag:ct",
+      tidycalApiTokenLast4: "1234",
+      tidycalLink: "https://tidycal.com/e",
+    });
+    const { service } = makeService(tx);
+
+    const dto = await service.getCalendarSettings(EXPERT_USER, null);
+
+    expect(tx.expert.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: EXPERT_USER.id, tenantId: EXPERT_USER.tenantId } }),
+    );
+    expect(dto).toEqual({
+      apiTokenConfigured: true,
+      apiTokenLast4: "1234",
+      tidycalLink: "https://tidycal.com/e",
+    });
+  });
+
+  it("returns the empty view when the caller has no linked expert", async () => {
+    const tx = makeTx();
+    tx.expert.findFirst.mockResolvedValue(null);
+    const { service } = makeService(tx);
+
+    expect(await service.getCalendarSettings(EXPERT_USER, null)).toEqual({
+      apiTokenConfigured: false,
+      apiTokenLast4: null,
+      tidycalLink: null,
+    });
+    expect(tx.expert.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("encrypts + stores the token on update, scoped to the caller's own expert row", async () => {
+    const tx = makeTx();
+    tx.expert.findFirst.mockResolvedValue(EXPERT_ROW);
+    tx.expert.update.mockResolvedValue({
+      tidycalApiTokenEnc: "iv:tag:ct",
+      tidycalApiTokenLast4: "6789",
+      tidycalLink: null,
+    });
+    const { service } = makeService(tx);
+
+    const dto = await service.updateCalendarSettings(EXPERT_USER, null, { apiToken: "tok_456789" });
+
+    const updateArg = tx.expert.update.mock.calls[0][0];
+    expect(updateArg.where).toEqual({ id: EXPERT_ROW.id });
+    expect(updateArg.data.tidycalApiTokenEnc).toEqual(expect.any(String));
+    expect(updateArg.data.tidycalApiTokenEnc).not.toContain("tok_456789"); // encrypted, not plaintext
+    expect(updateArg.data.tidycalApiTokenLast4).toBe("6789");
+    expect(dto.apiTokenConfigured).toBe(true);
+  });
+
+  it("404s an update when the caller has no expert profile", async () => {
+    const tx = makeTx();
+    tx.expert.findFirst.mockResolvedValue(null);
+    const { service } = makeService(tx);
+
+    await expect(service.updateCalendarSettings(EXPERT_USER, null, { apiToken: "x" })).rejects.toThrow(
+      /no expert profile/,
+    );
   });
 });

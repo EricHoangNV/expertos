@@ -6,8 +6,7 @@ import { RecommendationRulesController } from "./recommendation-rules.controller
 import { RecommendationService } from "./recommendation.service";
 import { RecommendationRulesService } from "./recommendation-rules.service";
 import { BookingService } from "./booking.service";
-import { TIDYCAL_PROVIDER } from "./tidycal.tokens";
-import { createDefaultTidyCalProvider } from "./tidycal.defaults";
+import { TidyCalProviderFactory } from "./tidycal-provider.factory";
 
 /**
  * Wires the M7 consultation funnel. M7.1 ships the {@link RecommendationService} — the rule-based
@@ -17,10 +16,11 @@ import { createDefaultTidyCalProvider } from "./tidycal.defaults";
  * {@link ConsultationBookingsController}: the TidyCal webhook that confirms a booking + admin
  * missed-event reconcile (Open Decision #10). M8.3 adds {@link RecommendationRulesController} +
  * {@link RecommendationRulesService}: the admin editor over the `recommendation_rules` config table,
- * so the funnel triggers are tunable with no deploy. The {@link TidyCalProvider} comes from an offline-default
- * factory behind the `TIDYCAL_PROVIDER` token (production swaps the real driver in one place when its
- * secret is set — the billing `PAYMENT_PROVIDER` pattern). `AuthModule` supplies {@link RlsService};
- * `PrismaClient`/{@link StructuredLogger} come from the global database/observability modules.
+ * so the funnel triggers are tunable with no deploy. M16 reworks booking sync to **per-expert polling**
+ * (TidyCal has no native webhooks): {@link TidyCalProviderFactory} resolves each expert's own
+ * {@link TidyCalProvider} from their encrypted API token (env-global → offline fallback), replacing the
+ * old process-wide singleton. `AuthModule` supplies {@link RlsService}; `PrismaClient`/{@link StructuredLogger}
+ * come from the global database/observability modules.
  */
 @Module({
   imports: [AuthModule],
@@ -33,7 +33,7 @@ import { createDefaultTidyCalProvider } from "./tidycal.defaults";
     RecommendationService,
     RecommendationRulesService,
     BookingService,
-    { provide: TIDYCAL_PROVIDER, useFactory: createDefaultTidyCalProvider },
+    TidyCalProviderFactory,
   ],
   exports: [RecommendationService, BookingService],
 })

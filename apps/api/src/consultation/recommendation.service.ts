@@ -177,7 +177,14 @@ export class RecommendationService {
       // RLS scopes `consultation_recommendations` to the acting user — a peer's row reads as null.
       const rec = await tx.consultationRecommendation.findUnique({
         where: { id: recommendationId },
-        select: { id: true, trigger: true, consultationId: true },
+        // `conversation.expertId` attributes the consultation to the expert whose voice the chat was
+        // held in (M16) — that expert's calendar poll later confirms the booking against this row.
+        select: {
+          id: true,
+          trigger: true,
+          consultationId: true,
+          conversation: { select: { expertId: true } },
+        },
       });
       if (!rec) {
         throw new NotFoundException("recommendation not found");
@@ -213,6 +220,7 @@ export class RecommendationService {
           tenantId: user.tenantId,
           userId: user.id,
           typeId: type?.id ?? null,
+          expertId: rec.conversation?.expertId ?? null,
           status: "recommended",
           amountCents: type?.priceCents ?? null,
         },

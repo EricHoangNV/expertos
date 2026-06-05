@@ -420,3 +420,68 @@ describe("AdminExpertService.setActive", () => {
     expect(tx.expert.update).not.toHaveBeenCalled();
   });
 });
+
+describe("AdminExpertService calendar (M16)", () => {
+  const prevKey = process.env.CREDENTIALS_ENCRYPTION_KEY;
+  beforeEach(() => {
+    process.env.CREDENTIALS_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
+  });
+  afterAll(() => {
+    if (prevKey === undefined) delete process.env.CREDENTIALS_ENCRYPTION_KEY;
+    else process.env.CREDENTIALS_ENCRYPTION_KEY = prevKey;
+  });
+
+  it("getCalendar maps the row to a DTO without the ciphertext", async () => {
+    const tx = makeTx();
+    tx.expert.findUnique.mockResolvedValue({
+      tidycalApiTokenEnc: "iv:tag:ct",
+      tidycalApiTokenLast4: "1234",
+      tidycalLink: "https://tidycal.com/e",
+    });
+    const { service } = makeService(tx);
+
+    expect(await service.getCalendar(ADMIN, EXPERT_ID)).toEqual({
+      apiTokenConfigured: true,
+      apiTokenLast4: "1234",
+      tidycalLink: "https://tidycal.com/e",
+    });
+  });
+
+  it("getCalendar 404s a missing expert", async () => {
+    const tx = makeTx();
+    tx.expert.findUnique.mockResolvedValue(null);
+    const { service } = makeService(tx);
+    await expect(service.getCalendar(ADMIN, EXPERT_ID)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("updateCalendar encrypts the token, audits field names only (never the value)", async () => {
+    const tx = makeTx();
+    tx.expert.findUnique.mockResolvedValue({ id: EXPERT_ID });
+    tx.expert.update.mockResolvedValue({
+      tidycalApiTokenEnc: "iv:tag:ct",
+      tidycalApiTokenLast4: "9876",
+      tidycalLink: null,
+    });
+    const { service, record } = makeService(tx);
+
+    await service.updateCalendar(ADMIN, EXPERT_ID, { apiToken: "secret_tok_9876" });
+
+    const updateArg = tx.expert.update.mock.calls[0][0];
+    expect(updateArg.data.tidycalApiTokenEnc).not.toContain("secret_tok_9876");
+    expect(updateArg.data.tidycalApiTokenLast4).toBe("9876");
+    const auditArg = record.mock.calls[0][2];
+    expect(auditArg).toMatchObject({ action: "expert.calendar_updated", targetId: EXPERT_ID });
+    expect(JSON.stringify(auditArg.metadata)).not.toContain("secret_tok_9876");
+  });
+
+  it("updateCalendar 404s a missing expert (no write, no audit)", async () => {
+    const tx = makeTx();
+    tx.expert.findUnique.mockResolvedValue(null);
+    const { service, record } = makeService(tx);
+    await expect(
+      service.updateCalendar(ADMIN, EXPERT_ID, { apiToken: "x" }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(tx.expert.update).not.toHaveBeenCalled();
+    expect(record).not.toHaveBeenCalled();
+  });
+});

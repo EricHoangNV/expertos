@@ -43,6 +43,8 @@ import type {
   VoiceProfileUpdateInput,
   ExpertConversionsDto,
   ExpertAnswerReviewDto,
+  ExpertCalendarSettingsDto,
+  ExpertCalendarSettingsUpdateInput,
   BookingReconcileResultDto,
   UnmatchedBookingEventDto,
   ReviewConfigDto,
@@ -690,6 +692,49 @@ export function getExpertAnswers(
   if (params?.offset != null) search.set("offset", String(params.offset));
   const query = search.toString();
   return request<ExpertAnswerReviewDto[]>(`/expert/answers${query ? `?${query}` : ""}`, token);
+}
+
+// ── M16 — per-expert calendar / TidyCal settings ────────────────────────────
+
+/**
+ * Read the signed-in expert's own calendar settings (`GET /expert/calendar-settings`). The token is
+ * write-only server-side, so the DTO only reports whether one is configured + a last-4 hint.
+ */
+export function getExpertCalendarSettings(
+  token: string,
+): Promise<ExpertCalendarSettingsDto> {
+  return request<ExpertCalendarSettingsDto>("/expert/calendar-settings", token);
+}
+
+/** Update the signed-in expert's own calendar settings. */
+export function updateExpertCalendarSettings(
+  token: string,
+  body: ExpertCalendarSettingsUpdateInput,
+): Promise<ExpertCalendarSettingsDto> {
+  return request<ExpertCalendarSettingsDto>("/expert/calendar-settings", token, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Read one expert's calendar settings as an admin (`GET /admin/experts/:id/calendar`). */
+export function getAdminExpertCalendarSettings(
+  token: string,
+  expertId: string,
+): Promise<ExpertCalendarSettingsDto> {
+  return request<ExpertCalendarSettingsDto>(`/admin/experts/${expertId}/calendar`, token);
+}
+
+/** Update one expert's calendar settings as an admin. */
+export function updateAdminExpertCalendarSettings(
+  token: string,
+  expertId: string,
+  body: ExpertCalendarSettingsUpdateInput,
+): Promise<ExpertCalendarSettingsDto> {
+  return request<ExpertCalendarSettingsDto>(`/admin/experts/${expertId}/calendar`, token, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 }
 
 // ── M9.2 — concierge review queue ──────────────────────────────────────────

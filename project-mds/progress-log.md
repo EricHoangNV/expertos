@@ -4969,3 +4969,33 @@ Both carry approver checklists. Tasks remain `[~]` — committing the drafts doe
 
 **Notes for next iteration:**
 - All in-sandbox-codeable review findings are now REMEDIATED/ADDRESSED. Remaining work is external: host-run the E2E suite (`scripts/test-e2e-{users,admin}.sh`), await Security/Product re-review, PM/schema decisions (voice-dimension widgets M13.5.3-.5/.7.4), PM/legal sign-offs (M11.4 / NT.3-6).
+
+## M16 — Per-expert TidyCal calendar integration (polling model)
+**Date:** 2026-06-05
+**Ref:** PRD §"M16 — Per-expert calendar integration"; triggered by the finding that TidyCal has no native webhooks (help.tidycal.com/article/739-faq) + the product decision "TidyCal API only".
+
+**What was done:**
+- **Cleanup:** deleted the global webhook machinery — `tidycal.defaults.ts` + `tidycal.tokens.ts` (the `TIDYCAL_PROVIDER` singleton), and all HMAC/`webhookSecret` code from `HttpTidyCalProvider`. Its `verifyWebhook` now rejects (TidyCal posts none) and `parseEvent` is a no-op; only `OfflineTidyCalProvider` keeps the JSON-envelope seam.
+- **Schema/migration:** `Expert.{tidycalApiTokenEnc, tidycalApiTokenLast4, tidycalLink, tidycalPolledAt}`, `Consultation.expertId` (FK→Expert SetNull, `@@index([tenantId, expertId])`). Hand-written migration `20260605120000_per_expert_tidycal`.
+- **Crypto:** `apps/api/src/common/secret-crypto.ts` — AES-256-GCM over `CREDENTIALS_ENCRYPTION_KEY` (base64 32-byte), `ivB64:authTagB64:ciphertextB64`, hard-fail on missing/short key, `last4` helper.
+- **Factory:** `TidyCalProviderFactory.forExpert(row)` — decrypt per-expert token → HTTP driver; env-global → offline fallback. Prisma-free (caller passes the loaded row).
+- **Poll:** `BookingService.reconcile({since?, expertId?})` polls each configured expert with its own token + watermark, attributes bookings, namespaces ledger ids per expert; admin `POST /consultation-bookings/reconcile` is the Cloud-Scheduler trigger. Offline webhook seam now refused when `NODE_ENV==="production"`.
+- **Attribution:** `RecommendationService.respond` stamps `Consultation.expertId` from `conversation.expertId`.
+- **APIs:** expert `GET/PATCH /expert/calendar-settings` (own row; non-admin `?expertId=` ignored) + admin `GET/PATCH /admin/experts/:id/calendar` (audited). Token write-only; responses expose only `apiTokenConfigured`+`last4`+`tidycalLink`. Shared `expertCalendarSettingsUpdateSchema` + DTOs.
+- **UI:** "Calendar / Booking" card on `apps/admin/app/experts/[id]/page.tsx`, role-aware data source, EN/VI `experts.detail.calendar.*` keys.
+- **Backfill:** idempotent `backfill-tidycal` CLI migrating the legacy global token onto Ngô Công Trường.
+
+**Key decisions:**
+- **Polling over webhooks** — TidyCal cannot push; a relay (Zapier/Make) was ruled out by the product owner, so the existing `reconcile`/`listBookings` engine became the production sync path. Webhook URL/secret/`:token` route from the original plan were dropped entirely.
+- **`tidycalApiTokenLast4` as a stored column** rather than decrypting on read — reads never touch the key; decryption happens only when building a provider.
+- **Per-expert eventId namespacing** (`expert:<id>:reconcile:…`) so two TidyCal accounts with colliding numeric booking ids can't collapse in the shared `booking_webhook_events` ledger.
+- **Offline seam disabled in production** (security hardening) — an unsigned envelope must never be trusted if prod is misconfigured (no env token → factory resolves offline).
+
+**Files changed:** see `git show` for the M16 commit. New: `secret-crypto.ts`(+test), `tidycal-provider.factory.ts`(+test), `calendar-settings.util.ts`(+test), `backfill-tidycal.cli.ts`, migration. Modified: `booking.service.ts`, `http-tidycal-provider.ts`, `tidycal-provider.ts`, `consultation.module.ts`, `recommendation.service.ts`, `expert-portal.{controller,service}.ts`, `admin-expert.{controller,service}.ts`, `schema.prisma`, `packages/shared/src/{consultation,expert,index}.ts`, admin UI + i18n, `knip.json`, `apps/api/package.json`.
+
+**Gates:** api 771 pass / 99.85% lines (≥95% gate); shared 193; admin 101; api+shared typecheck+lint; root knip clean.
+
+**Notes for next iteration:**
+- **Deploy:** set `CREDENTIALS_ENCRYPTION_KEY` (base64 32-byte, Secret Manager), run `pnpm --filter @expertos/api backfill-tidycal -- --commit`, and wire a Cloud Scheduler hitting `POST /consultation-bookings/reconcile` (~5–15 min). `TIDYCAL_WEBHOOK_SECRET` is now vestigial.
+- **Host offline-E2E leg** for the per-expert sync path is the remaining M16 item (live Playwright runs on host, §3.4.1).
+- Poll can't distinguish a *reschedule* (re-polls as `created`, updates `scheduledAt`) — accepted; documented in M16 design.

@@ -1,7 +1,7 @@
 /**
- * Single source of truth for the M9.3 transactional-email default. Mirrors `billing.defaults.ts` /
- * `tidycal.defaults.ts`: one factory the running API (and any future worker) share so they can't drift
- * on which mail driver they use.
+ * Single source of truth for the M9.3 transactional-email default. Mirrors `billing.defaults.ts`:
+ * one factory the running API (and any future worker) share so they can't drift on which mail driver
+ * they use.
  *
  * Resolves the real {@link HttpEmailProvider} when `EMAIL_API_URL`, `EMAIL_API_KEY`, and `EMAIL_FROM`
  * are all configured (out of band via Secret Manager — never in code/env files, per PRD §"Security");

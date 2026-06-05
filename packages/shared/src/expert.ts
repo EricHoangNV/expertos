@@ -98,3 +98,40 @@ export interface ExpertAnswerReviewDto {
   feedbackReason: string | null;
   createdAt: string;
 }
+
+// ── per-expert calendar / TidyCal settings (M16) ────────────────────────────
+
+/**
+ * An expert's TidyCal calendar settings as surfaced to the portal. **Write-only token:** the API token
+ * is never returned — only whether one is configured and a non-sensitive last-4 hint so the expert can
+ * recognize which token is stored. TidyCal has no webhooks, so there is nothing else to configure;
+ * booking sync polls `GET /bookings` with the stored token.
+ */
+export interface ExpertCalendarSettingsDto {
+  /** Whether an encrypted TidyCal API token is stored for this expert. */
+  apiTokenConfigured: boolean;
+  /** Last 4 chars of the stored token ("••••1234"), or null when none is configured. */
+  apiTokenLast4: string | null;
+  /** The expert's public TidyCal booking URL (shown to consumers), or null. */
+  tidycalLink: string | null;
+}
+
+/**
+ * Update an expert's calendar settings (`PATCH /expert/calendar-settings`, admin
+ * `PATCH /admin/experts/:id/calendar`). Every field is optional so a caller can change one without
+ * touching the others. `apiToken`: a non-empty string sets/replaces it (stored encrypted); `null`
+ * clears it; omitted leaves it. `tidycalLink`: a URL sets it; `null` or `""` clears it. The token is
+ * write-only — it is accepted here but never read back.
+ */
+export const expertCalendarSettingsUpdateSchema = z
+  .object({
+    apiToken: z.string().trim().min(1).max(500).nullable().optional(),
+    tidycalLink: z
+      .union([z.string().trim().url().max(500), z.literal(""), z.null()])
+      .optional(),
+  })
+  .strict();
+
+export type ExpertCalendarSettingsUpdateInput = z.infer<
+  typeof expertCalendarSettingsUpdateSchema
+>;

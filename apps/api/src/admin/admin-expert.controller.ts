@@ -13,12 +13,15 @@ import {
   adminExpertCreateSchema,
   adminExpertListQuerySchema,
   adminExpertUpdateSchema,
+  expertCalendarSettingsUpdateSchema,
   type AdminExpertActiveUpdateInput,
   type AdminExpertCreateInput,
   type AdminExpertDetailDto,
   type AdminExpertListQueryInput,
   type AdminExpertSummaryDto,
   type AdminExpertUpdateInput,
+  type ExpertCalendarSettingsDto,
+  type ExpertCalendarSettingsUpdateInput,
 } from "@expertos/shared";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { Roles } from "../auth/roles.decorator";
@@ -82,5 +85,25 @@ export class AdminExpertController {
     @Body(new ZodValidationPipe(adminExpertActiveUpdateSchema)) body: AdminExpertActiveUpdateInput,
   ): Promise<AdminExpertDetailDto> {
     return this.service.setActive(user, id, body);
+  }
+
+  /** An expert's TidyCal calendar settings (M16) — token never returned. */
+  @Get(":id/calendar")
+  getCalendar(
+    @CurrentUser() user: AuthUser,
+    @Param("id", ParseUUIDPipe) id: string,
+  ): Promise<ExpertCalendarSettingsDto> {
+    return this.service.getCalendar(user, id);
+  }
+
+  /** Set/clear an expert's TidyCal API token (stored encrypted) and/or booking link. */
+  @Patch(":id/calendar")
+  updateCalendar(
+    @CurrentUser() user: AuthUser,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(expertCalendarSettingsUpdateSchema))
+    body: ExpertCalendarSettingsUpdateInput,
+  ): Promise<ExpertCalendarSettingsDto> {
+    return this.service.updateCalendar(user, id, body);
   }
 }

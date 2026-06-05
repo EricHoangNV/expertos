@@ -343,10 +343,20 @@ model Expert {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  // Per-expert TidyCal calendar (M16). Each expert owns their own TidyCal account, so booking sync
+  // polls `GET /bookings` with this expert's API token. Encrypted at rest (AES-256-GCM,
+  // `iv:authTag:ciphertext`); never returned in plaintext over any API. TidyCal has no native
+  // webhooks, so there is no per-expert webhook secret — sync is the polling reconcile path.
+  tidycalApiTokenEnc   String?   @map("tidycal_api_token_enc")
+  tidycalApiTokenLast4 String?   @map("tidycal_api_token_last4") // non-sensitive UI hint ("••••1234")
+  tidycalLink          String?   @map("tidycal_link") // the expert's public TidyCal booking URL
+  tidycalPolledAt      DateTime? @map("tidycal_polled_at") // poll watermark (last reconcile `since`)
+
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   voiceProfiles VoiceProfile[]
   documents     Document[]
+  consultations Consultation[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -933,6 +943,7 @@ model Consultation {
   tenantId    String             @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
   userId      String             @map("user_id") @db.Uuid
   typeId      String?            @map("type_id") @db.Uuid
+  expertId    String?            @map("expert_id") @db.Uuid // which expert's calendar this booking belongs to (M16)
   status      ConsultationStatus @default(recommended)
   bookingRef  String?            @map("booking_ref") // TidyCal booking id
   scheduledAt DateTime?          @map("scheduled_at")
@@ -943,10 +954,12 @@ model Consultation {
   tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user            User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
   type            ConsultationType?            @relation(fields: [typeId], references: [id], onDelete: SetNull)
+  expert          Expert?                      @relation(fields: [expertId], references: [id], onDelete: SetNull)
   recommendations ConsultationRecommendation[]
   notes           ConsultationNote[]
 
   @@index([tenantId, userId])
+  @@index([tenantId, expertId])
   @@index([status])
   @@map("consultations")
 }

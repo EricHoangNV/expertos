@@ -17,7 +17,7 @@ const EVENT_TYPES: readonly BookingEventType[] = [
  * Offline, in-process booking provider — the analog of {@link OfflinePaymentProvider} /
  * `EchoLlmProvider` so the entire booking-confirmation path (book → webhook → consultation sync,
  * plus reconcile recovery) runs deterministically without TidyCal or network. Used in local dev and
- * tests; production swaps {@link HttpTidyCalProvider} behind the `TIDYCAL_PROVIDER` token.
+ * tests; production resolves {@link HttpTidyCalProvider} per-expert via {@link TidyCalProviderFactory}.
  *
  * Webhooks carry a **trusted JSON {@link BookingEvent} envelope** (there is no signing offline); a
  * local script or test posts one to the booking webhook route to drive the same DB-sync code TidyCal

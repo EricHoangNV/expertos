@@ -30,6 +30,8 @@ function makeTx() {
     },
     consultation: { findFirst: jest.fn(), update: jest.fn(), create: jest.fn() },
     user: { findFirst: jest.fn() },
+    // M16: reconcile resolves which experts to poll + advances their watermark.
+    expert: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
   };
 }
 
@@ -45,6 +47,14 @@ function makeProvider(overrides: Partial<TidyCalProvider> = {}): jest.Mocked<Tid
   } as jest.Mocked<TidyCalProvider>;
 }
 
+/** A factory whose `default()`/`forExpert()` both return the one test provider. */
+function makeFactory(provider: TidyCalProvider): ConstructorParameters<typeof BookingService>[0] {
+  return {
+    default: () => provider,
+    forExpert: () => provider,
+  } as unknown as ConstructorParameters<typeof BookingService>[0];
+}
+
 function makeService(tx: Tx, provider: jest.Mocked<TidyCalProvider>) {
   const prisma = {
     $transaction: jest.fn((work: (tx: unknown) => Promise<unknown>) => work(tx)),
@@ -54,7 +64,7 @@ function makeService(tx: Tx, provider: jest.Mocked<TidyCalProvider>) {
     info: jest.fn(),
     error: jest.fn(),
   } as unknown as StructuredLogger;
-  const service = new BookingService(provider, prisma, logger);
+  const service = new BookingService(makeFactory(provider), prisma, logger);
   return { service, logger };
 }
 
@@ -68,6 +78,21 @@ describe("BookingService.handleWebhook", () => {
     });
     const { service } = makeService(tx, provider);
     await expect(service.handleWebhook(REQ)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("refuses the offline (unsigned) webhook seam in production", async () => {
+    const tx = makeTx();
+    const provider = makeProvider({ verifyWebhook: jest.fn().mockResolvedValue({}) });
+    (provider as { name: string }).name = "offline";
+    const prev = process.env.NODE_ENV;
+    (process.env as Record<string, string>).NODE_ENV = "production";
+    try {
+      const { service } = makeService(tx, provider);
+      await expect(service.handleWebhook(REQ)).rejects.toBeInstanceOf(BadRequestException);
+      expect(provider.verifyWebhook).not.toHaveBeenCalled();
+    } finally {
+      (process.env as Record<string, string | undefined>).NODE_ENV = prev;
+    }
   });
 
   it("rethrows an unexpected verification failure (not a 400)", async () => {
@@ -293,8 +318,20 @@ describe("BookingService.handleWebhook", () => {
 });
 
 describe("BookingService.reconcile", () => {
-  it("defaults to a lookback window and reports nothing applied for an empty poll", async () => {
+  /** Seed one configured expert so there is a target to poll. */
+  function seedExpert(tx: Tx, overrides: Partial<{ id: string; tidycalPolledAt: Date | null }> = {}) {
+    tx.expert.findMany.mockResolvedValue([
+      {
+        id: overrides.id ?? "exp_1",
+        tidycalApiTokenEnc: "enc",
+        tidycalPolledAt: overrides.tidycalPolledAt ?? null,
+      },
+    ]);
+  }
+
+  it("polls each configured expert with a default lookback and reports an empty poll", async () => {
     const tx = makeTx();
+    seedExpert(tx);
     const provider = makeProvider({ listBookings: jest.fn().mockResolvedValue([]) });
     const { service, logger } = makeService(tx, provider);
 
@@ -305,14 +342,72 @@ describe("BookingService.reconcile", () => {
     expect(Date.now() - sinceArg).toBeGreaterThan(0); // a past timestamp
     expect(result).toEqual({ polled: 0, applied: 0, matched: 0, skipped: 0 });
     expect(logger.info).not.toHaveBeenCalled();
+    // The expert's watermark is advanced even on an empty poll.
+    expect(tx.expert.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "exp_1" }, data: { tidycalPolledAt: expect.any(Date) } }),
+    );
   });
 
-  it("passes through an explicit since and tallies matched / duplicate outcomes", async () => {
+  it("uses the expert's watermark as the poll `since` when no explicit since is given", async () => {
     const tx = makeTx();
+    const watermark = new Date("2026-05-30T00:00:00.000Z");
+    seedExpert(tx, { tidycalPolledAt: watermark });
+    const provider = makeProvider({ listBookings: jest.fn().mockResolvedValue([]) });
+    const { service } = makeService(tx, provider);
+
+    await service.reconcile({});
+
+    expect(provider.listBookings).toHaveBeenCalledWith({ since: watermark });
+  });
+
+  it("namespaces the synthetic eventId per expert (so two experts' ids can't collide)", async () => {
+    const tx = makeTx();
+    seedExpert(tx);
+    tx.consultation.findFirst.mockResolvedValueOnce({ id: "con_1" });
+    const event: BookingEvent = { ...CREATED, eventId: "reconcile:bkg_1:booking.created" };
+    const provider = makeProvider({ listBookings: jest.fn().mockResolvedValue([event]) });
+    const { service } = makeService(tx, provider);
+
+    await service.reconcile({});
+
+    expect(tx.bookingWebhookEvent.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { provider_eventId: { provider: "tidycal", eventId: "expert:exp_1:reconcile:bkg_1:booking.created" } },
+      }),
+    );
+  });
+
+  it("scopes the pending-consultation match to the polling expert and stamps attribution on create", async () => {
+    const tx = makeTx();
+    seedExpert(tx);
+    tx.consultation.findFirst
+      .mockResolvedValueOnce(null) // by bookingRef
+      .mockResolvedValueOnce(null); // no pending recommended for this expert
+    tx.user.findFirst.mockResolvedValue({ id: "user_1", tenantId: "tenant_1" });
+    tx.consultation.create.mockResolvedValue({ id: "con_new" });
+    const provider = makeProvider({ listBookings: jest.fn().mockResolvedValue([CREATED]) });
+    const { service } = makeService(tx, provider);
+
+    await service.reconcile({});
+
+    // pending lookup is filtered to the expert
+    expect(tx.consultation.findFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({ status: "recommended", bookingRef: null, expertId: "exp_1" }),
+      }),
+    );
+    // the created consultation is attributed to the expert
+    expect(tx.consultation.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ expertId: "exp_1", bookingRef: "bkg_1" }) }),
+    );
+  });
+
+  it("tallies matched / duplicate outcomes and logs when something applied", async () => {
+    const tx = makeTx();
+    seedExpert(tx);
     const matchedEvent: BookingEvent = { ...CREATED, eventId: "reconcile:bkg_1:booking.created" };
     const dupEvent: BookingEvent = { ...CREATED, eventId: "reconcile:bkg_2:booking.created", bookingRef: "bkg_2" };
-    // first event: not in ledger, matches by bookingRef → applied + matched.
-    // second event: already in ledger → skipped.
     tx.bookingWebhookEvent.findUnique
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ id: "seen" });
@@ -332,6 +427,7 @@ describe("BookingService.reconcile", () => {
 
   it("counts an unmatched recovered booking as applied-but-not-matched", async () => {
     const tx = makeTx();
+    seedExpert(tx);
     tx.consultation.findFirst.mockResolvedValueOnce(null);
     tx.user.findFirst.mockResolvedValue(null);
     const provider = makeProvider({
@@ -342,6 +438,45 @@ describe("BookingService.reconcile", () => {
     const result = await service.reconcile({ since: new Date() });
 
     expect(result).toEqual({ polled: 1, applied: 1, matched: 0, skipped: 0 });
+  });
+
+  it("falls back to a single default poll (env token) when no expert has a token", async () => {
+    const tx = makeTx();
+    tx.expert.findMany.mockResolvedValue([]); // no configured experts
+    const prev = process.env.TIDYCAL_API_TOKEN;
+    process.env.TIDYCAL_API_TOKEN = "env-token";
+    try {
+      const provider = makeProvider({ listBookings: jest.fn().mockResolvedValue([]) });
+      const { service } = makeService(tx, provider);
+
+      const result = await service.reconcile({});
+
+      expect(provider.listBookings).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ polled: 0, applied: 0, matched: 0, skipped: 0 });
+      // a non-expert default poll advances no watermark
+      expect(tx.expert.update).not.toHaveBeenCalled();
+    } finally {
+      if (prev === undefined) delete process.env.TIDYCAL_API_TOKEN;
+      else process.env.TIDYCAL_API_TOKEN = prev;
+    }
+  });
+
+  it("does nothing when there are no configured experts and no env token", async () => {
+    const tx = makeTx();
+    tx.expert.findMany.mockResolvedValue([]);
+    const prev = process.env.TIDYCAL_API_TOKEN;
+    delete process.env.TIDYCAL_API_TOKEN;
+    try {
+      const provider = makeProvider({ listBookings: jest.fn() });
+      const { service } = makeService(tx, provider);
+
+      const result = await service.reconcile({});
+
+      expect(provider.listBookings).not.toHaveBeenCalled();
+      expect(result).toEqual({ polled: 0, applied: 0, matched: 0, skipped: 0 });
+    } finally {
+      if (prev !== undefined) process.env.TIDYCAL_API_TOKEN = prev;
+    }
   });
 });
 
