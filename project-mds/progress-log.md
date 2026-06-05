@@ -5038,3 +5038,27 @@ Foundation for M17 (runtime answer-tuning settings). Purely additive — a new g
 - **Shared (`packages/shared/src/app-settings.ts`).** `CHAT_MODELS = ["gpt-4o-mini","gpt-4o"]` + `chatModelSchema` — the allowlist guarantees a `model-pricing.ts` entry so usage-log cost tracking matches the effective model (`gpt-4o-mini`=STANDARD, `gpt-4o`=PREMIUM, both already priced). `appSettingsUpdateSchema` (temp ∈ [0,2] = OpenAI's sampling ceiling; floor ∈ [0,1] — RRF fused scores are tiny so 1 is a generous guard; model ∈ allowlist). `AppSettingsUpdateInput` + `AppSettingsDto` (DTO adds read-only `embeddingProvider` + nullable `updatedAt`). Exported from `index.ts`.
 - **No seed.** The M17.2 `SettingsService` upserts the singleton on first read (clones `ConciergeConfigService`), so no seed row is needed.
 - **Tests/gates.** New `app-settings.test.ts` (+9): allowlist parity, off-allowlist rejection (`gpt-4-turbo`, `claude-opus-4-8`, `gpt-4o-pro`), temperature + score-floor boundary acceptance/rejection. shared 202 pass. shared build+typecheck+lint, db typecheck+lint (client regenerated), api typecheck (consumer of both db+shared, additive change is non-breaking), root knip + deadcode clean.
+
+## M17.2 — SettingsService + controller (runtime answer-tuning settings API)
+**Date:** 2026-06-05
+**Ref:** PRD §"M17 — Runtime answer-tuning settings + real embedding provider"; PRD-TRACKING M17.2
+
+**What was done:**
+- New `apps/api/src/settings/` module cloning the `ConciergeConfigService`/`concierge-config.controller`/`ConciergeModule` pattern over the M17.1 `app_settings` singleton.
+- `SettingsService`: `getSettings(user)` (RLS-scoped read → `AppSettingsDto`, launch defaults when unseeded), `updateSettings(actor, input)` (upsert + `AdminAuditService.record` in the same tx → action `app_settings.updated`, then cache bust), and `getCached()` — a 30s in-process TTL snapshot of the tunable triple read via the global `PrismaClient` (RLS-exempt config, no per-user ctx) for the M17.3/M17.4 hot path.
+- `AppSettingsController` (`@Roles("admin")` `GET`/`PATCH /admin/app-settings`, zod-validated body); `settings.tokens.ts` `resolveEmbeddingProviderName` (read-only env-driven name surfaced on the DTO); `SettingsModule` exports `SettingsService`, imported by `ChatModule` + `RetrievalModule` + registered in `app.module.ts`.
+
+**Key decisions:**
+- `getCached` reads via the global client (not `RlsService.run`): the answer path has no `AuthUser` and a transaction per message is wasteful; `app_settings` has no RLS so the global read is safe.
+- `normalizeModel` defensively narrows a stored model string to the `CHAT_MODELS` allowlist (fallback `gpt-4o-mini`), so a legacy/hand-edited row can't put an unpriced model on the answer path. Write-side `appSettingsUpdateSchema` already guards new saves.
+- `AppSettingsRuntime` interface left un-exported until M17.3/M17.4 consume it (knip clean); the public `getCached` return type still resolves structurally.
+
+**Files changed:**
+- `apps/api/src/settings/{settings.service.ts, settings.service.test.ts, app-settings.controller.ts, settings.tokens.ts, settings.module.ts}` — new.
+- `apps/api/src/{chat/chat.module.ts, retrieval/retrieval.module.ts, app.module.ts}` — import/register `SettingsModule`.
+- `project-mds/{PRD-TRACKING.md (M17.2 [x]), BUILD-NOTES.md (### M17.2), progress-state.md, progress-log.md}`.
+
+**Gotchas / gates:**
+- Turbo root `pnpm typecheck` SIGILLs in this sandbox (LEARNINGS #25) — ran per-workspace `pnpm --filter @expertos/api exec tsc --noEmit` (clean).
+- No DI-boot/e2e test in-sandbox; wiring confidence from typecheck + mirroring the proven concierge import shape (same `AdminModule`/`AuthModule`, no new cycle).
+- +9 api tests → **api 788 pass / 0 fail** (settings.service.ts 100% cov); api lint + root knip clean.

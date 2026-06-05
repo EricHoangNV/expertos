@@ -4,6 +4,7 @@ import { CacheModule } from "../cache/cache.module";
 import { ConciergeModule } from "../concierge/concierge.module";
 import { ConsultationModule } from "../consultation/consultation.module";
 import { RetrievalModule } from "../retrieval/retrieval.module";
+import { SettingsModule } from "../settings/settings.module";
 import { VoiceModule } from "../voice/voice.module";
 import {
   createDefaultLlmProvider,
@@ -29,7 +30,15 @@ import { CHAT_DEGRADED_LLM_PROVIDER, CHAT_LLM_PROVIDER } from "./chat.tokens";
  * / `StructuredLogger` come from the global `ObservabilityModule`.
  */
 @Module({
-  imports: [AuthModule, CacheModule, ConciergeModule, ConsultationModule, RetrievalModule, VoiceModule],
+  imports: [
+    AuthModule,
+    CacheModule,
+    ConciergeModule,
+    ConsultationModule,
+    RetrievalModule,
+    SettingsModule,
+    VoiceModule,
+  ],
   controllers: [
     ChatController,
     ConversationsController,

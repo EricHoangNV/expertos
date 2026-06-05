@@ -8,6 +8,7 @@ import { IngestionModule } from "./ingestion/ingestion.module";
 import { KnowledgeModule } from "./knowledge/knowledge.module";
 import { ObservabilityModule } from "./observability/observability.module";
 import { RetrievalModule } from "./retrieval/retrieval.module";
+import { SettingsModule } from "./settings/settings.module";
 import { VoiceModule } from "./voice/voice.module";
 import { ChatModule } from "./chat/chat.module";
 import { UploadModule } from "./uploads/upload.module";
@@ -31,6 +32,7 @@ import { RateLimitModule } from "./rate-limit/rate-limit.module";
     IngestionModule,
     KnowledgeModule,
     RetrievalModule,
+    SettingsModule,
     VoiceModule,
     ChatModule,
     UploadModule,
