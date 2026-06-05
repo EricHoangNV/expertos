@@ -14,13 +14,101 @@
 ### Code Review: Cycle 0 — (no review yet)
 - (awaiting first code review)
 
-### Product Review: Cycle 1 — FAIL (2026-06-03)
-- requirements coverage: FAIL (uncited real-LLM answers can bypass insufficient-knowledge handling, review, and escalation) — REMEDIATED 2026-06-03, pending re-review (`ChatService` now keys the insufficient/ungrounded state off `built.citations.length === 0`, not `facts.length === 0`)
-- core user flow: FAIL — REMEDIATED 2026-06-03, pending re-review
+### Product Review: Cycle 2 — FAIL (2026-06-05)
+- requirements coverage: FAIL (bulk draft publishing can make unreviewed drafts look like published expert-reviewed knowledge)
+- core user flow: FAIL
 - data handling / privacy: PASS
-- High: citationless answers can still be delivered as ordinary expert answers without the honest limitation state — REMEDIATED 2026-06-03, pending re-review (see remediation note below)
-- Mediums (trust-signal wording): analytics "grounded" bucket label + chat "Verified" badge wording — ADDRESSED 2026-06-03 (see remediation note below)
-- Medium (found via E2E M15.3.7): Free-plan document-upload 402 surfaced as a bare "Http Exception" badge instead of an upgrade prompt — ADDRESSED 2026-06-03 (upload client throws a typed `UploadEntitlementError`; the chat upload panel renders a localized EN/VI upgrade prompt + a link to /account; enforcement unchanged, DIRECTIVE #44 — see remediation note below)
+- Critical: draft-publish bypass can ground user answers in unreviewed knowledge; High: TidyCal decrypt fallback can misattribute bookings/revenue to the wrong expert
+
+---
+
+## Product Review — Cycle 2 (2026-06-05)
+
+### Review scope
+
+Performed the daily Product Review from the user, expert-reputation, business-operator, and product-owner perspectives. I did not read or reference anything under `requirements/`.
+
+Inputs reviewed:
+
+- `project-mds/FEEDBACKS-INSTRUCTIONS.MD`
+- Latest Review Verdicts block in `project-mds/FEEDBACKS.MD`
+- Relevant `project-mds/PRD.md` passages for grounded answers, citations, uploads, entitlements, consultation routing, concierge review, analytics, and expert-review publishing gates
+- `project-mds/progress-state.md`
+- New commits since the previous Product Review, especially citation click-through, citationless-answer remediation coverage, default expert voice, upload entitlement messaging, negative-space E2E additions, bulk draft publishing, and per-expert TidyCal polling
+
+### Product verdict
+
+FAIL. The prior Product Cycle 1 citationless-answer issue appears remediated in the main chat path: `ChatService` now treats a final answer with zero resolved citations as ungrounded even if retrieval found facts, does not cache it, and passes the insufficient-knowledge signal into concierge review and consultation routing. The upload-entitlement UX issue is also addressed with a typed 402 path and an upgrade prompt.
+
+However, the new bulk draft-publish command violates the core ExpertOS promise that published knowledge is expert-reviewed before it can ground answers. A second consultation-attribution issue can also make per-expert booking and revenue signals untrustworthy under credential failure.
+
+### Findings ordered by severity
+
+#### Critical — Bulk draft publishing can turn unreviewed drafts into cited expert knowledge
+
+**File and line references:**
+
+- `apps/api/package.json:9-11`
+- `apps/api/src/knowledge/publish-drafts.cli.ts:4-8`
+- `apps/api/src/knowledge/publish-drafts.cli.ts:160-182`
+- `apps/api/src/knowledge/publish-drafts.cli.ts:193-195`
+- `apps/api/src/knowledge/knowledge.service.ts:191-247`
+
+**What I found:**
+
+The new `publish-drafts` package script exposes a bulk operation that explicitly publishes `draft` document versions while intentionally skipping AI-processing and Expert Review. On `--commit`, it marks the version `published`, marks its chunks `published`, and sets the document's `publishedVersionId`. That is exactly the retrieval-visible state normal users experience as published expert knowledge.
+
+The normal product gate is stricter: `KnowledgeService.approve` only publishes versions already in `expert_review`, records the real approving user, flips chunks live, and invalidates tenant caches. The CLI instead stamps `approvedBy` as a system user and even warns that response caches are not invalidated.
+
+**Product consequence:**
+
+This is a direct trust failure. A user can receive a fluent answer with resolvable citations that appear to come from published expert knowledge, while the expert never reviewed or signed off on that source. From the expert's perspective, their name and voice can be attached to operationally-published draft material. From the business perspective, it undermines the core promise that citations mean expert-reviewed grounding, not just database status.
+
+This is also worse than an uncited guess because the answer can look properly grounded. ExpertOS should prefer missing knowledge over unsupported certainty; this path can manufacture support by changing lifecycle state.
+
+**Recommended remediation:**
+
+Remove the script from deployable package scripts or change it so it cannot publish `draft` versions. Any bulk operation should only publish versions already in `expert_review`, call the same domain service path or shared publication helper as `KnowledgeService.approve`, record the human approver/source of authorization, preserve auditability, and invalidate tenant caches. If a one-time break-glass migration is unavoidable, keep it outside normal app scripts, require a narrowly scoped allowlist of document/version IDs, and delete it after use.
+
+#### High — TidyCal decrypt fallback can attribute the wrong booking and revenue to an expert
+
+**File and line references:**
+
+- `apps/api/src/consultation/tidycal-provider.factory.ts:19-24`
+- `apps/api/src/consultation/tidycal-provider.factory.ts:37-50`
+- `apps/api/src/consultation/booking.service.ts:175-205`
+- `apps/api/src/consultation/booking.service.ts:314-340`
+
+**What I found:**
+
+`BookingService.resolveTargets` polls experts with configured encrypted TidyCal tokens and preserves the selected expert ID as the poll target. But `TidyCalProviderFactory.forExpert` catches decrypt failures and falls back to the default provider, which may be the global `TIDYCAL_API_TOKEN`. The booking events from that fallback provider are still scoped and correlated as if they came from the original expert target.
+
+**Product consequence:**
+
+If an expert token is corrupted, the encryption key is rotated incorrectly, or a migration fails, ExpertOS can poll the global/default calendar and attribute those bookings to a specific expert. That can update the wrong pending consultation, create booked consultations under the wrong expert, and distort consultation conversion and revenue analytics.
+
+For users, this weakens the promise that booking prompts connect them to the right human support. For experts, it can make their portal show bookings or revenue they did not earn. For operators, it can make the consultation funnel look healthier or worse for the wrong expert, leading to bad business decisions.
+
+**Recommended remediation:**
+
+Do not fall back to the global/default provider when an expert row has an encrypted token but decryption fails. Skip that expert target, surface a failed-target count/alert, and keep the global fallback only for the no-expert legacy path or experts with no configured token. Add a regression test showing that decrypt failure plus `TIDYCAL_API_TOKEN` does not poll the global provider under that expert ID.
+
+### Positive trust posture notes
+
+- The Product Cycle 1 high-risk citationless-answer path appears remediated: final answers with zero resolved citations are marked insufficient, not cached, and routed to review/consultation signals.
+- Citation click-through improves user verifiability by letting inline citation markers open, highlight, and scroll to the matching source card.
+- Upload entitlement denial now presents an upgrade path instead of a bare framework error, which improves paid-conversion quality without changing enforcement.
+- The negative-space E2E additions cover the citation trust invariant, upload entitlement denial, concierge disclosure, conversation-to-knowledge surface, voice publish flow, access revocation, and isolation paths, though host execution remains pending per `progress-state.md`.
+
+### Residual risks and unverified assumptions
+
+- I did not run the host Playwright suite; `progress-state.md` still marks the expanded E2E set and M16 offline leg as host-run pending.
+- I did not verify live TidyCal API behavior. The finding is based on the local fallback and attribution logic.
+- Analytics naming around grounded/low-confidence/insufficient is improved from Cycle 1, but business dashboards still depend on citation counts as proxies; operators should read them as trust signals, not proof of factual correctness.
+
+### Final verdict
+
+FAIL. ExpertOS currently has a path that can make unreviewed draft knowledge look like published, cited expert knowledge. That violates the product promise even if the ordinary chat citation and insufficient-knowledge paths are improving.
 
 ---
 
