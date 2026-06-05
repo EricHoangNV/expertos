@@ -18,10 +18,14 @@ export interface ExpertCredentials {
  *
  * **Resolution precedence** (highest first):
  *  1. **Per-expert token** — decrypt the expert's `tidycalApiTokenEnc` → {@link HttpTidyCalProvider}.
- *     A decrypt failure (rotated/again-misconfigured key, corrupt ciphertext) is logged and falls
- *     through rather than crashing the whole poll.
+ *     A decrypt failure (rotated/again-misconfigured key, corrupt ciphertext) returns `null` so the
+ *     caller SKIPS that expert. It deliberately does NOT fall through to the env-global default: that
+ *     would poll the shared calendar while still attributing the bookings to the failing expert,
+ *     misassigning bookings/revenue (Security/Product review Cycle 4 High). An expert with a
+ *     configured token gets that expert's calendar or nothing — never someone else's.
  *  2. **Env-global token** — `TIDYCAL_API_TOKEN` → {@link HttpTidyCalProvider}. The pre-migration
- *     default (the single shared calendar) and a safety net for an expert who hasn't configured one.
+ *     default (the single shared calendar) and a safety net only for an expert with NO configured
+ *     token, or the no-expert legacy poll.
  *  3. **Offline** — {@link OfflineTidyCalProvider}: deterministic, no network. Local/dev/test default,
  *     and the only provider whose JSON-envelope webhook seam is live.
  *
@@ -33,18 +37,27 @@ export interface ExpertCredentials {
 export class TidyCalProviderFactory {
   constructor(private readonly logger: StructuredLogger) {}
 
-  /** Build the provider for one expert (or the env/offline default when `expert` is null). */
-  forExpert(expert: ExpertCredentials | null): TidyCalProvider {
+  /**
+   * Build the provider for one expert (or the env/offline default when `expert` is null).
+   *
+   * Returns `null` ONLY when the expert has a configured token that fails to decrypt — the caller must
+   * then skip that expert rather than poll someone else's calendar under their id (see precedence #1).
+   * An expert with no configured token resolves to the env/offline default.
+   */
+  forExpert(expert: ExpertCredentials | null): TidyCalProvider | null {
     if (expert?.tidycalApiTokenEnc) {
       try {
         const apiToken = decryptSecret(expert.tidycalApiTokenEnc);
         return new HttpTidyCalProvider({ apiToken });
       } catch (err) {
-        // Never leak the ciphertext/plaintext — log only the expert id + the failure class.
-        this.logger.warn("could not decrypt expert TidyCal token; falling back", {
+        // Never leak the ciphertext/plaintext — log only the expert id + the failure class. Return
+        // null (skip) instead of falling back, so a decrypt failure can't misattribute the global
+        // calendar's bookings to this expert.
+        this.logger.warn("could not decrypt expert TidyCal token; skipping this expert's poll", {
           expertId: expert.id,
           error: err instanceof Error ? err.name : "unknown",
         });
+        return null;
       }
     }
     return this.default();

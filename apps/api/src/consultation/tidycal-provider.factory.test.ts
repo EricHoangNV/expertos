@@ -30,26 +30,29 @@ describe("TidyCalProviderFactory", () => {
       const { factory } = makeFactory();
       const enc = encryptWithKey("expert-token", KEY);
       const provider = factory.forExpert({ id: "exp_1", tidycalApiTokenEnc: enc });
-      expect(provider.name).toBe("tidycal");
+      expect(provider?.name).toBe("tidycal");
     });
 
     it("falls through to offline when the expert has no token (and no env token)", () => {
       const { factory } = makeFactory();
       const provider = factory.forExpert({ id: "exp_1", tidycalApiTokenEnc: null });
-      expect(provider.name).toBe("offline");
+      expect(provider?.name).toBe("offline");
     });
 
     it("falls back to the env-global token when the expert has none", () => {
       process.env.TIDYCAL_API_TOKEN = "env-token";
       const { factory } = makeFactory();
       const provider = factory.forExpert({ id: "exp_1", tidycalApiTokenEnc: null });
-      expect(provider.name).toBe("tidycal");
+      expect(provider?.name).toBe("tidycal");
     });
 
-    it("logs and falls back when the stored token cannot be decrypted (no key leak)", () => {
+    it("returns null (skip — never falls back) when the stored token cannot be decrypted, even with an env token set", () => {
+      // The expert HAS a configured token: polling the env-global calendar under their id would
+      // misattribute its bookings/revenue. So decrypt failure must skip, not fall back.
+      process.env.TIDYCAL_API_TOKEN = "env-token";
       const { factory, logger } = makeFactory();
       const provider = factory.forExpert({ id: "exp_1", tidycalApiTokenEnc: "corrupt:payload:here" });
-      expect(provider.name).toBe("offline");
+      expect(provider).toBeNull();
       expect(logger.warn).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({ expertId: "exp_1" }),
@@ -61,7 +64,7 @@ describe("TidyCalProviderFactory", () => {
 
     it("treats a null expert as the default", () => {
       const { factory } = makeFactory();
-      expect(factory.forExpert(null).name).toBe("offline");
+      expect(factory.forExpert(null)?.name).toBe("offline");
     });
   });
 

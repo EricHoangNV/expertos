@@ -15,6 +15,9 @@ export const en = {
   applied: "Applied",
   matched: "Matched",
   alreadySeen: "Already seen",
+  failedTargets: "Skipped (token error)",
+  failedTargetsHint:
+    "Experts whose stored TidyCal token could not be decrypted were skipped (not polled). Check the encryption key or re-enter their token.",
   // Unmatched bookings list.
   unmatchedHeading: "Unmatched bookings",
   emptyUnmatched: "No unmatched bookings — every booking has been correlated.",
@@ -45,6 +48,9 @@ export const vi = {
   applied: "Đã áp dụng",
   matched: "Đã khớp",
   alreadySeen: "Đã xử lý trước đó",
+  failedTargets: "Bỏ qua (lỗi token)",
+  failedTargetsHint:
+    "Các chuyên gia có token TidyCal lưu trữ không thể giải mã đã bị bỏ qua (không truy vấn). Hãy kiểm tra khóa mã hóa hoặc nhập lại token của họ.",
   // Unmatched bookings list.
   unmatchedHeading: "Lịch chưa khớp",
   emptyUnmatched: "Không có lịch nào chưa khớp — mọi lịch đã được liên kết.",

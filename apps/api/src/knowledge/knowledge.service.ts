@@ -14,31 +14,8 @@ import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { StructuredLogger } from "../observability/logger.service";
 import { ResponseCacheService } from "../cache/response-cache.service";
-
-/** `select` that yields exactly the fields a {@link KnowledgeVersionDto} needs (+ chunk count). */
-const VERSION_SELECT = {
-  id: true,
-  documentId: true,
-  versionNumber: true,
-  status: true,
-  changeSummary: true,
-  approvedBy: true,
-  approvedAt: true,
-  createdAt: true,
-  _count: { select: { chunks: true } },
-} satisfies Prisma.DocumentVersionSelect;
-
-interface VersionRow {
-  id: string;
-  documentId: string;
-  versionNumber: number;
-  status: string;
-  changeSummary: string | null;
-  approvedBy: string | null;
-  approvedAt: Date | null;
-  createdAt: Date;
-  _count: { chunks: number };
-}
+import { VERSION_SELECT, type VersionRow } from "./knowledge.constants";
+import { publishReviewedVersionTx } from "./publish-version";
 
 interface DocumentRow {
   id: string;
@@ -196,38 +173,20 @@ export class KnowledgeService {
    */
   async approve(user: AuthUser, versionId: string): Promise<KnowledgeVersionDto> {
     const dto = await this.rls.run(user, async (tx) => {
+      // Load + check here for the proper HTTP error semantics (404 / 409) before any write; the
+      // shared primitive re-enforces the expert_review gate so the invariant can't drift (or be
+      // bypassed) across entry points.
       const version = await this.loadVersion(tx, versionId);
       if (version.status !== "expert_review") {
         throw new ConflictException(`cannot publish a ${version.status} version`);
       }
-
       const document = await this.loadDocument(tx, version.documentId);
-      const now = new Date();
 
-      // Supersede the previously-published version (if any other) so retrieval never sees two.
-      if (document.publishedVersionId && document.publishedVersionId !== version.id) {
-        await tx.documentVersion.update({
-          where: { id: document.publishedVersionId },
-          data: { status: "archived" },
-        });
-        await tx.chunk.updateMany({
-          where: { documentVersionId: document.publishedVersionId },
-          data: { status: "archived" },
-        });
-      }
-
-      const updated = (await tx.documentVersion.update({
-        where: { id: versionId },
-        data: { status: "published", approvedBy: user.id, approvedAt: now },
-        select: VERSION_SELECT,
-      })) as VersionRow;
-      await tx.chunk.updateMany({
-        where: { documentVersionId: versionId },
-        data: { status: "published" },
-      });
-      await tx.document.update({
-        where: { id: version.documentId },
-        data: { publishedVersionId: versionId, status: "published" },
+      const updated = await publishReviewedVersionTx(tx, {
+        versionId,
+        versionStatus: version.status,
+        currentPublishedVersionId: document.publishedVersionId,
+        approverId: user.id,
       });
 
       this.logger.info("knowledge version published", {

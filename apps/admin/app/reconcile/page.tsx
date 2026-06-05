@@ -113,7 +113,15 @@ export default function ReconcilePage() {
             <Stat label={t("applied")} value={result.applied} />
             <Stat label={t("matched")} value={result.matched} />
             <Stat label={t("alreadySeen")} value={result.skipped} />
+            {result.failedTargets > 0 && (
+              <Stat label={t("failedTargets")} value={result.failedTargets} />
+            )}
           </div>
+        )}
+        {result != null && result.failedTargets > 0 && (
+          <p className="muted">
+            <Badge tone="amber">{t("failedTargets")}</Badge> {t("failedTargetsHint")}
+          </p>
         )}
       </Card>
 

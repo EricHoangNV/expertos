@@ -132,9 +132,15 @@ export class BookingService {
    * demand. Returns counts so the admin can see whether the run caught anything new.
    */
   async reconcile(input: BookingReconcileInput): Promise<BookingReconcileResultDto> {
-    const targets = await this.resolveTargets(input);
+    const { targets, failedTargets } = await this.resolveTargets(input);
 
-    const result: BookingReconcileResultDto = { polled: 0, applied: 0, matched: 0, skipped: 0 };
+    const result: BookingReconcileResultDto = {
+      polled: 0,
+      applied: 0,
+      matched: 0,
+      skipped: 0,
+      failedTargets,
+    };
     for (const target of targets) {
       const events = await target.provider.listBookings({ since: target.since });
       result.polled += events.length;
@@ -163,6 +169,13 @@ export class BookingService {
         matched: result.matched,
       });
     }
+    if (result.failedTargets > 0) {
+      // An expert with a configured token we couldn't decrypt was skipped (not polled under the
+      // global calendar). Surface it so an operator can check the encryption key / re-enter the token.
+      this.logger.warn("booking reconcile skipped experts with undecryptable TidyCal tokens", {
+        failedTargets: result.failedTargets,
+      });
+    }
     return result;
   }
 
@@ -171,8 +184,14 @@ export class BookingService {
    * configured token. When none is configured but a global env token exists, fall back to a single
    * default poll (the pre-migration single-calendar behavior). The poll window per expert is the
    * explicit `since`, else that expert's watermark, else a 24h lookback.
+   *
+   * Returns the poll targets plus `failedTargets`: experts whose configured token could not be
+   * decrypted. Those are SKIPPED, not polled under the env-global calendar — polling the shared
+   * calendar while attributing its bookings to that expert would misassign bookings/revenue.
    */
-  private async resolveTargets(input: BookingReconcileInput): Promise<PollTarget[]> {
+  private async resolveTargets(
+    input: BookingReconcileInput,
+  ): Promise<{ targets: PollTarget[]; failedTargets: number }> {
     const experts = await this.runAsSystem((tx) => {
       const where: Prisma.ExpertWhereInput = input.expertId
         ? { id: input.expertId }
@@ -190,19 +209,34 @@ export class BookingService {
       // No per-expert tokens configured. If an env-global token exists, do one default poll so the
       // legacy single calendar keeps syncing; otherwise (offline) there is nothing to poll.
       if (!input.expertId && process.env.TIDYCAL_API_TOKEN) {
-        return [
-          { expertId: null, provider: this.providers.default(), since: fallbackSince, polledAt: null },
-        ];
+        return {
+          targets: [
+            { expertId: null, provider: this.providers.default(), since: fallbackSince, polledAt: null },
+          ],
+          failedTargets: 0,
+        };
       }
-      return [];
+      return { targets: [], failedTargets: 0 };
     }
 
-    return experts.map((expert) => ({
-      expertId: expert.id,
-      provider: this.providers.forExpert(expert as ExpertCredentials),
-      since: input.since ?? expert.tidycalPolledAt ?? fallbackSince,
-      polledAt: now,
-    }));
+    const targets: PollTarget[] = [];
+    let failedTargets = 0;
+    for (const expert of experts) {
+      const provider = this.providers.forExpert(expert as ExpertCredentials);
+      if (!provider) {
+        // Configured token that won't decrypt → skip this expert entirely (never poll someone else's
+        // calendar under their id). The factory already logged the expert id + failure class.
+        failedTargets += 1;
+        continue;
+      }
+      targets.push({
+        expertId: expert.id,
+        provider,
+        since: input.since ?? expert.tidycalPolledAt ?? fallbackSince,
+        polledAt: now,
+      });
+    }
+    return { targets, failedTargets };
   }
 
   /** Namespace a polled event's synthetic id by expert so two experts' ids can't collide in the ledger. */

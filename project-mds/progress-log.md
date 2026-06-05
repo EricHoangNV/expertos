@@ -4999,3 +4999,32 @@ Both carry approver checklists. Tasks remain `[~]` — committing the drafts doe
 - **Deploy:** set `CREDENTIALS_ENCRYPTION_KEY` (base64 32-byte, Secret Manager), run `pnpm --filter @expertos/api backfill-tidycal -- --commit`, and wire a Cloud Scheduler hitting `POST /consultation-bookings/reconcile` (~5–15 min). `TIDYCAL_WEBHOOK_SECRET` is now vestigial.
 - **Host offline-E2E leg** for the per-expert sync path is the remaining M16 item (live Playwright runs on host, §3.4.1).
 - Poll can't distinguish a *reschedule* (re-polls as `created`, updates `scheduledAt`) — accepted; documented in M16 design.
+
+## Security Cycle 4 + Product Cycle 2 remediation — bulk-publish review-gate bypass, TidyCal decrypt fallback, stale cache
+**Date:** 2026-06-05
+**Ref:** FEEDBACKS Security Cycle 4 (FAIL) + Product Cycle 2 (FAIL) — shared Critical (bulk draft-publish bypasses expert-review gate), High (TidyCal decrypt fallback misattributes bookings), Medium (bulk publish leaves caches stale)
+
+**What was done:**
+- **Critical — review-gate bypass.** Deleted the `publish-drafts` CLI (`apps/api/src/knowledge/publish-drafts.cli.ts`) and its `pnpm publish-drafts` script; it published `draft` versions directly, intentionally skipping AI-processing + expert-review, with a fake SYSTEM approver, no audit, and a self-admitted stale cache. Extracted the publication side effects into one shared primitive `apps/api/src/knowledge/publish-version.ts` `publishReviewedVersionTx(tx, {versionId, versionStatus, currentPublishedVersionId, approverId, now?})` that **enforces the expert-review gate itself** (throws `NotReviewedError` for any non-`expert_review` status). Refactored `KnowledgeService.approve` to call it (kept its 404/409 loads + DTO + `cache.invalidateTenant`). New `apps/api/src/knowledge/bulk-publish.cli.ts` (`pnpm bulk-publish`) is the batch equivalent of an expert clicking "Approve & publish": selects only `expert_review` docs, routes every publish through the shared primitive, and commit requires BOTH env `KNOWLEDGE_BULK_PUBLISH=1` (break-glass) AND `--approver=<userId>` (validated existing admin/expert) — writing a `knowledge.bulk_published` `admin_audit_log` row per publish in the same tx. `VERSION_SELECT`/`VersionRow` moved to new `knowledge.constants.ts` to avoid a service↔primitive circular import.
+- **High — TidyCal decrypt fallback.** `TidyCalProviderFactory.forExpert` now returns `TidyCalProvider | null`: a configured-but-undecryptable token returns `null` (skip) instead of `this.default()`, so the env-global calendar is never polled while attributing its bookings to the failing expert. `BookingService.resolveTargets` filters null providers, counts them as `failedTargets`, and `reconcile` surfaces the new `BookingReconcileResultDto.failedTargets` + a `logger.warn` operator alert. Admin reconcile page shows a `failedTargets` stat + amber hint when non-zero (EN/VI dict keys). Experts with NO configured token still resolve to the env/offline default (the permitted safety net).
+- **Medium — stale cache.** The bulk CLI clears persistent `semantic_cache` rows per affected tenant after commit; the in-process answer/retrieval LRU lives in the API process (unreachable from a CLI) so it clears on TTL/restart — documented in the CLI output.
+- Fixed two pre-existing `knip` failures the prior commit introduced (the added CLI was never wired as a knip entry; `e2e/global-teardown.ts` was unlisted): added `bulk-publish.cli.ts` + `global-teardown.ts` to `knip.json` entries.
+
+**Key decisions:**
+- **Rewrite, not just delete.** The reviewers offered "remove OR restrict to `expert_review` via the shared helper." Chose the restrict-via-shared-primitive route: it preserves a legitimate batch-publish capability while making the bypass structurally impossible (gate in the primitive). Deletion alone would have lost a useful tool.
+- **Gate inside the primitive, plus a fast 409 in `approve`.** `approve` keeps its own `expert_review` check so the API still returns a proper `ConflictException`; the primitive's internal check is defense-in-depth so no future caller can bypass.
+- **Skip vs disabled-provider for TidyCal.** Returning `null` (and filtering in the caller) is simpler than a sentinel "disabled" provider and keeps the no-vanish/attribution invariant: nothing is recorded under an expert whose token failed.
+
+**Files changed:**
+- `apps/api/src/knowledge/publish-version.ts` (new) — shared `publishReviewedVersionTx` + `NotReviewedError` (the gate).
+- `apps/api/src/knowledge/knowledge.constants.ts` (new) — `VERSION_SELECT` + `VersionRow` (shared, breaks the circular import).
+- `apps/api/src/knowledge/bulk-publish.cli.ts` (new) — safe batch publish; `publish-drafts.cli.ts` deleted.
+- `apps/api/src/knowledge/knowledge.service.ts` — `approve` routes through the primitive; imports moved to constants.
+- `apps/api/src/consultation/tidycal-provider.factory.ts` — `forExpert` → `| null` skip-on-decrypt-failure.
+- `apps/api/src/consultation/booking.service.ts` — `resolveTargets` returns `{targets, failedTargets}`; `reconcile` tallies + warns.
+- `packages/shared/src/consultation.ts` — `BookingReconcileResultDto.failedTargets`.
+- `apps/admin/app/reconcile/page.tsx` + `dictionaries/reconcile.ts` — surface `failedTargets` (EN/VI).
+- `apps/api/package.json` (`bulk-publish` script), `knip.json` (entries) — wiring + pre-existing knip fixes.
+- Tests: `publish-version.test.ts` (new, gate ×6), `booking.service.test.ts` (+1 decrypt-skip regression, +`failedTargets` on 5 assertions), `tidycal-provider.factory.test.ts` (null-on-decrypt-failure rewrite).
+
+**Gates:** api 779 pass (+8), shared 193, admin 101; api/admin/shared typecheck + lint; root knip + lint:css clean. On this Linux host the Prisma **library** engine works for the mocked-tx unit tests — the `PRISMA_CLIENT_ENGINE_TYPE=binary` hint in the CLI headers errors here ("Invalid client engine type"); that hint is for a different sandbox.

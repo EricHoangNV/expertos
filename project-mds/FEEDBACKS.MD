@@ -22,6 +22,25 @@
 
 ---
 
+## Developer Remediation Note (2026-06-05) — Security Cycle 4 + Product Cycle 2: bulk-publish review-gate bypass, TidyCal decrypt fallback, stale cache
+
+**Author:** implementing agent (not a review cycle). Addresses all three findings shared by the Security Cycle 4 and Product Cycle 2 FAIL verdicts: the Critical bulk-publish review-gate bypass, the High TidyCal decrypt fallback misattribution, and the Medium stale-cache-after-bulk-publish. Verdict lines stay FAIL pending re-review.
+
+**Critical — bulk draft-publish bypassed the expert-review gate (REMEDIATED).**
+- The `publish-drafts` CLI intentionally published `draft` versions directly (skipping AI-processing + expert-review), stamping a fake SYSTEM approver, with no audit and no cache invalidation. Deleted (`apps/api/src/knowledge/publish-drafts.cli.ts`, `pnpm publish-drafts` script).
+- Extracted the publication side effects into ONE shared primitive — `apps/api/src/knowledge/publish-version.ts` `publishReviewedVersionTx(tx, {versionId, versionStatus, currentPublishedVersionId, approverId})` — used by BOTH `KnowledgeService.approve` AND the new CLI, so version+chunks→published, doc-pointer move, and prior-generation archive can't drift across entry points. **The expert-review gate lives in the primitive:** it throws `NotReviewedError` for any version not already in `expert_review`, so no caller can publish a draft. (`VERSION_SELECT`/`VersionRow` moved to `knowledge.constants.ts` to avoid a service↔primitive circular import.)
+- New CLI `apps/api/src/knowledge/bulk-publish.cli.ts` (`pnpm bulk-publish`) is the batch equivalent of an expert clicking "Approve & publish": it only selects `expert_review` documents, routes every publish through the shared primitive, and commit requires BOTH a break-glass env flag `KNOWLEDGE_BULK_PUBLISH=1` AND `--approver=<userId>` (validated to be an existing admin/expert — the recorded source of authorization). Each publish writes an immutable `admin_audit_log` row (`knowledge.bulk_published`) in the same tx.
+
+**High — TidyCal decrypt failure fell back to the global calendar under the expert's id (REMEDIATED).**
+- `TidyCalProviderFactory.forExpert` now returns `TidyCalProvider | null`: a configured-but-undecryptable token returns `null` (skip) instead of `this.default()`, so the env-global calendar is never polled while attributing its bookings to the failing expert. An expert with NO configured token still resolves to the env/offline default (the permitted safety net).
+- `BookingService.resolveTargets` filters null providers, counts them as `failedTargets`, and `reconcile` surfaces that count (new `BookingReconcileResultDto.failedTargets`) + a `logger.warn` operator alert; the admin reconcile page shows a `failedTargets` stat + amber hint when non-zero (EN/VI). Regression test asserts a decrypt failure + a set `TIDYCAL_API_TOKEN` does NOT poll the global provider and records nothing under the expert.
+
+**Medium — bulk publish left caches stale (REMEDIATED for the cross-process tier).** The CLI clears the persistent `semantic_cache` rows for every affected tenant after commit (the in-process answer/retrieval LRU lives in the API process, unreachable from a CLI — documented in the CLI output; clears on TTL or restart). The portal `approve` path is unchanged (still calls `cache.invalidateTenant`).
+
+**Tests/gates:** +8 api (publish-version primitive gate ×6, booking decrypt-skip regression, factory null-on-decrypt-failure rewrite) → api 779 pass; shared 193, admin 101 green; api/admin/shared typecheck+lint, root knip (also fixed two pre-existing knip misses: the now-deleted CLI + `e2e/global-teardown.ts`) + lint:css all clean. LEARNINGS #37/#38; DIRECTIVES #50/#51.
+
+---
+
 ## Product Review — Cycle 2 (2026-06-05)
 
 ### Review scope

@@ -101,12 +101,15 @@ export type BookingReconcileInput = z.infer<typeof bookingReconcileSchema>;
  * Summary of a reconcile run (M7.3). `polled` bookings were fetched from TidyCal; `applied` were newly
  * recorded (`matched` of those correlated to a user/consultation); `skipped` were already in the
  * idempotency ledger. A non-zero `applied` means the webhook had missed events that recovery caught.
+ * `failedTargets` counts experts skipped because their configured TidyCal token could not be decrypted
+ * (those calendars were NOT polled — a non-zero value warrants an operator alert / key check).
  */
 export interface BookingReconcileResultDto {
   polled: number;
   applied: number;
   matched: number;
   skipped: number;
+  failedTargets: number;
 }
 
 /**

@@ -441,3 +441,25 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - The fix wasn't to harden the webhook; it was to delete it. Production booking sync became **per-expert polling** of `GET /bookings` (the `reconcile`/`listBookings` engine already existed for "missed-event recovery"), with each expert's API token encrypted at rest. The offline JSON-envelope seam was kept for local/dev/test only — and hardened to **refuse to run in production**, because an unsigned-envelope handler reachable on a `@Public` route is a forged-booking vector if prod is ever misconfigured to resolve the offline provider.
 
 **Rule:** Before implementing signature verification, idempotency ledgers, or per-tenant webhook routing for a third-party integration, confirm the vendor actually *delivers* webhooks (check their docs/FAQ, not an assumption). If they only expose a polling API, the sync path is a scheduled poll — and any inbound "webhook" route you keep for testing must be inert (or hard-disabled) in production so it can't be used to inject unsigned events.
+
+---
+
+## 37. A maintenance/CLI entry point that "mirrors" a guarded domain operation must reuse the gate, not re-implement around it
+
+**Context:** Security Cycle 4 + Product Cycle 2 (2026-06-05) — a `publish-drafts` CLI was added to bulk-publish knowledge. It copied the *side effects* of `KnowledgeService.approve` (version→published, chunks→published, doc-pointer move, archive prior) but deliberately **relaxed the precondition**, publishing `draft` versions directly and skipping the AI-processing + expert-review gates. Result: a server-side operator/deploy job could make unreviewed drafts retrieval-visible and groundable in cited user answers — the exact trust failure the review gate exists to prevent — while stamping a fake SYSTEM approver, writing no audit row, and leaving caches stale.
+
+- Root cause: the gate (publish only an `expert_review` version) lived *inside* `approve` as an inline check, so a second entry point could re-create the mutations without it. The publication invariant wasn't owned by a single enforceable unit.
+- Fix: extract the mutations into one shared primitive (`publishReviewedVersionTx`) that **contains the gate itself** (throws if `status !== "expert_review"`), and route BOTH `approve` and the (rewritten, `expert_review`-only) bulk CLI through it. The CLI additionally requires a break-glass env flag + a validated `--approver` user and writes an audit row. Now no caller — present or future — can publish unreviewed content, and the retrieval-visibility side effects can't drift between entry points.
+
+**Rule:** When a CLI/migration/job performs the same state transition as a guarded domain method, make it call the *same* gated primitive (with the precondition enforced inside that primitive), never a hand-copied sequence of the underlying writes — a re-implementation silently drops the authorization/audit/cache side effects and becomes a bypass.
+
+---
+
+## 38. A per-principal credential that fails to decrypt must skip the principal, never fall back to a shared/global credential
+
+**Context:** Security Cycle 4 + Product Cycle 2 (2026-06-05) — `TidyCalProviderFactory.forExpert` decrypted each expert's stored TidyCal token to poll *that expert's* calendar, but on decrypt failure (rotated `CREDENTIALS_ENCRYPTION_KEY`, corrupt ciphertext, bad migration) it caught the error and fell back to `this.default()` — the env-global `TIDYCAL_API_TOKEN`. The caller still scoped/attributed every polled booking to the original expert id. So a credential failure for expert A would poll the *shared* calendar and record its bookings/revenue under expert A: silent cross-principal data attribution drift.
+
+- Root cause: "degrade gracefully instead of crashing the poll" was implemented as "fall back to the default provider," conflating two cases that must diverge — *no configured credential* (the global default is the intended safety net) vs *a configured credential that won't decrypt* (falling back means acting as someone else).
+- Fix: `forExpert` returns `null` (skip) when a configured token won't decrypt; the caller drops that target, counts it as `failedTargets`, logs a warn, and surfaces the count to the operator. The global fallback is kept ONLY for an expert with no configured token (and the no-expert legacy poll).
+
+**Rule:** Distinguish "no credential configured" (fall back to the shared default if that's the design) from "a credential is configured but unusable" (skip + alert) — never let a decrypt/parse failure of a per-principal secret silently resolve to a different principal's or a global credential, or you misattribute that credential's data to the failing principal.

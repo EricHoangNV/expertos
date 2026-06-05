@@ -340,7 +340,7 @@ describe("BookingService.reconcile", () => {
     expect(provider.listBookings).toHaveBeenCalledWith({ since: expect.any(Date) });
     const sinceArg = provider.listBookings.mock.calls[0][0].since.getTime();
     expect(Date.now() - sinceArg).toBeGreaterThan(0); // a past timestamp
-    expect(result).toEqual({ polled: 0, applied: 0, matched: 0, skipped: 0 });
+    expect(result).toEqual({ polled: 0, applied: 0, matched: 0, skipped: 0, failedTargets: 0 });
     expect(logger.info).not.toHaveBeenCalled();
     // The expert's watermark is advanced even on an empty poll.
     expect(tx.expert.update).toHaveBeenCalledWith(
@@ -421,7 +421,7 @@ describe("BookingService.reconcile", () => {
     const result = await service.reconcile({ since });
 
     expect(provider.listBookings).toHaveBeenCalledWith({ since });
-    expect(result).toEqual({ polled: 2, applied: 1, matched: 1, skipped: 1 });
+    expect(result).toEqual({ polled: 2, applied: 1, matched: 1, skipped: 1, failedTargets: 0 });
     expect(logger.info).toHaveBeenCalled(); // applied > 0
   });
 
@@ -437,7 +437,7 @@ describe("BookingService.reconcile", () => {
 
     const result = await service.reconcile({ since: new Date() });
 
-    expect(result).toEqual({ polled: 1, applied: 1, matched: 0, skipped: 0 });
+    expect(result).toEqual({ polled: 1, applied: 1, matched: 0, skipped: 0, failedTargets: 0 });
   });
 
   it("falls back to a single default poll (env token) when no expert has a token", async () => {
@@ -452,9 +452,47 @@ describe("BookingService.reconcile", () => {
       const result = await service.reconcile({});
 
       expect(provider.listBookings).toHaveBeenCalledTimes(1);
-      expect(result).toEqual({ polled: 0, applied: 0, matched: 0, skipped: 0 });
+      expect(result).toEqual({ polled: 0, applied: 0, matched: 0, skipped: 0, failedTargets: 0 });
       // a non-expert default poll advances no watermark
       expect(tx.expert.update).not.toHaveBeenCalled();
+    } finally {
+      if (prev === undefined) delete process.env.TIDYCAL_API_TOKEN;
+      else process.env.TIDYCAL_API_TOKEN = prev;
+    }
+  });
+
+  it("skips an expert whose configured token won't decrypt — never polls the global calendar under their id", async () => {
+    // Regression for Security/Product Cycle 4 High: a decrypt failure must NOT fall back to the
+    // env-global provider, or the shared calendar's bookings get attributed to the failing expert.
+    const tx = makeTx();
+    seedExpert(tx); // one configured expert (exp_1)
+    const prev = process.env.TIDYCAL_API_TOKEN;
+    process.env.TIDYCAL_API_TOKEN = "env-token"; // a global token DOES exist — must still not be used
+    try {
+      const globalProvider = makeProvider({ listBookings: jest.fn().mockResolvedValue([CREATED]) });
+      // Factory mirrors the real one: forExpert returns null on decrypt failure; default() is the global.
+      const factory = {
+        default: () => globalProvider,
+        forExpert: () => null,
+      } as unknown as ConstructorParameters<typeof BookingService>[0];
+      const prisma = {
+        $transaction: jest.fn((work: (t: unknown) => Promise<unknown>) => work(tx)),
+      } as unknown as ConstructorParameters<typeof BookingService>[1];
+      const logger = { warn: jest.fn(), info: jest.fn(), error: jest.fn() } as unknown as StructuredLogger;
+      const service = new BookingService(factory, prisma, logger);
+
+      const result = await service.reconcile({});
+
+      // The global provider was never polled, and the skip is surfaced as failedTargets.
+      expect(globalProvider.listBookings).not.toHaveBeenCalled();
+      expect(result).toEqual({ polled: 0, applied: 0, matched: 0, skipped: 0, failedTargets: 1 });
+      // No booking was recorded under the failing expert, and the watermark was not advanced.
+      expect(tx.bookingWebhookEvent.create).not.toHaveBeenCalled();
+      expect(tx.expert.update).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ failedTargets: 1 }),
+      );
     } finally {
       if (prev === undefined) delete process.env.TIDYCAL_API_TOKEN;
       else process.env.TIDYCAL_API_TOKEN = prev;
@@ -473,7 +511,7 @@ describe("BookingService.reconcile", () => {
       const result = await service.reconcile({});
 
       expect(provider.listBookings).not.toHaveBeenCalled();
-      expect(result).toEqual({ polled: 0, applied: 0, matched: 0, skipped: 0 });
+      expect(result).toEqual({ polled: 0, applied: 0, matched: 0, skipped: 0, failedTargets: 0 });
     } finally {
       if (prev !== undefined) process.env.TIDYCAL_API_TOKEN = prev;
     }
