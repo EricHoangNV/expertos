@@ -871,6 +871,24 @@ model ReviewConfig {
   @@map("review_configs")
 }
 
+/// Runtime answer-tuning settings (M17, PRD §"M17"). A global singleton — exactly one row — that
+/// tunes the grounded-QA answer path in real time: LLM temperature, the default chat model, and the
+/// retrieval relevance floor. Like `review_configs`/`recommendation_rules`: NO row-level security
+/// (global config, admin-only writes via the M17 Settings page; `SettingsService` reads it through a
+/// 30s TTL cache). The embedding provider is intentionally NOT stored here — switching embedders
+/// invalidates existing vectors, so it is env + restart only (`EMBEDDING_PROVIDER`). `defaultChatModel`
+/// is constrained to the `{gpt-4o-mini, gpt-4o}` allowlist in the service layer (zod), not the schema.
+model AppSettings {
+  id                  String   @id @default(uuid()) @db.Uuid
+  llmTemperature      Float    @default(0.2) @map("llm_temperature")
+  defaultChatModel    String   @default("gpt-4o-mini") @map("default_chat_model")
+  retrievalScoreFloor Float    @default(0) @map("retrieval_score_floor")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}
+
 // ──────────────────────────── Uploads ────────────────────────────
 
 model UploadedFile {

@@ -215,6 +215,8 @@ export type {
   ReviewEscalateInput,
   ReviewEscalationDto,
 } from "./concierge";
+export { CHAT_MODELS, chatModelSchema, appSettingsUpdateSchema } from "./app-settings";
+export type { ChatModelValue, AppSettingsUpdateInput, AppSettingsDto } from "./app-settings";
 export { expertAnswerListQuerySchema, expertCalendarSettingsUpdateSchema } from "./expert";
 export type {
   ConsultationStatusValue,

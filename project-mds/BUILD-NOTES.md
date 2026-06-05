@@ -481,3 +481,13 @@
 - **Gotchas:** on THIS Linux host the Prisma **library** engine works for unit tests (mocked tx); the `PRISMA_CLIENT_ENGINE_TYPE=binary` prefix from the CLI headers errors here ("Invalid client engine type") — that hint is for a different sandbox. Also fixed two pre-existing `knip` misses the last commit introduced (the now-deleted CLI was never added as an entry; `e2e/global-teardown.ts` was unlisted).
 - **Tests/gates:** +8 api (publish-version gate ×6, booking decrypt-skip regression, factory rewrite) → api 779 pass; shared 193, admin 101; api/admin/shared typecheck+lint, root knip + lint:css green.
 
+
+### M17.1 — Settings persistence (schema + shared types)
+
+**DONE.** Foundation for the runtime answer-tuning settings (M17).
+
+- **Schema.** `AppSettings` Prisma model (`packages/db/prisma/schema.prisma`): global singleton mirroring `ReviewConfig` — `llmTemperature Float=0.2`, `defaultChatModel String="gpt-4o-mini"`, `retrievalScoreFloor Float=0`, `+createdAt/updatedAt`, mapped `app_settings`, **no RLS** (admin-guarded at the controller layer, M17.2). The embedding provider is intentionally NOT a column (env+restart only — switching embedders invalidates existing vectors).
+- **Migration.** Hand-written `20260605130000_app_settings/migration.sql` (per DIRECTIVES #35 — never apply a Prisma-generated migration verbatim): `CREATE TABLE app_settings` + explicit `GRANT … TO app_user` (the app connects as the non-superuser RLS role). Followed the `review_config` migration shape exactly.
+- **Shared types.** `packages/shared/src/app-settings.ts`: `CHAT_MODELS` allowlist `["gpt-4o-mini","gpt-4o"]` (every choice guaranteed a `model-pricing.ts` entry) + `chatModelSchema`; `appSettingsUpdateSchema` (temp ∈ [0,2], floor ∈ [0,1], model ∈ allowlist); `AppSettingsUpdateInput` + `AppSettingsDto` (the DTO carries a read-only `embeddingProvider` string + `updatedAt`). Exported from `index.ts`.
+- **Gotchas.** `defaultChatModel` is `String` in the schema (allowlist enforced in the zod/service layer, not a DB enum) — matches how `recommendation_rules`/config tables keep leaf unions out of the DB. No seed row needed: the M17.2 `SettingsService` upserts on first read (clones `ConciergeConfigService`).
+- **Tests/gates.** +9 shared tests (`app-settings.test.ts`: allowlist parity, temp/floor bounds, off-allowlist rejection) → shared 202 pass. shared build+typecheck+lint, db typecheck+lint, api typecheck, root knip green.
