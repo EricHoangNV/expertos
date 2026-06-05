@@ -62,6 +62,8 @@ import type {
   AllowedEmailDto,
   AllowedEmailCreateInput,
   AllowedEmailUpdateInput,
+  AppSettingsDto,
+  AppSettingsUpdateInput,
 } from "@expertos/shared";
 
 /**
@@ -618,6 +620,24 @@ export function updateConciergeConfig(
   body: ReviewConfigUpdateInput,
 ): Promise<ReviewConfigDto> {
   return request<ReviewConfigDto>("/admin/concierge-config", token, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+// ── M17 — runtime answer-tuning settings ────────────────────────────────────
+
+/** The current runtime answer-tuning settings — the global singleton. */
+export function getAppSettings(token: string): Promise<AppSettingsDto> {
+  return request<AppSettingsDto>("/admin/app-settings", token);
+}
+
+/** Save the runtime answer-tuning settings (LLM temperature, default chat model, score floor). */
+export function updateAppSettings(
+  token: string,
+  body: AppSettingsUpdateInput,
+): Promise<AppSettingsDto> {
+  return request<AppSettingsDto>("/admin/app-settings", token, {
     method: "PATCH",
     body: JSON.stringify(body),
   });

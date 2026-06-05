@@ -85,6 +85,7 @@ const NAV: NavItem[] = [
   { href: "/validation", labelKey: "nav.validation", group: "ANALYTICS", role: "admin" },
   // SYSTEM — admin configuration & operations.
   { href: "/concierge", labelKey: "nav.conciergeConfig", group: "SYSTEM", role: "admin" },
+  { href: "/settings", labelKey: "nav.settings", group: "SYSTEM", role: "admin" },
   { href: "/reconcile", labelKey: "nav.bookings", group: "SYSTEM", role: "admin" },
   { href: "/retention", labelKey: "nav.dataRetention", group: "SYSTEM", role: "admin" },
   { href: "/access-control", labelKey: "nav.accessControl", group: "SYSTEM", role: "admin" },

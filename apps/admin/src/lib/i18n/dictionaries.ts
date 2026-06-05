@@ -20,6 +20,7 @@ import * as recommendationRules from "./dictionaries/recommendation-rules";
 import * as reconcile from "./dictionaries/reconcile";
 import * as retention from "./dictionaries/retention";
 import * as revenue from "./dictionaries/revenue";
+import * as settings from "./dictionaries/settings";
 import * as users from "./dictionaries/users";
 import * as validation from "./dictionaries/validation";
 import * as voiceProfiles from "./dictionaries/voice-profiles";
@@ -57,6 +58,7 @@ const en: Messages = {
   reconcile: reconcile.en,
   retention: retention.en,
   revenue: revenue.en,
+  settings: settings.en,
   users: users.en,
   validation: validation.en,
   voiceProfiles: voiceProfiles.en,
@@ -83,6 +85,7 @@ const vi: Messages = {
   reconcile: reconcile.vi,
   retention: retention.vi,
   revenue: revenue.vi,
+  settings: settings.vi,
   users: users.vi,
   validation: validation.vi,
   voiceProfiles: voiceProfiles.vi,

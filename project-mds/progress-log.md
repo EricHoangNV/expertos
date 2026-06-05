@@ -5107,3 +5107,23 @@ Wired the admin-tunable retrieval relevance floor (`app_settings.retrievalScoreF
 - +1 api cache: `retrievalKey` forks on floor, default 0 == omitted, distinct floors distinct keys.
 - → **api 796 pass** (was 790), **ai 201 pass** (type-only change). ai+api typecheck+lint clean; root knip clean. Turbo root scripts SIGILL in-sandbox (LEARNINGS #25) → ran per-workspace; rebuilt `packages/ai` before the api run.
 - No bug fixed (pure feature, follows existing directive #43) → no new LEARNINGS/DIRECTIVES entry.
+
+---
+
+## M17.5 — Admin Settings page (2026-06-05)
+
+Built the admin **Answer settings** page wiring the M17 runtime answer-tuning singleton (shipped in M17.1/M17.2) to a UI. No backend change — the `GET`/`PATCH /admin/app-settings` controller + `SettingsService` (upsert+audit+30s TTL cache) already existed; this is purely the admin-frontend surface (M17.5).
+
+**Files**
+- `apps/admin/app/settings/page.tsx` (new) — cloned `concierge/page.tsx`: a `SettingsPage` loader (`getAppSettings`) + a `SettingsEditor` form. Editable: `llmTemperature` (number 0–2 step .05 + help), `defaultChatModel` (`Select` gpt-4o-mini | gpt-4o + help), `retrievalScoreFloor` (number 0–1 step .005 + RRF-units help text). `embeddingProvider` is **read-only/disabled** with the "restart required — `EMBEDDING_PROVIDER` env" note (M17 baked decision). Validation via a `parseBounded(raw,min,max)` helper; model validated through `chatModelSchema.parse` on change. Every `Field` has `htmlFor`+matching control `id` (directive #38 — the concierge clone omits this; added it here).
+- `apps/admin/src/lib/admin-client.ts` — `getAppSettings`/`updateAppSettings` under a new "M17 — runtime answer-tuning settings" section; imported `AppSettingsDto`/`AppSettingsUpdateInput` (existed since M17.1).
+- `apps/admin/src/lib/i18n/dictionaries/settings.ts` (new, EN+VI) + registered in `dictionaries.ts` (`settings` namespace). `nav.settings` added to `common.ts` (EN "Answer settings" / VI "Cài đặt câu trả lời").
+- `apps/admin/src/components/AdminFrame.tsx` — `{ href:"/settings", labelKey:"nav.settings", group:"SYSTEM", role:"admin" }` after concierge config (admin-only; breadcrumb derives from the nav labelKey).
+
+**Decisions**
+- No new jest test: the `concierge` config page (the clone source) has none, and the i18n lockstep test iterates every namespace so EN/VI key parity for `settings` is auto-verified. The page's logic (bounded parse + save) is a thin mirror of an already-tested pattern.
+- Embedding provider intentionally non-editable per M17 ("switching embedders invalidates existing vectors → env+restart only").
+
+**Gates**: admin `tsc --noEmit` clean; `next lint` 0 warnings; admin jest green (first run had 5 jsdom cold-start timeouts that cleared on a clean re-run — no source cause; AdminFrame role-filter test unaffected by the new nav item); root `knip` + `lint:css` clean. (Turbo root scripts SIGILL in-sandbox per LEARNINGS #25 — ran per-workspace.)
+
+**Next**: M17.6 OpenAI embedding provider + re-embed CLI → M17.7 cutover.
