@@ -5088,3 +5088,22 @@ Foundation for M17 (runtime answer-tuning settings). Purely additive — a new g
 - +2 api chat: standard tier threads `{temperature: 0.15, model: "gpt-4o"}` into the call and `effectiveModel` flows to cache key + persist + usage + log; degraded tier never calls `getCached`, passes no options, keeps `stub-llm-mini`. → **api 790 pass**.
 - ai + api typecheck + lint clean; root knip clean. Turbo root scripts SIGILL in this sandbox (LEARNINGS #25) → ran per-workspace. Rebuilt `packages/ai` (apps consume `dist/`) before the api run.
 - No bug fixed (pure feature) → no new LEARNINGS/DIRECTIVES entry.
+
+## M17.4 — Retrieval score floor (2026-06-05)
+
+Wired the admin-tunable retrieval relevance floor (`app_settings.retrievalScoreFloor`, from M17.1/M17.2) into the hybrid retrieval path so weak chunks are dropped before they reach the model, applied in real time via the 30s `SettingsService.getCached()` snapshot — no restart.
+
+**Change set (4 files + 3 test files):**
+- `packages/ai/src/retrieval/types.ts` — `RetrievalRequest.minScore?` (the **fused RRF** score, not a 0–1 cosine; `<= 0`/omitted = off). Rebuilt `packages/ai` so apps consume the new `dist/`.
+- `apps/api/src/retrieval/pgvector.store.ts` — after `fuseHybrid`, filter `chunk.score >= floor` only when `minScore > 0`. `fuseHybrid` already returns top-K sorted desc, so filtering the slice == filter-then-slice (no above-floor chunk lost).
+- `apps/api/src/retrieval/retrieval.service.ts` — inject `SettingsService` (already exported by `SettingsModule`, already imported by `RetrievalModule` — no new wiring); read `getCached().retrievalScoreFloor` once, thread as `request.minScore`, fork the retrieval cache key on it.
+- `apps/api/src/cache/response-cache.service.ts` — `retrievalKey(tenantId, query, minScore = 0)` adds the floor as a key segment (directive #43). Default `0` keeps existing 2-arg callers byte-stable.
+
+**Scope decision (deliberate, documented in BUILD-NOTES):** kept strictly at the retrieval layer. `chat.service`/the **answer** cache key are untouched — (1) the M17.3 test asserts the degraded tier never reads settings ("degraded tier untouched"); (2) answer-cache floor staleness for *cacheable standalone* turns is the same bounded class already accepted for temperature (TTL-bounded, publish-busted via `invalidateTenant`); (3) the trust invariant holds — a stale cached answer still cites only real published chunks, the floor only widens/narrows admitted weak chunks, never fabricates a citation. The retrieval-key fork still gives real-time floor for every non-cacheable turn (history/uploads) and cacheable cold misses.
+
+**Tests/gates:**
+- +3 api retrieval-service: reads floor + forks key on it (`retrievalKey(tenant, query, 0.02)`); drops sub-floor fused chunks (floor 0.05 vs fused ≈0.033 → `[]`); off-by-default (floor 0) keeps all + key forks on `0`. Harness gained a `fakeSettings(floor)` stub.
+- +2 api pgvector-store: drops below 0.02 / keeps at-or-above 0.01 (two single-modality rows fuse to ≈0.0164 each); ignores non-positive floor (0 and -1 = off).
+- +1 api cache: `retrievalKey` forks on floor, default 0 == omitted, distinct floors distinct keys.
+- → **api 796 pass** (was 790), **ai 201 pass** (type-only change). ai+api typecheck+lint clean; root knip clean. Turbo root scripts SIGILL in-sandbox (LEARNINGS #25) → ran per-workspace; rebuilt `packages/ai` before the api run.
+- No bug fixed (pure feature, follows existing directive #43) → no new LEARNINGS/DIRECTIVES entry.

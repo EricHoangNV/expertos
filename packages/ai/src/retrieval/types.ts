@@ -44,6 +44,14 @@ export interface RetrievalRequest {
   /** Max results returned after fusion. */
   topK: number;
   filters: RetrievalFilters;
+  /**
+   * Retrieval relevance floor (M17.4): the minimum *fused RRF* score a chunk must reach to survive
+   * into the result set, applied after fusion. Omitted or `<= 0` = no floor (the default). NOTE the
+   * units — this is the small-magnitude RRF score (~0.016 per top rank, see `fuseHybrid`), not a 0–1
+   * cosine; a cosine-based redesign is a documented follow-up. The admin tunes it at runtime via the
+   * `app_settings` floor; the app layer reads the setting and threads it here.
+   */
+  minScore?: number;
 }
 
 /** A single-modality hit (one ranked list from vector OR keyword search). */

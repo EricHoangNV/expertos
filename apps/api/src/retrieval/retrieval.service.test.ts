@@ -6,6 +6,20 @@ import type { AuthUser } from "../auth/auth.types";
 import type { EmbeddingProvider, RetrievedChunk } from "@expertos/ai";
 import type { RetrievalQueryInput } from "@expertos/shared";
 import type { ResponseCacheService } from "../cache/response-cache.service";
+import type { SettingsService } from "../settings/settings.service";
+
+/** A {@link SettingsService} stub whose `getCached` returns the given retrieval floor (default off). */
+function fakeSettings(retrievalScoreFloor = 0): {
+  settings: SettingsService;
+  getCached: jest.Mock;
+} {
+  const getCached = jest.fn().mockResolvedValue({
+    llmTemperature: 0.2,
+    defaultChatModel: "gpt-4o-mini",
+    retrievalScoreFloor,
+  });
+  return { settings: { getCached } as unknown as SettingsService, getCached };
+}
 
 const USER: AuthUser = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -41,6 +55,8 @@ interface Harness {
   tx: ReturnType<typeof fakeTx>;
   getRetrieval: jest.Mock;
   setRetrieval: jest.Mock;
+  retrievalKey: jest.Mock;
+  getCached: jest.Mock;
 }
 
 function makeHarness(
@@ -48,6 +64,7 @@ function makeHarness(
     dimensions?: number;
     rows?: { vector: unknown[]; keyword: unknown[] };
     cacheHit?: RetrievedChunk[];
+    retrievalScoreFloor?: number;
   } = {},
 ): Harness {
   const dimensions = opts.dimensions ?? 4;
@@ -72,14 +89,17 @@ function makeHarness(
 
   const getRetrieval = jest.fn().mockReturnValue(opts.cacheHit);
   const setRetrieval = jest.fn();
+  const retrievalKey = jest.fn().mockReturnValue("retrieval-key");
   const cache = {
-    retrievalKey: jest.fn().mockReturnValue("retrieval-key"),
+    retrievalKey,
     getRetrieval,
     setRetrieval,
   } as unknown as ResponseCacheService;
 
-  const service = new RetrievalService(embeddings, rls, usage, logger, cache);
-  return { service, embed, run, record, info, tx, getRetrieval, setRetrieval };
+  const { settings, getCached } = fakeSettings(opts.retrievalScoreFloor);
+
+  const service = new RetrievalService(embeddings, rls, usage, logger, cache, settings);
+  return { service, embed, run, record, info, tx, getRetrieval, setRetrieval, retrievalKey, getCached };
 }
 
 describe("RetrievalService", () => {
@@ -143,6 +163,35 @@ describe("RetrievalService", () => {
     expect(h.setRetrieval).toHaveBeenCalledWith("retrieval-key", results);
   });
 
+  it("reads the retrieval score floor from settings and forks the cache key on it (M17.4)", async () => {
+    const h = makeHarness({ retrievalScoreFloor: 0.02 });
+    await h.service.retrieve(USER, QUERY);
+
+    expect(h.getCached).toHaveBeenCalledTimes(1);
+    // The floor is part of the cache key so a floor change can't serve chunks filtered under the old.
+    expect(h.retrievalKey).toHaveBeenCalledWith(USER.tenantId, QUERY, 0.02);
+  });
+
+  it("drops fused chunks scoring below the retrieval floor (M17.4)", async () => {
+    // The default rows put c1 in both modalities → fused RRF ≈ 0.033; a floor above that filters it.
+    const h = makeHarness({ retrievalScoreFloor: 0.05 });
+    const results = await h.service.retrieve(USER, QUERY);
+
+    expect(results).toEqual([]);
+    expect(h.info).toHaveBeenCalledWith(
+      "hybrid retrieval completed",
+      expect.objectContaining({ results: 0 }),
+    );
+  });
+
+  it("keeps every chunk when the floor is off (default 0) (M17.4)", async () => {
+    const h = makeHarness();
+    const results = await h.service.retrieve(USER, QUERY);
+
+    expect(h.retrievalKey).toHaveBeenCalledWith(USER.tenantId, QUERY, 0);
+    expect(results).toHaveLength(1);
+  });
+
   it("passes the request topK and filters through to the store query", async () => {
     const h = makeHarness();
     await h.service.retrieve(USER, {
@@ -172,6 +221,7 @@ describe("RetrievalService", () => {
         getRetrieval: jest.fn().mockReturnValue(undefined),
         setRetrieval: jest.fn(),
       } as unknown as ResponseCacheService,
+      fakeSettings().settings,
     );
 
     await expect(service.retrieve(USER, QUERY)).rejects.toThrow(/expected 4/);
@@ -207,6 +257,7 @@ describe("RetrievalService", () => {
         getRetrieval: jest.fn().mockReturnValue(undefined),
         setRetrieval: jest.fn(),
       } as unknown as ResponseCacheService,
+      fakeSettings().settings,
     );
 
     const results = await service.retrieveUploads(USER, {
@@ -257,6 +308,7 @@ describe("RetrievalService", () => {
         getRetrieval: jest.fn().mockReturnValue(undefined),
         setRetrieval: jest.fn(),
       } as unknown as ResponseCacheService,
+      fakeSettings().settings,
     );
 
     const results = await service.retrieveUploads(USER, { text: "q", topK: 5 });
@@ -282,6 +334,7 @@ describe("RetrievalService", () => {
         getRetrieval: jest.fn().mockReturnValue(undefined),
         setRetrieval: jest.fn(),
       } as unknown as ResponseCacheService,
+      fakeSettings().settings,
     );
 
     await expect(service.retrieve(USER, QUERY)).rejects.toThrow(/0 dims, expected 4/);

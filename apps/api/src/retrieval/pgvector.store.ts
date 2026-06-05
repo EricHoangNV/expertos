@@ -46,7 +46,16 @@ export class PgVectorStore implements VectorStore {
       this.keywordSearch(request, candidates),
     ]);
 
-    return fuseHybrid(vectorHits, keywordHits, request.topK);
+    const fused = fuseHybrid(vectorHits, keywordHits, request.topK);
+
+    // Retrieval relevance floor (M17.4): drop chunks whose fused RRF score is below the admin-set
+    // floor so weak material never reaches the model as an authoritative source. `fuseHybrid` already
+    // returned the top-K sorted by score desc, so filtering it is equivalent to filter-then-slice.
+    // `<= 0` (the default) is off; a non-finite value is ignored (treated as off).
+    const floor = request.minScore;
+    return floor != null && floor > 0
+      ? fused.filter((chunk) => chunk.score >= floor)
+      : fused;
   }
 
   private async vectorSearch(

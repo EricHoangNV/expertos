@@ -72,6 +72,17 @@ describe("ResponseCacheService keys", () => {
     expect(e1).not.toBe(e2);
   });
 
+  it("forks the retrieval key on the retrieval score floor (M17.4)", () => {
+    const { service } = makeService();
+    const base = service.retrievalKey(USER.tenantId, query());
+    // The default (omitted) floor matches an explicit 0; a non-zero floor forks the key.
+    expect(service.retrievalKey(USER.tenantId, query(), 0)).toBe(base);
+    expect(service.retrievalKey(USER.tenantId, query(), 0.02)).not.toBe(base);
+    expect(service.retrievalKey(USER.tenantId, query(), 0.02)).not.toBe(
+      service.retrievalKey(USER.tenantId, query(), 0.03),
+    );
+  });
+
   it("does not fork the retrieval key on scope ordering", () => {
     const { service } = makeService();
     const a = service.retrievalKey(USER.tenantId, query({ scope: ["global_expert", "user_private"] }));

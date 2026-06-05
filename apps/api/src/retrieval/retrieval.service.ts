@@ -11,6 +11,7 @@ import type { AuthUser } from "../auth/auth.types";
 import { UsageLogService } from "../observability/usage-log.service";
 import { StructuredLogger } from "../observability/logger.service";
 import { ResponseCacheService } from "../cache/response-cache.service";
+import { SettingsService } from "../settings/settings.service";
 import { PgVectorStore } from "./pgvector.store";
 import {
   PgUploadChunkStore,
@@ -49,17 +50,24 @@ export class RetrievalService {
     private readonly usage: UsageLogService,
     private readonly logger: StructuredLogger,
     private readonly cache: ResponseCacheService,
+    private readonly settings: SettingsService,
   ) {}
 
   async retrieve(
     user: AuthUser,
     query: RetrievalQueryInput,
   ): Promise<RetrievedChunk[]> {
-    // Retrieval cache (M6.4): query + scope determine the chunks (history-independent), so a hit
-    // skips the query embed + vector/keyword search entirely — and therefore its cost (no
+    // Retrieval relevance floor (M17.4): the admin-tuned minimum fused score a chunk must reach.
+    // Read from the 30s settings snapshot (no per-request DB hit; a Save is live on the next turn).
+    // It shapes the result set, so it both threads into the request (`minScore`) and forks the cache
+    // key — a floor change must never serve chunks filtered under the old floor.
+    const minScore = (await this.settings.getCached()).retrievalScoreFloor;
+
+    // Retrieval cache (M6.4): query + scope (+ floor) determine the chunks (history-independent), so a
+    // hit skips the query embed + vector/keyword search entirely — and therefore its cost (no
     // `retrieve.embed` usage is logged on a hit, because no embed happened). Tenant id is in the
     // key, so a shared process never crosses tenants.
-    const cacheKey = this.cache.retrievalKey(user.tenantId, query);
+    const cacheKey = this.cache.retrievalKey(user.tenantId, query, minScore);
     const cached = this.cache.getRetrieval(cacheKey);
     if (cached) {
       this.logger.info("hybrid retrieval cache hit", {
@@ -76,6 +84,7 @@ export class RetrievalService {
       embedding,
       topK: query.topK,
       filters: query.filters,
+      minScore,
     };
 
     const results = await this.rls.run(user, (tx) =>

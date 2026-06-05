@@ -94,6 +94,23 @@ describe("PgVectorStore", () => {
     expect(results.map((r) => r.chunkId)).toEqual(["v1"]);
   });
 
+  it("drops fused chunks below the minScore floor, keeping those at or above it (M17.4)", async () => {
+    // The two stubbed rows each match one modality at rank 1, so each fuses to RRF ≈ 1/61 ≈ 0.0164.
+    const aboveFloor = await new PgVectorStore(makeTx().tx).retrieve({ ...BASE, minScore: 0.01 });
+    expect(aboveFloor.map((r) => r.chunkId).sort()).toEqual(["k1", "v1"]);
+
+    const belowFloor = await new PgVectorStore(makeTx().tx).retrieve({ ...BASE, minScore: 0.02 });
+    expect(belowFloor).toEqual([]);
+  });
+
+  it("ignores a non-positive minScore floor (off by default) (M17.4)", async () => {
+    const off = await new PgVectorStore(makeTx().tx).retrieve({ ...BASE, minScore: 0 });
+    const negative = await new PgVectorStore(makeTx().tx).retrieve({ ...BASE, minScore: -1 });
+
+    expect(off.map((r) => r.chunkId).sort()).toEqual(["k1", "v1"]);
+    expect(negative.map((r) => r.chunkId).sort()).toEqual(["k1", "v1"]);
+  });
+
   it("caps over-fetch at the MAX_CANDIDATES ceiling", async () => {
     const { tx, calls } = makeTx();
     await new PgVectorStore(tx).retrieve({ ...BASE, topK: 50 });

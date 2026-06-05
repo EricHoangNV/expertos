@@ -60,8 +60,12 @@ export class ResponseCacheService {
 
   // Retrieval layer ────────────────────────────────────────────────────────
 
-  /** Builds the retrieval cache key from the tenant + the (normalized) query and its scope. */
-  retrievalKey(tenantId: string, query: RetrievalQueryInput): string {
+  /**
+   * Builds the retrieval cache key from the tenant + the (normalized) query, its scope, and the
+   * retrieval relevance floor. `minScore` (M17.4) filters the cached chunk set, so it forks the key —
+   * an admin lowering/raising the floor must not be served chunks filtered under the old floor.
+   */
+  retrievalKey(tenantId: string, query: RetrievalQueryInput, minScore = 0): string {
     const { status, language, scope, expertId } = query.filters;
     return join([
       "retrieval",
@@ -74,6 +78,8 @@ export class ResponseCacheService {
       // Expert-knowledge boundary (Security Cycle 2): expertId scopes the chunk set, so it must
       // fork the key or one expert's cached chunks could serve another's (or the neutral) query.
       expertId ?? "",
+      // Retrieval score floor (M17.4): shapes which chunks survive, so it forks the key.
+      String(minScore),
       normalizeKey(query.text),
     ]);
   }
