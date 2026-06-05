@@ -31,7 +31,6 @@ import {
   DEFAULT_DENSITY,
   DEFAULT_LAYOUT_DIRECTION,
   type Density,
-  Field,
   Input,
   isDensity,
   isLayoutDirection,
@@ -39,14 +38,15 @@ import {
   type Locale,
   localeTag,
   layoutPanes,
+  Modal,
   type RelativeTimeLabels,
-  Select,
   SourceCard,
   SourcesDrawer,
   SourcesRail,
   SourcesRailHeader,
   type Translator,
   TweaksDensityControl,
+  TweaksLanguageControl,
   TweaksLayoutControl,
   TweaksPanel,
 } from "@expertos/ui";
@@ -77,6 +77,7 @@ import {
   searchConversations,
 } from "../../src/lib/history-client";
 import { fetchEntitlements } from "../../src/lib/account-client";
+import { AccountPanel } from "../../src/components/account-panel";
 import { uploadFile, UploadEntitlementError, UPLOAD_ACCEPT } from "../../src/lib/upload-client";
 import { useMediaQuery } from "../../src/lib/use-media-query";
 
@@ -543,9 +544,12 @@ function formatBytes(bytes: number): string {
 function UploadPanel({
   conversationId,
   onClose,
+  onOpenAccount,
 }: {
   conversationId: string | undefined;
   onClose: () => void;
+  /** Opens the account popup (plan & usage) — the upgrade path when an upload is entitlement-blocked. */
+  onOpenAccount: () => void;
 }) {
   const { getIdToken } = useAuth();
   const t = useT("chat");
@@ -595,17 +599,33 @@ function UploadPanel({
   return (
     <ChatUploadPopover onClose={onClose} modeLabel={modeLabel}>
       <p className="muted">{t("uploadIntro")}</p>
-      <Field label={t("modeFieldLabel")} htmlFor="upload-mode">
-        <Select
-          id="upload-mode"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as UploadMode)}
-          disabled={busy}
-        >
-          <option value="temporary">{t("optionTemporary")}</option>
-          <option value="persistent">{t("optionPersistent")}</option>
-        </Select>
-      </Field>
+      {/* Mode picker as a visible two-option segmented control (was a collapsed <Select> whose
+          second "Persistent" option was easy to miss). Both modes are now on screen at once, and
+          the chosen mode's indexing consequence reads below + in the header `.badge-info`. */}
+      <div className="upload-mode-field">
+        <span className="label">{t("modeFieldLabel")}</span>
+        <div className="seg upload-mode-seg" role="group" aria-label={t("modeFieldLabel")}>
+          {(["temporary", "persistent"] as const).map((m) => {
+            const active = m === mode;
+            return (
+              <button
+                key={m}
+                type="button"
+                className={active ? "active" : undefined}
+                aria-pressed={active}
+                disabled={busy}
+                title={m === "persistent" ? t("modeDescPersistent") : t("modeDescTemporary")}
+                onClick={() => setMode(m)}
+              >
+                {m === "persistent" ? t("modeSegPersistent") : t("modeSegTemporary")}
+              </button>
+            );
+          })}
+        </div>
+        <p className="muted upload-mode-desc">
+          {mode === "persistent" ? t("modeDescPersistent") : t("modeDescTemporary")}
+        </p>
+      </div>
       <input
         key={inputKey}
         type="file"
@@ -627,9 +647,9 @@ function UploadPanel({
           <Badge tone="red">
             {denied === "quota_exceeded" ? t("uploadQuotaReached") : t("uploadNotInPlan")}
           </Badge>
-          <a className="btn btn-ghost btn-sm" href="/account">
+          <Button variant="ghost" size="sm" onClick={onOpenAccount}>
             {t("uploadUpgradeLink")}
-          </a>
+          </Button>
         </div>
       )}
       {files.length > 0 && (
@@ -664,6 +684,10 @@ export default function ChatPage() {
   // from the user-identity EN/VI badge in the header; persisted to localStorage + profile.
   const { locale, setLocale } = useLocale();
   const tChat = useT("chat");
+  const tAccount = useT("account");
+  // "My Knowledge" sidebar entry-point label (M18.3.3) — its own namespace so the page and the
+  // sidebar link share one string.
+  const tKnowledge = useT("knowledge");
   // Localized copy for the shared chat-chrome components (M13). These default to English
   // inside @expertos/ui, so the page passes the translated strings in. The relative-time
   // labels also carry the BCP-47 tag so weekday/short-date branches format in-locale.
@@ -705,9 +729,9 @@ export default function ChatPage() {
   // Initialize with the default for a stable SSR render; restore the stored value
   // after mount (avoids a hydration mismatch).
   const [direction, setDirection] = useState<LayoutDirection>(DEFAULT_LAYOUT_DIRECTION);
-  // The Tweaks panel is open by default so the layout control is reachable; the
-  // close (X) hides it. The topbar "Show tweaks" reopen affordance is M12.7.4.
-  const [tweaksOpen, setTweaksOpen] = useState(true);
+  // The Tweaks panel is hidden by default; the topbar "Show tweaks" affordance
+  // (M12.7.4) reopens it, and the panel's close (X) hides it again.
+  const [tweaksOpen, setTweaksOpen] = useState(false);
   useEffect(() => {
     const stored = window.localStorage.getItem(LAYOUT_DIRECTION_STORAGE_KEY);
     if (isLayoutDirection(stored)) setDirection(stored);
@@ -759,6 +783,10 @@ export default function ChatPage() {
   const [selectedCitations, setSelectedCitations] = useState<ChatCitationDto[] | null>(null);
   // Whether the attach-document popover (M12.6.2) is open above the input bar.
   const [attachOpen, setAttachOpen] = useState(false);
+  // Whether the account popup (plan & usage, M6.1) is open. Opened from the header user
+  // identity, the sidebar usage meter's "Upgrade", and an entitlement-blocked upload — so
+  // the plan view overlays the chat instead of navigating away to the standalone /account route.
+  const [accountOpen, setAccountOpen] = useState(false);
   // Sidebar surface (M12.9.1): the persistent sidebar is in the grid only when the
   // direction keeps it (studio/classic) AND the viewport is wide enough (≥900px — below
   // that ds.css collapses it). Otherwise the sidebar becomes a left slide-over overlay
@@ -1201,19 +1229,43 @@ export default function ChatPage() {
   // The sidebar body + footer (M12.2) — shared by the in-grid pane and the M12.9.1
   // slide-over overlay so the two never diverge. The overlay's `ChatSidebar` gets an
   // `onClose` (its collapse X dismisses the drawer); the grid pane has none.
-  const sidebarFooter =
-    entitlements && questionUsage?.enabled ? (
-      <ChatUsageMeter
-        used={questionUsage.used ?? 0}
-        limit={questionUsage.limit ?? null}
-        softLimit={questionUsage.softLimit ?? null}
-        planName={entitlements.plan.name}
-        upgradeHref="/account"
-        label={tChat("questionsThisMonth")}
-        unlimitedLabel={tChat("unlimited")}
-        upgradeLabel={tChat("upgradeArrow")}
-      />
-    ) : undefined;
+  // The footer always carries the "My Knowledge" entry point (M18.3.3) — a discoverable answer to
+  // "where did my remembered file go?" — and, when entitlements have loaded, the usage meter below it.
+  const sidebarFooter = (
+    <>
+      <a className="navitem" href="/knowledge">
+        <svg
+          className="ic"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path
+            d="M4 5h9l2 2h5v12H4z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+        </svg>
+        {tKnowledge("sidebarLink")}
+      </a>
+      {entitlements && questionUsage?.enabled && (
+        <ChatUsageMeter
+          used={questionUsage.used ?? 0}
+          limit={questionUsage.limit ?? null}
+          softLimit={questionUsage.softLimit ?? null}
+          planName={entitlements.plan.name}
+          onUpgrade={() => setAccountOpen(true)}
+          label={tChat("questionsThisMonth")}
+          unlimitedLabel={tChat("unlimited")}
+          upgradeLabel={tChat("upgradeArrow")}
+        />
+      )}
+    </>
+  );
   const sidebarBody = (
     <>
       <ChatSearch
@@ -1288,12 +1340,6 @@ export default function ChatPage() {
           )
         }
       >
-        <ChatTweaksToggle
-          open={tweaksOpen}
-          onToggle={() => setTweaksOpen((open) => !open)}
-          showLabel={tChat("showTweaks")}
-          hideLabel={tChat("hideTweaks")}
-        />
         {experts.length > 0 && (
           <ChatVoicePicker
             options={experts.map((e) => ({ id: e.expertId, name: e.displayName }))}
@@ -1306,12 +1352,16 @@ export default function ChatPage() {
         <ChatUserIdentity
           name={user.displayName}
           email={user.email}
-          language={locale}
-          onLanguageToggle={
-            busy ? undefined : () => setLocale(locale === "en" ? "vi" : "en")
-          }
-          switchLanguageAriaLabel={tChat("switchLanguageAria")}
-          switchLanguageLabel={tChat("switchLanguage")}
+          onOpenAccount={() => setAccountOpen(true)}
+          openAccountLabel={tAccount("modalTitle")}
+        />
+        {/* Icon-only tweaks toggle sits right-most in the header; the EN/VI control
+            now lives inside the panel (TweaksLanguageControl). */}
+        <ChatTweaksToggle
+          open={tweaksOpen}
+          onToggle={() => setTweaksOpen((open) => !open)}
+          showLabel={tChat("showTweaks")}
+          hideLabel={tChat("hideTweaks")}
         />
       </ChatTopbar>
       <main className="card card-pad chat-content">
@@ -1354,7 +1404,14 @@ export default function ChatPage() {
         sendLabel={tChat("sendAria")}
       >
         {attachOpen && (
-          <UploadPanel conversationId={conversationId} onClose={() => setAttachOpen(false)} />
+          <UploadPanel
+            conversationId={conversationId}
+            onClose={() => setAttachOpen(false)}
+            onOpenAccount={() => {
+              setAttachOpen(false);
+              setAccountOpen(true);
+            }}
+          />
         )}
         <ChatInputHelper
           questionsLeft={inputQuota.questionsLeft}
@@ -1398,6 +1455,12 @@ export default function ChatPage() {
           heading={tChat("tweaksTitle")}
           closeLabel={tChat("tweaksClose")}
         >
+          <TweaksLanguageControl
+            value={locale}
+            onChange={busy ? () => {} : setLocale}
+            label={tChat("tweaksLanguageLabel")}
+            ariaLabel={tChat("tweaksLanguageAria")}
+          />
           <TweaksLayoutControl
             value={direction}
             onChange={changeDirection}
@@ -1420,6 +1483,15 @@ export default function ChatPage() {
           />
         </TweaksPanel>
       )}
+      <Modal
+        open={accountOpen}
+        onClose={() => setAccountOpen(false)}
+        title={tAccount("modalTitle")}
+        closeLabel={tAccount("close")}
+        className="account-modal"
+      >
+        <AccountPanel />
+      </Modal>
     </ChatLayout>
   );
 }

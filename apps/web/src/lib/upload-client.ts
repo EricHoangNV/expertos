@@ -1,4 +1,9 @@
-import type { EntitlementDeniedPayload, UploadedFileDto, UploadMode } from "@expertos/shared";
+import type {
+  EntitlementDeniedPayload,
+  UploadedFileDto,
+  UploadListQuery,
+  UploadMode,
+} from "@expertos/shared";
 
 /**
  * Thrown when an upload is blocked by the `@RequiresEntitlement("document_upload")` guard (402):
@@ -107,4 +112,41 @@ function messageFrom(body: unknown, status: number): string {
     }
   }
   return `upload failed (${status})`;
+}
+
+/**
+ * Lists the signed-in user's uploads for the "My Knowledge" page (M18.3). `scope` narrows to one
+ * retention mode (`persistent` / `temporary`) so the page can render its two sections from separate
+ * calls, or `all` (the default) for everything. Read is **not** entitlement-gated server-side, so a
+ * downgraded user can still see what they saved; isolation is enforced by RLS. Newest-first, capped
+ * at 100 server-side (PRD §M18 — pagination is a documented follow-up).
+ */
+export async function listUploads(
+  token: string,
+  scope: UploadListQuery["scope"] = "all",
+): Promise<UploadedFileDto[]> {
+  const res = await fetch(`${API_URL}/uploads?scope=${encodeURIComponent(scope)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(messageFrom(await readErrorBody(res), res.status));
+  }
+  return (await res.json()) as UploadedFileDto[];
+}
+
+/**
+ * Deletes one of the signed-in user's uploads (M18.3). The API removes the row (its chunks cascade)
+ * and best-effort reclaims the stored object; a file the user doesn't own resolves to a 404 (RLS
+ * makes a peer's row invisible). Deleting a cited file does not rewrite history — past saved answers
+ * keep their citation snapshot; only future retrieval loses the file. Delete is **not** entitlement-
+ * gated, so a downgraded user can always remove their own data.
+ */
+export async function deleteUpload(token: string, id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/uploads/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(messageFrom(await readErrorBody(res), res.status));
+  }
 }

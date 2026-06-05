@@ -31,6 +31,7 @@ import { SourceCard } from "./SourceCard";
 import { SourcesDrawer } from "./SourcesDrawer";
 import { TweaksPanel } from "./TweaksPanel";
 import { TweaksLayoutControl } from "./TweaksLayoutControl";
+import { TweaksLanguageControl } from "./TweaksLanguageControl";
 import { AnswerProse } from "./AnswerProse";
 import { ChatTopbar } from "./ChatTopbar";
 import { ChatTweaksToggle } from "./ChatTweaksToggle";
@@ -57,6 +58,8 @@ import {
 } from "./prefs";
 import { TweaksDensityControl } from "./TweaksDensityControl";
 import { Field, Input, Select, Textarea } from "./Field";
+import { Tooltip } from "./Tooltip";
+import { Modal } from "./Modal";
 import { Stat } from "./Stat";
 import { Table } from "./Table";
 import { UsageMeter } from "./UsageMeter";
@@ -173,6 +176,27 @@ describe("Field / Input / Select / Textarea / Table", () => {
     expect(cls(Select({}) as ReactElement)).toBe("select");
     expect(cls(Textarea({}) as ReactElement)).toBe("textarea");
     expect(cls(Table({}) as ReactElement)).toBe("table");
+  });
+});
+
+describe("Tooltip — (i) trigger + hover/focus bubble", () => {
+  it("renders a focusable a11y-labelled trigger and a tooltip-role bubble", () => {
+    const el = Tooltip({ label: "About X", children: "help body" }) as ReactElement;
+    expect(cls(el)).toBe("tooltip");
+
+    const [trigger, bubble] = kids(el) as ReactElement[];
+    expect(cls(trigger)).toBe("tooltip-trigger");
+    expect((trigger.props as { tabIndex?: number }).tabIndex).toBe(0);
+    expect((trigger.props as Record<string, unknown>)["aria-label"]).toBe("About X");
+
+    expect(cls(bubble)).toBe("tooltip-bubble");
+    expect((bubble.props as { role?: string }).role).toBe("tooltip");
+    expect((bubble.props as { children?: unknown }).children).toBe("help body");
+  });
+
+  it("merges a caller className onto the wrapper", () => {
+    const el = Tooltip({ label: "L", children: "b", className: "extra" }) as ReactElement;
+    expect(cls(el)).toBe("tooltip extra");
   });
 });
 
@@ -369,6 +393,76 @@ describe("ChatUsageMeter — sidebar-bottom questions-this-month meter (M12.2.4)
     const el = ChatUsageMeter({ used: Number.NaN, limit: 50, planName: "Free" }) as ReactElement;
     expect(countText(el)).toBe("0 / 50");
     expect(upgrade(el)).toBeFalsy();
+  });
+
+  it("renders the upgrade affordance as a button when `onUpgrade` is given (opens the account popup in place)", () => {
+    const onUpgrade = jest.fn();
+    const el = ChatUsageMeter({ used: 42, limit: 50, planName: "Plus", onUpgrade }) as ReactElement;
+    const btn = upgrade(el) as ReactElement;
+    expect(btn.type).toBe("button");
+    expect(cls(btn)).toBe("sidebar-usage-upgrade");
+    (btn.props as { onClick: () => void }).onClick();
+    expect(onUpgrade).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Modal — centered dialog", () => {
+  it("renders nothing while closed", () => {
+    expect(Modal({ open: false, onClose: () => {}, children: "x" })).toBeNull();
+  });
+
+  it("renders a dismissable backdrop wrapping a labelled `role=dialog` panel with a title + body", () => {
+    const onClose = jest.fn();
+    const el = Modal({
+      open: true,
+      onClose,
+      title: "Account",
+      closeLabel: "Close",
+      children: "body",
+    }) as ReactElement;
+    expect(cls(el)).toBe("modal-backdrop");
+    // Clicking the backdrop dismisses.
+    (el.props as { onClick: () => void }).onClick();
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    const panel = kids(el) as ReactElement;
+    expect(cls(panel)).toBe("modal");
+    const panelProps = panel.props as {
+      role?: string;
+      "aria-modal"?: string;
+      "aria-label"?: string;
+    };
+    expect(panelProps.role).toBe("dialog");
+    expect(panelProps["aria-modal"]).toBe("true");
+    expect(panelProps["aria-label"]).toBe("Account");
+
+    const [head, body] = kids(panel) as [ReactElement, ReactElement];
+    const [titleEl] = kids(head) as [ReactElement];
+    expect(kids(titleEl)).toBe("Account");
+    expect(cls(body)).toBe("modal-body");
+    expect(kids(body)).toBe("body");
+  });
+
+  it("falls back to a spacer (no `<h2>` title) when no title is given", () => {
+    const el = Modal({ open: true, onClose: () => {}, children: "body" }) as ReactElement;
+    const panel = kids(el) as ReactElement;
+    const [head] = kids(panel) as [ReactElement];
+    const [titleEl] = kids(head) as [ReactElement];
+    expect(titleEl.type).toBe("span");
+  });
+
+  it("closes on Escape but not on clicks inside the panel (stops propagation to the backdrop)", () => {
+    const onClose = jest.fn();
+    const el = Modal({ open: true, onClose, title: "Account", children: "body" }) as ReactElement;
+    const panel = kids(el) as ReactElement;
+    const stop = jest.fn();
+    (panel.props as { onClick: (e: { stopPropagation: () => void }) => void }).onClick({
+      stopPropagation: stop,
+    });
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    (panel.props as { onKeyDown: (e: { key: string }) => void }).onKeyDown({ key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -697,10 +791,15 @@ describe("ChatVoicePicker — expert voice chips (M12.3.2)", () => {
 });
 
 describe("ChatUserIdentity — header avatar + name + EN/VI language badge (M12.3.3)", () => {
-  /** Destructure the identity strip's children: [avatar, name, langBadge]. */
+  /**
+   * Destructure the identity strip's children: [identity, langBadge], where `identity` is the
+   * avatar + name pair (a Fragment when static, a `.chat-user-trigger` button when it opens the
+   * account view) — so the avatar/name are read from inside it.
+   */
   const parts = (el: ReactElement) => {
-    const [avatar, name, lang] = kids(el) as [ReactElement, ReactElement, ReactElement];
-    return { avatar, name, lang };
+    const [identity, lang] = kids(el) as [ReactElement, ReactElement];
+    const [avatar, name] = kids(identity) as [ReactElement, ReactElement];
+    return { identity, avatar, name, lang };
   };
 
   it("renders the `.chat-user-identity` with an expert-toned avatar, the name, and a language badge", () => {
@@ -744,6 +843,32 @@ describe("ChatUserIdentity — header avatar + name + EN/VI language badge (M12.
   it("renders the language as a static `.badge` span when no toggle handler is given", () => {
     const el = ChatUserIdentity({ name: "Jo", language: "en" }) as ReactElement;
     expect(parts(el).lang.type).toBe("span");
+  });
+
+  it("omits the language badge entirely when no language is given (EN/VI moved to the Tweaks panel)", () => {
+    const el = ChatUserIdentity({ name: "Jo" }) as ReactElement;
+    const { avatar, name, lang } = parts(el);
+    expect(cls(avatar)).toMatch(/^avatar chat-user-avatar tone-/);
+    expect(cls(name)).toBe("chat-user-name");
+    expect(lang).toBeNull();
+  });
+
+  it("wraps the avatar + name in a `.chat-user-trigger` button that opens the account view on click", () => {
+    const onOpenAccount = jest.fn();
+    const el = ChatUserIdentity({ name: "Jo", onOpenAccount }) as ReactElement;
+    const { identity, avatar, name } = parts(el);
+    expect(identity.type).toBe("button");
+    expect(cls(identity)).toBe("chat-user-trigger");
+    // The avatar + name still live (in DOM order) inside the trigger.
+    expect(cls(avatar)).toMatch(/^avatar chat-user-avatar tone-/);
+    expect(cls(name)).toBe("chat-user-name");
+    (identity.props as { onClick: () => void }).onClick();
+    expect(onOpenAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a static (non-button) identity when no account handler is given", () => {
+    const el = ChatUserIdentity({ name: "Jo" }) as ReactElement;
+    expect(parts(el).identity.type).not.toBe("button");
   });
 });
 
@@ -2257,28 +2382,34 @@ describe("TweaksPanel — floating layout-preferences panel (M12.7.1)", () => {
 describe("ChatTweaksToggle — topbar Hide/Show tweaks toggle (M12.7.4)", () => {
   const noop = () => {};
 
-  it("renders a `.btn-subtle` toggle reading 'Hide tweaks' when open + reports aria-pressed", () => {
+  it("renders an icon-only `.btn-icon` toggle labelled 'Hide tweaks' when open + reports aria-pressed", () => {
     const el = ChatTweaksToggle({ open: true, onToggle: noop }) as ReactElement;
     expect(el.type).toBe("button");
-    expect(cls(el)).toBe("btn btn-subtle btn-sm chat-tweaks-toggle");
-    const props = el.props as { type?: unknown; "aria-pressed"?: unknown };
+    expect(cls(el)).toBe("btn btn-subtle btn-icon chat-tweaks-toggle");
+    const props = el.props as {
+      type?: unknown;
+      "aria-pressed"?: unknown;
+      "aria-label"?: unknown;
+      title?: unknown;
+    };
     expect(props.type).toBe("button");
     expect(props["aria-pressed"]).toBe(true);
-    // children = [icon svg, label]
-    const [, label] = kids(el) as unknown[];
-    expect(label).toBe("Hide tweaks");
+    // Text is dropped — the caption survives as the accessible label/tooltip.
+    expect(props["aria-label"]).toBe("Hide tweaks");
+    expect(props.title).toBe("Hide tweaks");
   });
 
   it("reads 'Show tweaks' and aria-pressed=false when closed", () => {
     const el = ChatTweaksToggle({ open: false, onToggle: noop }) as ReactElement;
-    expect((el.props as { "aria-pressed"?: unknown })["aria-pressed"]).toBe(false);
-    const [, label] = kids(el) as unknown[];
-    expect(label).toBe("Show tweaks");
+    const props = el.props as { "aria-pressed"?: unknown; "aria-label"?: unknown; title?: unknown };
+    expect(props["aria-pressed"]).toBe(false);
+    expect(props["aria-label"]).toBe("Show tweaks");
+    expect(props.title).toBe("Show tweaks");
   });
 
-  it("renders an aria-hidden icon ahead of the label", () => {
+  it("renders only an aria-hidden icon (no visible label text)", () => {
     const el = ChatTweaksToggle({ open: false, onToggle: noop }) as ReactElement;
-    const [icon] = kids(el) as ReactElement[];
+    const icon = kids(el) as ReactElement;
     expect(icon.type).toBe("svg");
     expect(cls(icon)).toBe("chat-tweaks-toggle-icon");
     expect((icon.props as { "aria-hidden"?: unknown })["aria-hidden"]).toBe("true");
@@ -2293,7 +2424,7 @@ describe("ChatTweaksToggle — topbar Hide/Show tweaks toggle (M12.7.4)", () => 
 
   it("merges a caller className", () => {
     const el = ChatTweaksToggle({ open: true, onToggle: noop, className: "extra" }) as ReactElement;
-    expect(cls(el)).toBe("btn btn-subtle btn-sm chat-tweaks-toggle extra");
+    expect(cls(el)).toBe("btn btn-subtle btn-icon chat-tweaks-toggle extra");
   });
 });
 
@@ -2357,6 +2488,63 @@ describe("TweaksLayoutControl — chat-layout direction `.seg` (M12.7.2)", () =>
       onChange: noop,
       className: "x",
     }) as ReactElement;
+    expect(cls(el)).toBe("tweaks-section x");
+  });
+});
+
+describe("TweaksLanguageControl — answer-language `.seg` (EN/VI moved into the Tweaks panel)", () => {
+  const noop = () => {};
+  /** Section children: [label, seg]. */
+  const parts = (el: ReactElement): unknown[] => kids(el) as unknown[];
+
+  it("renders a `.tweaks-section` with the `.label` header", () => {
+    const el = TweaksLanguageControl({ value: "en", onChange: noop }) as ReactElement;
+    expect(cls(el)).toBe("tweaks-section");
+    const label = parts(el)[0] as ReactElement;
+    expect(cls(label)).toBe("label");
+    expect(kids(label)).toBe("Answer language");
+  });
+
+  it("renders the `.seg` control with EN then VI", () => {
+    const el = TweaksLanguageControl({ value: "en", onChange: noop }) as ReactElement;
+    const seg = parts(el)[1] as ReactElement;
+    expect(cls(seg)).toBe("seg");
+    const buttons = kids(seg) as ReactElement[];
+    expect(buttons.map((b) => kids(b))).toEqual(["EN", "VI"]);
+  });
+
+  it("marks only the active language with `.active` + aria-pressed", () => {
+    const el = TweaksLanguageControl({ value: "vi", onChange: noop }) as ReactElement;
+    const buttons = kids(parts(el)[1] as ReactElement) as ReactElement[];
+    const langs = ["en", "vi"];
+    buttons.forEach((b, i) => {
+      const active = langs[i] === "vi";
+      const props = b.props as { className?: unknown; "aria-pressed"?: unknown };
+      expect(props.className).toBe(active ? "active" : "");
+      expect(props["aria-pressed"]).toBe(active);
+    });
+  });
+
+  it("fires onChange with the chosen language", () => {
+    const onChange = jest.fn();
+    const el = TweaksLanguageControl({ value: "en", onChange }) as ReactElement;
+    const buttons = kids(parts(el)[1] as ReactElement) as ReactElement[];
+    (buttons[1].props as { onClick: () => void }).onClick();
+    expect(onChange).toHaveBeenCalledWith("vi");
+  });
+
+  it("honors custom option labels", () => {
+    const el = TweaksLanguageControl({
+      value: "en",
+      onChange: noop,
+      optionLabels: { en: "English", vi: "Tiếng Việt" },
+    }) as ReactElement;
+    const buttons = kids(parts(el)[1] as ReactElement) as ReactElement[];
+    expect(buttons.map((b) => kids(b))).toEqual(["English", "Tiếng Việt"]);
+  });
+
+  it("merges a caller className", () => {
+    const el = TweaksLanguageControl({ value: "en", onChange: noop, className: "x" }) as ReactElement;
     expect(cls(el)).toBe("tweaks-section x");
   });
 });

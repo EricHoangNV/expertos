@@ -33,6 +33,23 @@ export const uploadCreateSchema = z.object({
 export type UploadCreateInput = z.infer<typeof uploadCreateSchema>;
 
 /**
+ * Query string for the "My Knowledge" upload list (M18.2, PRD §"M18 — Uploaded document
+ * management"). `scope` narrows the list to one retention mode so the page can render a
+ * Saved (persistent) section and a Temporary (expiring) section independently:
+ * - `persistent` — only `mode: "persistent"` uploads (saved private knowledge);
+ * - `temporary` — only `mode: "temporary"` uploads (expiring, conversation-scoped);
+ * - `all` (default) — every upload the caller owns, newest-first.
+ *
+ * It does **not** carry `tenant_id`/`user_id`: ownership is enforced by Postgres RLS inside the
+ * service (directive §4.21), so a peer's uploads are never listable regardless of the query.
+ */
+export const uploadListQuerySchema = z.object({
+  scope: z.enum(["persistent", "temporary", "all"]).default("all"),
+});
+
+export type UploadListQuery = z.infer<typeof uploadListQuerySchema>;
+
+/**
  * An uploaded file as returned to the client after a successful upload (M5.1/M5.2). `scanClean` is
  * the malware-scan verdict (always `true` here — an infected file is rejected, never persisted, so
  * the client never sees a `false`); the nullable type carries the not-yet-scanned shape for forward

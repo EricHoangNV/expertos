@@ -11,8 +11,12 @@ export interface ChatUserIdentityProps {
   name?: string | null;
   /** Email fallback when there is no display name (initials + label derive from the local part). */
   email?: string | null;
-  /** The current answer language, shown as an EN/VI badge. */
-  language: ChatLanguage;
+  /**
+   * The current answer language, shown as an EN/VI badge. Omit to render the identity
+   * strip without a language badge — the EN/VI control now lives in the Tweaks panel
+   * ({@link TweaksLanguageControl}), so the chat header leaves this unset.
+   */
+  language?: ChatLanguage;
   /**
    * Fired when the language badge is clicked — the page cycles EN ↔ VI and reuses the choice on the
    * next turn. Omit to render the badge as a static, non-interactive label.
@@ -25,6 +29,13 @@ export interface ChatUserIdentityProps {
   switchLanguageAriaLabel?: string;
   /** Tooltip/title for the language toggle (i18n M13). Defaults to English. */
   switchLanguageLabel?: string;
+  /**
+   * Fired when the avatar + name is clicked — opens the account view (plan & usage). Omit to render
+   * the identity as a static, non-interactive strip.
+   */
+  onOpenAccount?: () => void;
+  /** Accessible label / tooltip for the account trigger (i18n M13). Defaults to English. */
+  openAccountLabel?: string;
 }
 
 /**
@@ -42,20 +53,41 @@ export function ChatUserIdentity({
   onLanguageToggle,
   switchLanguageAriaLabel = "Answer language {lang} — switch language",
   switchLanguageLabel = "Switch answer language",
+  onOpenAccount,
+  openAccountLabel = "Account",
 }: ChatUserIdentityProps) {
   const local = email?.split("@")[0] ?? null;
   const seed = name?.trim() || local?.trim() || "You";
   const displayName = name?.trim() || local?.trim() || "You";
   const tone = avatarTone(seed);
-  const langLabel = LANGUAGE_LABEL[language];
+  const langLabel = language ? LANGUAGE_LABEL[language] : null;
+
+  const avatar = (
+    <span className={cx("avatar", "chat-user-avatar", `tone-${tone}`)} aria-hidden="true">
+      {avatarInitials(seed)}
+    </span>
+  );
 
   return (
     <div className="chat-user-identity">
-      <span className={cx("avatar", "chat-user-avatar", `tone-${tone}`)} aria-hidden="true">
-        {avatarInitials(seed)}
-      </span>
-      <span className="chat-user-name">{displayName}</span>
-      {onLanguageToggle ? (
+      {onOpenAccount ? (
+        <button
+          type="button"
+          className="chat-user-trigger"
+          onClick={onOpenAccount}
+          aria-label={openAccountLabel}
+          title={openAccountLabel}
+        >
+          {avatar}
+          <span className="chat-user-name">{displayName}</span>
+        </button>
+      ) : (
+        <>
+          {avatar}
+          <span className="chat-user-name">{displayName}</span>
+        </>
+      )}
+      {langLabel == null ? null : onLanguageToggle ? (
         <button
           type="button"
           className="badge badge-ink chat-user-lang"

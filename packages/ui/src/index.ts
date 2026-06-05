@@ -14,6 +14,10 @@ export { AnswerProse } from "./AnswerProse";
 export type { AnswerProseProps, AnswerProseCitation } from "./AnswerProse";
 export { Field, Input, Select, Textarea } from "./Field";
 export type { FieldProps } from "./Field";
+export { Tooltip } from "./Tooltip";
+export type { TooltipProps } from "./Tooltip";
+export { Modal } from "./Modal";
+export type { ModalProps } from "./Modal";
 export { Table } from "./Table";
 export type { TableProps } from "./Table";
 export { Stat } from "./Stat";
@@ -82,6 +86,8 @@ export { TweaksLayoutControl } from "./TweaksLayoutControl";
 export type { TweaksLayoutControlProps } from "./TweaksLayoutControl";
 export { TweaksDensityControl } from "./TweaksDensityControl";
 export type { TweaksDensityControlProps } from "./TweaksDensityControl";
+export { TweaksLanguageControl } from "./TweaksLanguageControl";
+export type { TweaksLanguageControlProps } from "./TweaksLanguageControl";
 export {
   ChatConversationList,
   AVATAR_TONES,

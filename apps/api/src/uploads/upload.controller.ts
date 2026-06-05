@@ -2,15 +2,23 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
   Post,
+  Query,
   UploadedFile,
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
   uploadCreateSchema,
+  uploadListQuerySchema,
   type UploadCreateInput,
   type UploadedFileDto,
+  type UploadListQuery,
 } from "@expertos/shared";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { Roles } from "../auth/roles.decorator";
@@ -72,5 +80,34 @@ export class UploadController {
       },
       body,
     );
+  }
+
+  /**
+   * The acting user's uploads for the "My Knowledge" page (M18.2), newest-first. `@Roles('user')`
+   * only — deliberately NOT `@RequiresEntitlement('document_upload')`: a user who downgraded or hit
+   * their upload quota must still be able to SEE the documents they already saved (gating read
+   * behind the upload entitlement would trap their data). RLS in the service is the isolation
+   * boundary. `scope` (persistent / temporary / all) narrows the list to one retention mode.
+   */
+  @Get()
+  list(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(uploadListQuerySchema)) query: UploadListQuery,
+  ): Promise<UploadedFileDto[]> {
+    return this.uploads.list(user, query);
+  }
+
+  /**
+   * Delete one of the acting user's uploads (M18.2). `@Roles('user')` only — like the list route,
+   * NOT entitlement-gated: a user must always be able to delete their own data even after a
+   * downgrade. RLS makes a peer's row invisible, so a cross-user delete resolves to a 404.
+   */
+  @Delete(":id")
+  @HttpCode(204)
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param("id", ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    return this.uploads.remove(user, id);
   }
 }

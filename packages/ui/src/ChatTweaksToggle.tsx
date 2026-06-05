@@ -15,10 +15,11 @@ export interface ChatTweaksToggleProps {
 /**
  * Topbar "Hide tweaks" / "Show tweaks" toggle (M12.7.4) — the toolbar affordance that
  * mounts/unmounts the floating `TweaksPanel` (M12.7.1) from the conversation header
- * (PRD §"UI Reference Spec" #2, Toolbar row). A `.btn-subtle` icon+label control whose
- * caption flips with `open` ("Hide tweaks" when the panel is showing, "Show tweaks" when
- * hidden) and reports its state via `aria-pressed`. Presentational only — the page owns
- * the panel-open state and passes `open`/`onToggle`.
+ * (PRD §"UI Reference Spec" #2, Toolbar row). An icon-only `.btn-subtle.btn-icon` control
+ * that sits right-most in the header; its `aria-label`/`title` flip with `open` ("Hide
+ * tweaks" when the panel is showing, "Show tweaks" when hidden) and it reports its state
+ * via `aria-pressed`. Presentational only — the page owns the panel-open state and passes
+ * `open`/`onToggle`.
  */
 export function ChatTweaksToggle({
   open,
@@ -27,12 +28,15 @@ export function ChatTweaksToggle({
   hideLabel = "Hide tweaks",
   className,
 }: ChatTweaksToggleProps) {
+  const label = open ? hideLabel : showLabel;
   return (
     <button
       type="button"
-      className={cx("btn", "btn-subtle", "btn-sm", "chat-tweaks-toggle", className)}
+      className={cx("btn", "btn-subtle", "btn-icon", "chat-tweaks-toggle", className)}
       onClick={onToggle}
       aria-pressed={open}
+      aria-label={label}
+      title={label}
     >
       <svg
         className="chat-tweaks-toggle-icon"
@@ -48,7 +52,6 @@ export function ChatTweaksToggle({
           <circle cx="10" cy="17" r="2.2" />
         </g>
       </svg>
-      {open ? hideLabel : showLabel}
     </button>
   );
 }

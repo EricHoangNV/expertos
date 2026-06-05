@@ -22,6 +22,18 @@ export const en = {
   scoreFloor: "Retrieval score floor (0–1)",
   scoreFloorHelp:
     "Minimum fused RRF score a chunk must clear to reach the model. This is the fused rank score (small magnitudes, ~0.016/rank), not a 0–1 cosine similarity. 0 = off.",
+  // Retrieval score floor — (i) tooltip with concrete settings.
+  scoreFloorTipAria: "About the retrieval score floor",
+  scoreFloorTipTitle: "When to raise the floor",
+  scoreFloorTipIntro:
+    "Scores are small RRF magnitudes (k=60, top-8). A chunk found by only one search ≈ 0.011–0.016; a chunk found by both keyword and vector ≈ 0.022–0.033.",
+  scoreFloorTipColFloor: "Floor",
+  scoreFloorTipColEffect: "Effect",
+  scoreFloorTipOff: "Off — the model sees all retrieved chunks (default).",
+  scoreFloorTipGentle: "Gentle — drops weak single-search chunks.",
+  scoreFloorTipStrict: "Strict — keeps only chunks found by both keyword and vector.",
+  scoreFloorTipKill: "Filters everything — don't.",
+  scoreFloorTipFoot: "Start at 0; raise to ~0.015 only when weak chunks degrade answers.",
   // Embedding provider (read-only).
   embeddingProvider: "Embedding provider",
   embeddingProviderNote:
@@ -54,6 +66,17 @@ export const vi = {
   scoreFloor: "Ngưỡng điểm truy hồi (0–1)",
   scoreFloorHelp:
     "Điểm RRF hợp nhất tối thiểu mà một đoạn phải vượt qua để đến mô hình. Đây là điểm xếp hạng hợp nhất (độ lớn nhỏ, ~0.016/hạng), không phải độ tương đồng cosine 0–1. 0 = tắt.",
+  scoreFloorTipAria: "Về ngưỡng điểm truy hồi",
+  scoreFloorTipTitle: "Khi nào nên nâng ngưỡng",
+  scoreFloorTipIntro:
+    "Điểm là độ lớn RRF nhỏ (k=60, top-8). Một đoạn chỉ được tìm thấy bởi một loại tìm kiếm ≈ 0.011–0.016; một đoạn được tìm thấy bởi cả từ khóa và vector ≈ 0.022–0.033.",
+  scoreFloorTipColFloor: "Ngưỡng",
+  scoreFloorTipColEffect: "Tác động",
+  scoreFloorTipOff: "Tắt — mô hình thấy mọi đoạn được truy hồi (mặc định).",
+  scoreFloorTipGentle: "Nhẹ — loại bỏ các đoạn yếu chỉ từ một loại tìm kiếm.",
+  scoreFloorTipStrict: "Nghiêm — chỉ giữ các đoạn được tìm thấy bởi cả từ khóa và vector.",
+  scoreFloorTipKill: "Lọc bỏ tất cả — đừng dùng.",
+  scoreFloorTipFoot: "Bắt đầu từ 0; chỉ nâng lên ~0.015 khi các đoạn yếu làm giảm chất lượng câu trả lời.",
   embeddingProvider: "Nhà cung cấp nhúng",
   embeddingProviderNote:
     "Cần khởi động lại — đặt qua biến môi trường EMBEDDING_PROVIDER. Đổi bộ nhúng làm vô hiệu các vector hiện có, nên không thể thay đổi khi đang chạy.",

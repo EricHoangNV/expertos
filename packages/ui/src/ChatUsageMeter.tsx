@@ -22,6 +22,13 @@ export interface ChatUsageMeterProps {
    * link renders, so the meter never becomes a dead end.
    */
   upgradeHref?: string;
+  /**
+   * Click handler for the "Upgrade →" affordance. When supplied it takes precedence over
+   * {@link upgradeHref} and the affordance renders as a button (e.g. to open the account modal in
+   * place rather than navigate to the `/account` route). One of `onUpgrade`/`upgradeHref` is needed
+   * for the affordance to render.
+   */
+  onUpgrade?: () => void;
   /** Turn amber at this fraction of the threshold (default 0.8). */
   warnRatio?: number;
   /** "questions this month" label (i18n M13). Defaults to English. */
@@ -46,6 +53,7 @@ export function ChatUsageMeter({
   softLimit = null,
   planName,
   upgradeHref,
+  onUpgrade,
   warnRatio = DEFAULT_WARN_RATIO,
   label = "questions this month",
   unlimitedLabel = "Unlimited",
@@ -76,10 +84,16 @@ export function ChatUsageMeter({
       <Bar value={pct} warn={warn} />
       <div className="sidebar-usage-foot">
         <span className="label">{planName}</span>
-        {upgradeHref && (
-          <a className="sidebar-usage-upgrade" href={upgradeHref}>
+        {onUpgrade ? (
+          <button type="button" className="sidebar-usage-upgrade" onClick={onUpgrade}>
             {upgradeLabel}
-          </a>
+          </button>
+        ) : (
+          upgradeHref && (
+            <a className="sidebar-usage-upgrade" href={upgradeHref}>
+              {upgradeLabel}
+            </a>
+          )
         )}
       </div>
     </div>

@@ -195,7 +195,9 @@ describe("ChatPage", () => {
     mockMountFetches();
     renderWithProviders(<ChatPage />);
 
-    // The Tweaks panel is open by default with the layout segmented control.
+    // The Tweaks panel is hidden by default (M12.7.4); open it from the topbar toggle to
+    // reach the layout segmented control.
+    await user.click(await screen.findByRole("button", { name: "Show tweaks" }));
     await user.click(await screen.findByRole("button", { name: "Focus" }));
 
     expect(window.localStorage.getItem("expertos:chat-layout-direction")).toBe("focus");
@@ -296,8 +298,22 @@ describe("ChatPage", () => {
     expect(
       await screen.findByText("Document upload isn't included in your plan."),
     ).toBeInTheDocument();
-    const upgrade = screen.getByRole("link", { name: /Upgrade to add documents/ });
-    expect(upgrade).toHaveAttribute("href", "/account");
+    // The upgrade affordance opens the account popup in place (M6.1) rather than navigating away
+    // to the standalone /account route — the modal hosts the plan & usage view.
+    mockApi("GET", "/me/plans", {
+      body: { currentPlanKey: "free", hasActiveSubscription: false, upgrades: [] },
+    });
+    const upgrade = screen.getByRole("button", { name: /Upgrade to add documents/ });
+    await user.click(upgrade);
+    expect(await screen.findByRole("dialog", { name: "Account" })).toBeInTheDocument();
     expect(screen.queryByText("Http Exception")).not.toBeInTheDocument();
+  });
+
+  it("links to the My Knowledge page from the sidebar (M18.3)", async () => {
+    mockMountFetches();
+    renderWithProviders(<ChatPage />);
+
+    const link = await screen.findByRole("link", { name: "My Knowledge" });
+    expect(link).toHaveAttribute("href", "/knowledge");
   });
 });

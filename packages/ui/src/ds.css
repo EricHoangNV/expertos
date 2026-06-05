@@ -521,6 +521,35 @@ th.matrix-col-premium .matrix-plan-name { color: var(--red-600); }
 /* tooltip-ish kbd */
 kbd { font-family: var(--font-mono); font-size: 11px; background: var(--paper-2); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--ink-600); }
 
+/* info tooltip — (i) trigger + hover/focus help bubble (e.g. a Field label) */
+.tooltip { position: relative; display: inline-flex; vertical-align: middle; margin-left: var(--s1); }
+.tooltip-trigger {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; padding: 0;
+  border: 1px solid var(--line-2); border-radius: var(--r-pill);
+  background: var(--surface); color: var(--ink-500);
+  font-family: var(--font-text); font-size: 10px; font-style: italic; font-weight: 700; line-height: 1;
+  cursor: help; user-select: none;
+}
+.tooltip-trigger:hover, .tooltip-trigger:focus-visible {
+  color: var(--ink-800); border-color: var(--ink-300); box-shadow: var(--sh-focus); outline: none;
+}
+.tooltip-bubble {
+  position: absolute; z-index: 60; top: calc(100% + 6px); left: 0;
+  display: none; width: max-content; max-width: 440px;
+  padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface); box-shadow: var(--sh-lg);
+  color: var(--ink-700); font-size: 12px; font-weight: 400; line-height: 1.45;
+  white-space: normal; text-transform: none; letter-spacing: normal;
+}
+.tooltip:hover .tooltip-bubble, .tooltip:focus-within .tooltip-bubble { display: block; }
+.tooltip-bubble .tooltip-title { display: block; font-weight: 700; color: var(--ink-900); }
+.tooltip-bubble table { width: 100%; margin: 8px 0; border-collapse: collapse; }
+.tooltip-bubble th, .tooltip-bubble td { padding: 3px 12px 3px 0; text-align: left; vertical-align: top; }
+.tooltip-bubble th { color: var(--ink-900); font-weight: 600; border-bottom: 1px solid var(--line); }
+.tooltip-bubble code { font-family: var(--font-mono); font-size: 11px; color: var(--ink-900); white-space: nowrap; }
+.tooltip-bubble .tooltip-foot { display: block; margin-top: 8px; color: var(--ink-500); }
+
 /* ============================================================
    Chat layout (consumer web — three-pane "studio") — M12.1
    Sidebar 248px · chat (flex) · sources rail 320px on a viewport-
@@ -803,6 +832,48 @@ button.source-card:focus-visible { outline: none; box-shadow: var(--sh-focus); }
 @keyframes chat-sidebar-drawer-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 
 /* ============================================================
+   Modal — centered dialog
+   A dimmed full-screen backdrop centering a `--surface` card with a header
+   (title + close X) over a scrollable body. Used for self-contained panels —
+   e.g. the account view — that overlay the workspace instead of replacing it.
+   ============================================================ */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 50;
+  background: color-mix(in srgb, var(--ink-900) 45%, transparent);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s5);
+  animation: sources-drawer-fade .14s ease-out;
+}
+.modal {
+  position: relative;
+  width: min(540px, 100%); max-height: min(86vh, 760px);
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-lg);
+  animation: modal-in .18s ease-out;
+}
+.modal-head {
+  flex: none;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
+  padding: var(--s4) var(--s5);
+  border-bottom: 1px solid var(--line);
+}
+.modal-title { margin: 0; }
+.modal-body { overflow-y: auto; padding: var(--s5); }
+
+@keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+
+/* Account surface (consumer web) — stack the plan badge + usage/feature/upgrade cards with even
+   rhythm (the bare `AccountPanel` children carry no margins of their own). Shared by the popup
+   ({@link Modal} body) and the standalone `/account` route. */
+.account-modal .modal-body,
+.account-page { display: flex; flex-direction: column; gap: var(--s4); align-items: flex-start; }
+.account-modal .modal-body > .card,
+.account-page > .card { align-self: stretch; }
+
+/* ============================================================
    Chat sidebar (consumer web) — M12.2
    Reuses the dark `.side` rail + `.brand` header inside the `.chat-layout`
    grid; adds the collapse control, full-width "New conversation" action, and
@@ -864,6 +935,7 @@ button.source-card:focus-visible { outline: none; box-shadow: var(--sh-focus); }
 .chat-side .sidebar-usage-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .chat-side .sidebar-usage-foot .label { color: var(--ink-400); }
 .chat-side .sidebar-usage-upgrade { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--red-500); }
+.chat-side button.sidebar-usage-upgrade { padding: 0; border: none; background: transparent; cursor: pointer; }
 .chat-side .sidebar-usage-upgrade:hover { color: #fff; }
 
 /* ============================================================
@@ -909,6 +981,14 @@ button.source-card:focus-visible { outline: none; box-shadow: var(--sh-focus); }
 }
 button.chat-user-lang { cursor: pointer; }
 button.chat-user-lang:hover { border-color: var(--line-2); background: var(--paper-2); }
+.chat-user-trigger {
+  display: inline-flex; align-items: center; gap: var(--s2);
+  padding: var(--s1) var(--s2); margin: calc(-1 * var(--s1)) calc(-1 * var(--s2));
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  background: transparent; color: inherit; cursor: pointer; font: inherit;
+}
+.chat-user-trigger:hover { border-color: var(--line); background: var(--paper-2); }
+.chat-user-trigger:focus-visible { outline: none; box-shadow: var(--sh-focus); }
 
 /* Expert avatar tones — deterministic per expert (reused by the chat header + messages, M12.3–4). */
 .avatar.tone-crimson { background: var(--red-600); color: #fff; }
@@ -1059,6 +1139,14 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
 .upload-popover .upload-popover-types {
   display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2);
 }
+/* Mode picker (M12.6.2) — a full-width two-option `.seg` (Temporary / Persistent) so
+   both retention modes are visible at once instead of hidden in a collapsed select. */
+.upload-mode-field {
+  display: flex; flex-direction: column; gap: var(--s1);
+}
+.upload-mode-field > .seg.upload-mode-seg { display: flex; }
+.upload-mode-field > .seg.upload-mode-seg button { flex: 1; }
+.upload-mode-field .upload-mode-desc { margin: 0; }
 
 /* Tweaks floating panel (M12.7) — layout-preferences overlay, bottom-right of
    the chat view. Shadowed surface card holding the direction/density controls. */
@@ -1103,7 +1191,9 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
   .sources-drawer-backdrop,
   .sources-drawer,
   .chat-sidebar-drawer-backdrop,
-  .chat-sidebar-drawer {
+  .chat-sidebar-drawer,
+  .modal-backdrop,
+  .modal {
     animation: none;
   }
 }

@@ -56,9 +56,13 @@ function meta(overrides: Partial<UploadCreateInput> = {}): UploadCreateInput {
 interface Harness {
   service: UploadService;
   put: jest.Mock;
+  del: jest.Mock;
   scan: jest.Mock;
   findUnique: jest.Mock;
   create: jest.Mock;
+  fileFindMany: jest.Mock;
+  fileFindUnique: jest.Mock;
+  fileDelete: jest.Mock;
   chunkCreate: jest.Mock;
   execRaw: jest.Mock;
   record: jest.Mock;
@@ -72,9 +76,18 @@ function makeHarness(
     conversation?: { id: string } | null;
     createRow?: ReturnType<typeof row>;
     embedder?: EmbeddingProvider;
+    /** Rows the `uploaded_files` list query returns (M18.2). */
+    listRows?: Array<ReturnType<typeof row> & { _count: { chunks: number } }>;
+    /** Row the delete-path lookup resolves (M18.2); `null` = not found / not owned (→ 404). */
+    fileRow?: { gcsUri: string | null } | null;
+    /** Make `storage.delete` reject, to prove the request still resolves (best-effort cleanup). */
+    deleteThrows?: boolean;
   } = {},
 ): Harness {
   const put = jest.fn().mockResolvedValue("memory://uploads/x");
+  const del = opts.deleteThrows
+    ? jest.fn().mockRejectedValue(new Error("blob gone"))
+    : jest.fn().mockResolvedValue(undefined);
   const scan = jest
     .fn()
     .mockResolvedValue(opts.scanResult ?? { clean: true });
@@ -82,6 +95,11 @@ function makeHarness(
     .fn()
     .mockResolvedValue(opts.conversation === undefined ? { id: "c" } : opts.conversation);
   const create = jest.fn().mockResolvedValue(opts.createRow ?? row());
+  const fileFindMany = jest.fn().mockResolvedValue(opts.listRows ?? []);
+  const fileFindUnique = jest
+    .fn()
+    .mockResolvedValue(opts.fileRow === undefined ? { gcsUri: "memory://uploads/x" } : opts.fileRow);
+  const fileDelete = jest.fn().mockResolvedValue({ id: "f" });
   let chunkSeq = 0;
   const chunkCreate = jest
     .fn()
@@ -95,14 +113,19 @@ function makeHarness(
 
   const tx = {
     conversation: { findUnique },
-    uploadedFile: { create },
+    uploadedFile: {
+      create,
+      findMany: fileFindMany,
+      findUnique: fileFindUnique,
+      delete: fileDelete,
+    },
     uploadChunk: { create: chunkCreate },
     $executeRawUnsafe: execRaw,
   };
   const rls = {
     run: <T>(_u: AuthUser, work: (t: typeof tx) => Promise<T>) => work(tx),
   } as unknown as RlsService;
-  const storage = { name: "mock-store", put } as unknown as StorageProvider;
+  const storage = { name: "mock-store", put, delete: del } as unknown as StorageProvider;
   const scanner = { name: "mock-scan", scan } as unknown as MalwareScanner;
   const usage = { record } as unknown as UsageLogService;
   const logger = { warn, info } as unknown as StructuredLogger;
@@ -116,7 +139,22 @@ function makeHarness(
     usage,
     logger,
   );
-  return { service, put, scan, findUnique, create, chunkCreate, execRaw, record, warn, info };
+  return {
+    service,
+    put,
+    del,
+    scan,
+    findUnique,
+    create,
+    fileFindMany,
+    fileFindUnique,
+    fileDelete,
+    chunkCreate,
+    execRaw,
+    record,
+    warn,
+    info,
+  };
 }
 
 function part(overrides: Partial<UploadFilePart> = {}): UploadFilePart {
@@ -474,5 +512,89 @@ describe("UploadService", () => {
     await expect(
       h.service.upload(USER, part({ filename: "<>" }), meta()),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  describe("list (M18.2 My Knowledge)", () => {
+    function listRow(
+      overrides: Partial<Record<string, unknown>> = {},
+      chunks = 0,
+    ): ReturnType<typeof row> & { _count: { chunks: number } } {
+      return { ...row(overrides), _count: { chunks } };
+    }
+
+    it("returns the caller's uploads newest-first with a derived chunk count", async () => {
+      const h = makeHarness({
+        listRows: [
+          listRow({ id: "ff000000-0000-0000-0000-000000000002", mode: "persistent", expiresAt: null }, 3),
+          listRow({ id: "ff000000-0000-0000-0000-000000000001" }, 0),
+        ],
+      });
+      const list = await h.service.list(USER, { scope: "all" });
+
+      expect(h.fileFindMany).toHaveBeenCalledTimes(1);
+      const args = h.fileFindMany.mock.calls[0][0];
+      expect(args).toMatchObject({ orderBy: { createdAt: "desc" }, take: 100 });
+      // `all` imposes no mode filter.
+      expect(args.where).toEqual({});
+      // chunkCount is derived from the live relation, not stored on the row.
+      expect(list).toHaveLength(2);
+      expect(list[0]).toMatchObject({ mode: "persistent", chunkCount: 3, expiresAt: null });
+      expect(list[1]).toMatchObject({ chunkCount: 0 });
+    });
+
+    it("filters to a single retention mode when scope=persistent / temporary", async () => {
+      const h = makeHarness({ listRows: [listRow({ mode: "persistent", expiresAt: null }, 1)] });
+      await h.service.list(USER, { scope: "persistent" });
+      expect(h.fileFindMany.mock.calls[0][0].where).toEqual({ mode: "persistent" });
+
+      const h2 = makeHarness({ listRows: [listRow({}, 0)] });
+      await h2.service.list(USER, { scope: "temporary" });
+      expect(h2.fileFindMany.mock.calls[0][0].where).toEqual({ mode: "temporary" });
+    });
+  });
+
+  describe("remove (M18.2 My Knowledge)", () => {
+    const FILE_ID = "ff000000-0000-0000-0000-000000000001";
+
+    it("deletes the row (chunks cascade) and reclaims the stored object", async () => {
+      const h = makeHarness({ fileRow: { gcsUri: "memory://uploads/x" } });
+      await h.service.remove(USER, FILE_ID);
+
+      expect(h.fileFindUnique).toHaveBeenCalledWith({
+        where: { id: FILE_ID },
+        select: { gcsUri: true },
+      });
+      expect(h.fileDelete).toHaveBeenCalledWith({ where: { id: FILE_ID } });
+      // Best-effort blob cleanup runs with the captured URI.
+      expect(h.del).toHaveBeenCalledWith("memory://uploads/x");
+    });
+
+    it("404s (and never deletes) a row the user doesn't own / doesn't exist", async () => {
+      // RLS makes a peer's row invisible, so the lookup reads back null → 404.
+      const h = makeHarness({ fileRow: null });
+      await expect(h.service.remove(USER, FILE_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(h.fileDelete).not.toHaveBeenCalled();
+      expect(h.del).not.toHaveBeenCalled();
+    });
+
+    it("still resolves when the blob delete fails (best-effort cleanup)", async () => {
+      const h = makeHarness({ fileRow: { gcsUri: "memory://uploads/x" }, deleteThrows: true });
+      await expect(h.service.remove(USER, FILE_ID)).resolves.toBeUndefined();
+      // The row is gone; the storage failure is logged, not surfaced.
+      expect(h.fileDelete).toHaveBeenCalled();
+      expect(h.warn).toHaveBeenCalledWith(
+        "storage object delete failed",
+        expect.objectContaining({ uploadedFileId: FILE_ID }),
+      );
+    });
+
+    it("skips blob cleanup for a row that never recorded a gcs_uri", async () => {
+      const h = makeHarness({ fileRow: { gcsUri: null } });
+      await h.service.remove(USER, FILE_ID);
+      expect(h.fileDelete).toHaveBeenCalled();
+      expect(h.del).not.toHaveBeenCalled();
+    });
   });
 });

@@ -8,7 +8,12 @@ import {
   UnprocessableEntityException,
   UnsupportedMediaTypeException,
 } from "@nestjs/common";
-import type { UploadCreateInput, UploadedFileDto, UploadMode } from "@expertos/shared";
+import type {
+  UploadCreateInput,
+  UploadedFileDto,
+  UploadListQuery,
+  UploadMode,
+} from "@expertos/shared";
 import { chunkText, estimateTokens, type EmbeddingProvider } from "@expertos/ai";
 import type { Prisma } from "@expertos/db";
 import { RlsService } from "../auth/rls.service";
@@ -25,6 +30,7 @@ import {
 } from "./upload.tokens";
 import type { StorageProvider } from "./storage-provider";
 import type { MalwareScanner } from "./malware-scanner";
+import { deleteStorageObjects } from "./storage-cleanup";
 import {
   MAX_UPLOAD_BYTES,
   TEMPORARY_RETENTION_DAYS,
@@ -224,6 +230,66 @@ export class UploadService {
   }
 
   /**
+   * List the acting user's uploads for the "My Knowledge" page (M18.2). `uploaded_files` is
+   * user-scoped under RLS, so `this.rls.run` makes a peer's uploads invisible — no `userId` filter
+   * is needed (and adding one would be a redundant second boundary). Rows are returned newest-first
+   * and capped at 100 (pagination is a documented follow-up, PRD §M18); `scope` narrows to one
+   * retention mode so the page can render the Saved/Temporary sections independently. Each row's
+   * `chunkCount` is derived from the live `upload_chunks` relation (not stored on the row), so the
+   * searchable-chunks badge stays truthful even after a retention sweep trims chunks.
+   *
+   * Deliberately NOT entitlement-gated (PRD §M18): a downgraded/over-quota user must still see the
+   * documents they already saved — the controller carries `@Roles("user")` only.
+   */
+  async list(user: AuthUser, query: UploadListQuery): Promise<UploadedFileDto[]> {
+    const rows = await this.rls.run(user, (tx) =>
+      tx.uploadedFile.findMany({
+        where: scopeToWhere(query.scope),
+        select: { ...UPLOADED_FILE_SELECT, _count: { select: { chunks: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      }),
+    );
+    return rows.map((row) => toUploadedFileDto(row, row._count.chunks));
+  }
+
+  /**
+   * Delete one of the acting user's uploads (M18.2): remove the `uploaded_files` row (its
+   * `upload_chunks` cascade via `ON DELETE CASCADE`) and then best-effort reclaim the stored object
+   * (directive §46). The lookup + delete run inside `this.rls.run`, so a peer's (or a non-existent)
+   * row reads back null and resolves to a 404 — a cross-user delete is naturally invisible, never a
+   * 403 that would leak existence. The `gcsUri` is captured **before** the row delete (the row is
+   * the source of truth) and the object is dropped **after** the transaction commits, outside it:
+   * a storage failure is logged, not surfaced (the row is already gone; an orphan is recoverable and
+   * the retention sweep retries it). Deleting a cited file does not rewrite history — a past saved
+   * answer keeps its point-in-time citation snapshot; only future retrieval loses the file.
+   *
+   * Deliberately NOT entitlement-gated (PRD §M18): a user must always be able to delete their own
+   * data, even after a downgrade.
+   */
+  async remove(user: AuthUser, id: string): Promise<void> {
+    const gcsUri = await this.rls.run(user, async (tx) => {
+      const found = await tx.uploadedFile.findUnique({
+        where: { id },
+        select: { gcsUri: true },
+      });
+      if (!found) {
+        throw new NotFoundException("uploaded file not found");
+      }
+      await tx.uploadedFile.delete({ where: { id } });
+      return found.gcsUri;
+    });
+
+    await deleteStorageObjects(this.storage, [gcsUri], this.logger, {
+      uploadedFileId: id,
+    });
+    this.logger.info("uploaded file deleted", {
+      uploadedFileId: id,
+      storage: this.storage.name,
+    });
+  }
+
+  /**
    * Parse → chunk → embed the file into searchable chunks. Returns `[]` (stored, not indexed) when
    * no parser is registered for the type yet (PDF/DOCX — M5.3 ships XLSX) or the file parses to no
    * text. A spreadsheet parser emits pre-segmented `parsed.chunks` (one per row, carrying sheet/cell
@@ -360,6 +426,18 @@ export class UploadService {
       return conversation.id;
     });
   }
+}
+
+/**
+ * Translate a {@link UploadListQuery} `scope` into a Prisma `where` for the list (M18.2). `all`
+ * imposes no filter (every upload the caller owns); `persistent`/`temporary` narrow on `mode` so the
+ * "My Knowledge" page can render its Saved vs Temporary sections from two scoped calls.
+ */
+function scopeToWhere(scope: UploadListQuery["scope"]): Prisma.UploadedFileWhereInput {
+  if (scope === "all") {
+    return {};
+  }
+  return { mode: scope };
 }
 
 /**

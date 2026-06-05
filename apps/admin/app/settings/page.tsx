@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Button, Field, Input, Select } from "@expertos/ui";
+import { Badge, Button, Field, Input, Select, Tooltip } from "@expertos/ui";
 import {
   chatModelSchema,
   type AppSettingsDto,
@@ -161,7 +161,53 @@ function SettingsEditor({ settings, getToken, onSaved }: SettingsEditorProps) {
         <span className="muted">{t("defaultChatModelHelp")}</span>
       </Field>
 
-      <Field label={t("scoreFloor")} htmlFor="settings-score-floor">
+      <Field
+        label={
+          <>
+            {t("scoreFloor")}
+            <Tooltip label={t("scoreFloorTipAria")}>
+              <span className="tooltip-title">{t("scoreFloorTipTitle")}</span>
+              {t("scoreFloorTipIntro")}
+              <table>
+                <thead>
+                  <tr>
+                    <th>{t("scoreFloorTipColFloor")}</th>
+                    <th>{t("scoreFloorTipColEffect")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <code>0</code>
+                    </td>
+                    <td>{t("scoreFloorTipOff")}</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <code>~0.015</code>
+                    </td>
+                    <td>{t("scoreFloorTipGentle")}</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <code>~0.018–0.020</code>
+                    </td>
+                    <td>{t("scoreFloorTipStrict")}</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <code>&gt; 0.033</code>
+                    </td>
+                    <td>{t("scoreFloorTipKill")}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <span className="tooltip-foot">{t("scoreFloorTipFoot")}</span>
+            </Tooltip>
+          </>
+        }
+        htmlFor="settings-score-floor"
+      >
         <Input
           id="settings-score-floor"
           type="number"

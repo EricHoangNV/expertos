@@ -47,4 +47,34 @@ describe("UploadController", () => {
       BODY,
     );
   });
+
+  it("does NOT entitlement-gate GET/DELETE (a downgraded user must see + delete their data)", () => {
+    // M18 / PRD §"M18": list + delete carry @Roles("user") only — gating read/delete behind the
+    // upload entitlement would trap a downgraded or over-quota user's existing documents. Only POST
+    // keeps the document_upload guard (asserted above).
+    expect(
+      Reflect.getMetadata(REQUIRES_ENTITLEMENT_KEY, UploadController.prototype.list),
+    ).toBeUndefined();
+    expect(
+      Reflect.getMetadata(REQUIRES_ENTITLEMENT_KEY, UploadController.prototype.remove),
+    ).toBeUndefined();
+  });
+
+  it("delegates GET /uploads to the service with the parsed scope query", async () => {
+    const list = jest.fn().mockResolvedValue([{ id: "f1" }]);
+    const controller = new UploadController({ list } as unknown as UploadService);
+
+    await controller.list(USER, { scope: "persistent" });
+
+    expect(list).toHaveBeenCalledWith(USER, { scope: "persistent" });
+  });
+
+  it("delegates DELETE /uploads/:id to the service", async () => {
+    const remove = jest.fn().mockResolvedValue(undefined);
+    const controller = new UploadController({ remove } as unknown as UploadService);
+
+    await controller.remove(USER, "ff000000-0000-0000-0000-000000000001");
+
+    expect(remove).toHaveBeenCalledWith(USER, "ff000000-0000-0000-0000-000000000001");
+  });
 });
