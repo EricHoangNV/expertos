@@ -96,8 +96,8 @@ for ((i=1; i<=iterations; i++)); do
   existing_logs=$(docker sandbox exec "$SANDBOX_NAME" find "$SANDBOX_LOG_DIR" -name "*.jsonl" -not -name "history.jsonl" 2>/dev/null | sort)
 
   # Extract compact context snippets (avoids injecting full files via @)
-  # Task Manifest: from "## Task Manifest" to just before "## Context"
-  TASK_MANIFEST=$(sed -n '/^## Task Manifest/,/^## Context/{ /^## Context/d; p; }' project-mds/PRD.md)
+  # Task Manifest: the dedicated tracking board (PRD.md now holds only design/§ detail, not tasks)
+  TASK_MANIFEST=$(cat project-mds/PRD-TRACKING.md)
   # Progress: the full state file (should be ~3KB per PROGRESS-INSTRUCTIONS.MD)
   PROGRESS_SUMMARY=$(cat project-mds/progress-state.md)
   # Safety net: truncate to 8KB if an agent bloated the state file
@@ -119,7 +119,7 @@ This is non-negotiable. Every session starts by reading directives.
 ## Mode: VALIDATION
 Your job is to validate implementation completeness — not to build new features.
 
-## Task Manifest (from PRD.md)
+## Task Manifest (from PRD-TRACKING.md)
 ${TASK_MANIFEST}
 
 ## Latest Review Verdicts (from FEEDBACKS.MD)
@@ -132,7 +132,9 @@ ${PROGRESS_SUMMARY}
 ${OPEN_REQUESTS}
 
 ## Files to read ON DEMAND (do NOT read in full)
-- project-mds/PRD.md — read only the § section for the deliverable you are verifying
+- project-mds/PRD-TRACKING.md — the task manifest / status board (summarized above)
+- project-mds/PRD.md — read only the §milestone section for the deliverable you are verifying (design + implementation directions live here)
+- project-mds/BUILD-NOTES.md — per-task build notes (files/decisions) for completed work, keyed by task id
 - project-mds/DIRECTIVES.MD — Quick Reference already read above; read full § sections when checking specific rules
 - project-mds/FEEDBACKS.MD — already summarized above; read full review only if you need remediation details
 - project-mds/REQUESTS.MD — already summarized above
@@ -156,7 +158,7 @@ ${OPEN_REQUESTS}
    - Dead code: pnpm deadcode (must pass with no output)
 7. If you find gaps or issues:
    - Fix them if the fix is straightforward (< 30 min of work).
-   - For larger gaps, add them as [ ] items to the Task Manifest in PRD.md
+   - For larger gaps, add them as [ ] items to project-mds/PRD-TRACKING.md
      and add them to the Next Tasks list in progress-state.md.
    - Commit fixes to both local and remote repositories.
    - Update progress (read PROGRESS-INSTRUCTIONS.MD first).
@@ -175,7 +177,7 @@ This is non-negotiable. Every session starts by reading directives.
 ## Project Status
 You have three sources below to decide what to work on. Read them all before choosing.
 
-### Task Manifest (from PRD.md — shows [x] done vs [ ] open)
+### Task Manifest (from PRD-TRACKING.md — shows [x] done vs [ ] open)
 ${TASK_MANIFEST}
 
 ### Build & Test Status
@@ -188,7 +190,9 @@ ${OPEN_REQUESTS}
 ${LATEST_VERDICTS}
 
 ## Files to read ON DEMAND (do NOT read in full)
-- project-mds/PRD.md — read ONLY the § section for your chosen task (e.g., \"Paywall, Entitlements & Feature Gating\" for billing, \"Data Model\" for schema)
+- project-mds/PRD-TRACKING.md — the task manifest / status board (summarized above). Pick your task here.
+- project-mds/PRD.md — read ONLY the §milestone section for your chosen task; it holds the design + implementation directions (e.g. §M17 for the settings/embedding work, the \"Paywall, Entitlements & Feature Gating\" section for billing). **Do NOT edit PRD.md on a task run.**
+- project-mds/BUILD-NOTES.md — append your build note here after finishing (keyed by task id, e.g. ### M17.1); read prior notes only if you need history.
 - project-mds/DIRECTIVES.MD — Quick Reference already read above; read full § sections only when implementing related features
 - project-mds/FEEDBACKS.MD — verdicts summarized above; read the full review section only if you need remediation details
 - project-mds/LEARNINGS.MD — read before writing new learnings
@@ -241,10 +245,11 @@ ${LATEST_VERDICTS}
 8. After completing each task, update progress (read PROGRESS-INSTRUCTIONS.MD first): \\
    - Overwrite progress-state.md with updated state (test counts, completed items, next tasks). \\
    - Append your detailed entry to the bottom of progress-log.md. \\
-   - Update the Task Manifest in PRD.md (change [ ] to [x] for your completed task). \\
+   - In project-mds/PRD-TRACKING.md, flip your completed task [ ]→[x]; append its build note (files, decisions, gotchas) to project-mds/BUILD-NOTES.md keyed by task id (e.g. ### M17.1). \\
+   - Do NOT edit project-mds/PRD.md — it is the stable design/plan doc; change it only when (re)planning a feature. \\
    ONLY DO ONE TASK AT A TIME.
 9. After finishing, run these quick checks (do NOT re-read full files): \\
-   - \\\`grep '- \\[ \\]' project-mds/PRD.md\\\` — any open tasks left in the Task Manifest? \\
+   - \\\`grep '- \\[ \\]' project-mds/PRD-TRACKING.md\\\` — any open tasks left in the manifest? \\
    - \\\`grep 'FAIL' project-mds/FEEDBACKS.MD | head -5\\\` — any unresolved FAIL verdicts? \\
    - Check the Open Requests section above — any still unresolved? \\
    If ALL are clear, output <promise>COMPLETE</promise> at the very end of your response. \\
