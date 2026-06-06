@@ -2,21 +2,24 @@ import type { Messages } from "@expertos/ui";
 
 /** EN/VI strings for the `validation` admin scorecard (M13.3). Keep `en`/`vi` in lockstep. */
 export const en = {
-  eyebrow: "Analytics",
-  heading: "Validation scorecard",
+  eyebrow: "M10.4 · OD#1 · Go / No-go",
+  heading: "Product validation",
   windowLabel: "Window",
   windowOption: "Last {days} days",
-  intro:
-    "The core go/no-go signals — activation, engagement, willingness to pay, and funnel conversion. Raw numbers only: targets are set post-launch once real usage exists. Willingness-to-pay is cumulative (current platform state); the rest cover the selected window.",
+  intro: "The core hypothesis:",
+  introHypothesis: "will users pay to talk to a digital version of a named expert?",
+  introOutro: "Raw numbers, no targets — those come post-launch with real data.",
   // Activation section.
-  activationHeading: "Activation",
+  activationEyebrow: "Activation",
+  activationHeading: "Did new users ask a first question?",
   activationDescription: "New users reaching a cited answer within 24h of signing up.",
   activationRate: "Activation rate · {days}d",
   activationDelta: "{activated} of {total} new users",
   newUsers: "New users · {days}d",
   activated: "Activated · {days}d",
   // Engagement section.
-  engagementHeading: "Engagement",
+  engagementEyebrow: "Engagement",
+  engagementHeading: "Did they come back and keep asking?",
   engagementDescription:
     "Questions asked, and whether the new cohort comes back 1–7 days after signup.",
   returnRate: "Return rate · {days}d",
@@ -25,7 +28,8 @@ export const en = {
   questions: "Questions · {days}d",
   medianQuestions: "Median questions / active user",
   // Willingness to pay section.
-  wtpHeading: "Willingness to pay",
+  wtpEyebrow: "Willingness to pay",
+  wtpHeading: "Are they willing to pay?",
   wtpDescription: "Cumulative — paying subscribers against all users (current state).",
   freeToPaid: "Free → paid",
   wtpDelta: "{paying} of {total} users",
@@ -33,7 +37,8 @@ export const en = {
   trialingUsers: "Trialing users",
   totalUsers: "Total users",
   // Funnel conversion section.
-  funnelHeading: "Funnel conversion",
+  funnelEyebrow: "Funnel conversion",
+  funnelHeading: "Do recommendations turn into booked consultations?",
   funnelDescription: "In-chat recommendation → booked consultation, and booked revenue per buyer.",
   recommendationToBooking: "Recommendation → booking · {days}d",
   funnelDelta: "{bookings} of {recommendations} recommendations",
@@ -47,14 +52,18 @@ export const en = {
 } satisfies Messages;
 
 export const vi = {
-  eyebrow: "Phân tích",
-  heading: "Bảng điểm kiểm chứng",
+  eyebrow: "M10.4 · OD#1 · Tiếp tục / Dừng",
+  heading: "Kiểm chứng sản phẩm",
   windowLabel: "Khoảng thời gian",
   windowOption: "{days} ngày gần nhất",
-  intro:
-    "Các tín hiệu cốt lõi để quyết định tiếp tục hay dừng — kích hoạt, mức độ tương tác, mức sẵn lòng chi trả và chuyển đổi phễu. Chỉ là số liệu thô: mục tiêu được đặt sau khi ra mắt khi đã có dữ liệu sử dụng thực tế. Mức sẵn lòng chi trả là lũy kế (trạng thái hiện tại của nền tảng); phần còn lại tính theo khoảng thời gian đã chọn.",
+  intro: "Giả thuyết cốt lõi:",
+  introHypothesis:
+    "liệu người dùng có trả tiền để trò chuyện với phiên bản số của một chuyên gia có tên tuổi hay không?",
+  introOutro:
+    "Chỉ là số liệu thô, không có mục tiêu — những mục tiêu đó được đặt sau khi ra mắt với dữ liệu thực tế.",
   // Activation section.
-  activationHeading: "Kích hoạt",
+  activationEyebrow: "Kích hoạt",
+  activationHeading: "Người dùng mới đã đặt câu hỏi đầu tiên chưa?",
   activationDescription:
     "Người dùng mới nhận được câu trả lời có trích dẫn trong vòng 24h kể từ khi đăng ký.",
   activationRate: "Tỷ lệ kích hoạt · {days} ngày",
@@ -62,7 +71,8 @@ export const vi = {
   newUsers: "Người dùng mới · {days} ngày",
   activated: "Đã kích hoạt · {days} ngày",
   // Engagement section.
-  engagementHeading: "Mức độ tương tác",
+  engagementEyebrow: "Mức độ tương tác",
+  engagementHeading: "Họ có quay lại và tiếp tục đặt câu hỏi không?",
   engagementDescription:
     "Số câu hỏi đã đặt, và liệu nhóm người dùng mới có quay lại trong 1–7 ngày sau khi đăng ký hay không.",
   returnRate: "Tỷ lệ quay lại · {days} ngày",
@@ -71,7 +81,8 @@ export const vi = {
   questions: "Câu hỏi · {days} ngày",
   medianQuestions: "Số câu hỏi trung vị / người dùng hoạt động",
   // Willingness to pay section.
-  wtpHeading: "Mức sẵn lòng chi trả",
+  wtpEyebrow: "Mức sẵn lòng chi trả",
+  wtpHeading: "Họ có sẵn lòng chi trả không?",
   wtpDescription:
     "Lũy kế — người đăng ký trả phí so với toàn bộ người dùng (trạng thái hiện tại).",
   freeToPaid: "Miễn phí → trả phí",
@@ -80,7 +91,8 @@ export const vi = {
   trialingUsers: "Người dùng dùng thử",
   totalUsers: "Tổng số người dùng",
   // Funnel conversion section.
-  funnelHeading: "Chuyển đổi phễu",
+  funnelEyebrow: "Chuyển đổi phễu",
+  funnelHeading: "Các đề xuất có dẫn đến lượt đặt lịch tư vấn không?",
   funnelDescription:
     "Đề xuất trong chat → đặt lịch tư vấn, và doanh thu đặt lịch trên mỗi người mua.",
   recommendationToBooking: "Đề xuất → đặt lịch · {days} ngày",

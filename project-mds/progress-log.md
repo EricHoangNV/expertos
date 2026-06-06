@@ -5379,3 +5379,24 @@ Restyled `apps/admin/app/failed-queries/page.tsx` to match the mockup, on the re
 The badge-row (insufficient-knowledge amber / model info / confidence ink), the `.label` QUESTION/ANSWER/REASON card feed, and the Load-more pagination are unchanged. Per the manifest's "keep the badge-row", the model/confidence stay as info/ink `Badge`s rather than the mockup's flat gray pills. "J&P GLOBAL" mockup branding ignored. No hardcoded hex/px, no new ds.css.
 
 Gates: admin typecheck + `next lint` clean; admin **127/127 jest green** with `--maxWorkers=2` (the default parallel runner OOM-crashes workers in-sandbox, producing 7 spurious "suite failed to run" — DIRECTIVE #40; the failed-queries page has no dedicated test, the lockstep test covers the new dict key); root `knip` + `lint:css` clean. Unit total unchanged at 1722. Committed `2ed0eea`, pushed to `main`.
+
+## M19.3.5 — validation (product-validation scorecard) design parity (screenshot 14)
+**Date:** 2026-06-06
+**Ref:** PRD-TRACKING M19.3.5 / PRD §M19 (screenshot 14)
+
+**What was done:**
+- `apps/admin/app/validation/page.tsx`: added a section-level `<div className="eyebrow">` above each of the four `.h3` section headings (Activation/Engagement/WTP/Funnel); changed the page intro from `<p className="muted">` to `<p className="lede">` rendering `{t("intro")} <em>{t("introHypothesis")}</em> {t("introOutro")}`.
+- `apps/admin/src/lib/i18n/dictionaries/validation.ts` (EN+VI lockstep): retitled page eyebrow → "M10.4 · OD#1 · Go / No-go", heading → "Product validation"; reworded the four section headings as questions; promoted the old section words to new `*Eyebrow` keys; split `intro` into `intro`/`introHypothesis`/`introOutro`.
+
+**Key decisions:**
+- Split the intro into three keys rather than one because `useT` returns a plain string and cannot carry inline `<em>` markup; the `<em>` is applied in JSX around the middle key.
+- Dropped the old intro's cumulative-window nuance to match the shorter screenshot copy — that detail is still surfaced per-section in `wtpDescription`, so no information is lost on the page.
+- Used `.lede` for the intro (matches the screenshot's larger gray intro + the shared M19 page recipe), even though the task text only called out the `<em>` emphasis.
+- No new test file: the page has no dedicated test (cosmetic-only deltas) and the i18n lockstep test (`i18n.test.tsx`) covers the six new keys for EN/VI parity + non-empty + placeholder lockstep.
+
+**Files changed:**
+- `apps/admin/app/validation/page.tsx` — 4 section eyebrows + `.lede`/`<em>` intro.
+- `apps/admin/src/lib/i18n/dictionaries/validation.ts` — copy retitle, question headings, 6 new keys (EN+VI).
+- `project-mds/PRD-TRACKING.md`, `project-mds/BUILD-NOTES.md`, `project-mds/progress-state.md` — status flip + notes.
+
+**Gates:** admin `tsc --noEmit` + `next lint` clean; admin 127/127 jest green (`--runInBand`; the default parallel runner OOM/times-out in-sandbox per DIRECTIVE #40); root `knip` + `lint:css` clean.

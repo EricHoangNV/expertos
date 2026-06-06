@@ -74,12 +74,15 @@ export default function ValidationPage() {
           </Select>
         </Field>
       </div>
-      <p className="muted">{t("intro")}</p>
+      <p className="lede">
+        {t("intro")} <em>{t("introHypothesis")}</em> {t("introOutro")}
+      </p>
 
       {error != null && <Badge tone="red">{error}</Badge>}
 
       {report != null && (
         <>
+          <div className="eyebrow">{t("activationEyebrow")}</div>
           <h3 className="h3">{t("activationHeading")}</h3>
           <p className="muted">{t("activationDescription")}</p>
           <div className="row gap1">
@@ -95,6 +98,7 @@ export default function ValidationPage() {
             <Stat label={t("activated", { days })} value={count(report.activation.activatedUsers)} />
           </div>
 
+          <div className="eyebrow">{t("engagementEyebrow")}</div>
           <h3 className="h3">{t("engagementHeading")}</h3>
           <p className="muted">{t("engagementDescription")}</p>
           <div className="row gap1">
@@ -114,6 +118,7 @@ export default function ValidationPage() {
             />
           </div>
 
+          <div className="eyebrow">{t("wtpEyebrow")}</div>
           <h3 className="h3">{t("wtpHeading")}</h3>
           <p className="muted">{t("wtpDescription")}</p>
           <div className="row gap1">
@@ -130,6 +135,7 @@ export default function ValidationPage() {
             <Stat label={t("totalUsers")} value={count(report.willingnessToPay.totalUsers)} />
           </div>
 
+          <div className="eyebrow">{t("funnelEyebrow")}</div>
           <h3 className="h3">{t("funnelHeading")}</h3>
           <p className="muted">{t("funnelDescription")}</p>
           <div className="row gap1">
