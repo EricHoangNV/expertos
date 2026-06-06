@@ -5246,3 +5246,16 @@ Verify+polish pass on `apps/admin/app/analytics/page.tsx` (the M19 "reference re
 
 ## M19.2.2 — knowledge-drafts page design parity (mockup 05) — 2026-06-06
 Added the screenshot's `.lede` subtitle under the `.h1` in `apps/admin/app/knowledge-drafts/page.tsx`; new `lede` i18n key in `dictionaries/knowledge-drafts.ts` (EN: "Drafts authored directly or auto-created from recurring conversation gaps. Submit → expert review → publish.", VI lockstep). Page already had pagehead + right-aligned status-filter `<Select>` + TITLE/STATUS/LANG/FROM CHAT/UPDATED `Table` (title `Link`, status `Badge`). Omitted screenshot's "From chat · N asks" count — no `KnowledgeDraftSummaryDto` field (baked-in M19 decision); kept the existing `From chat`/`—` cell. Existing eyebrow/title left as-is (task delta = `lede` key only). No new ds.css (reuses `.lede`). Gates: admin typecheck + next lint clean; admin 109 jest green (`--runInBand` — parallel runner OOMs/times-out workers in-sandbox; the previously-"failing" funnel/experts/knowledge suites all pass in isolation, confirming resource contention not regression); i18n parity test auto-covers the new key. Committed + pushed to main.
+
+## 2026-06-06 — M19.2.1 knowledge-detail design parity (screenshot 04, verify+polish)
+
+Picked the next open M19 task. FAIL verdicts (Security Cycle 4 / Product Cycle 2) are already remediated in-sandbox pending external re-review; no open requests — so the highest actionable item was an open M19 design-parity screen.
+
+**Page:** `apps/admin/app/knowledge/[id]/page.tsx` (`getDocument` → `KnowledgeDocumentDetailDto`, `versionAction`). On reading the screenshot vs the live page, the `.pagehead` (back-eyebrow + `.h1` + `.muted .mono` scope·lang·versions + status `Badge`) and the versions `Table` (VERSION/STATUS/CHUNKS/CHANGE SUMMARY/CREATED/ACTIONS + `publishStatusTone` badges) already matched. Two parity deltas:
+
+1. **Version-column publication-state chip.** Screenshot stacks a chip under the version number: green "LIVE" on the published version, gray "DRAFT" on the draft. Page only had the inline LIVE chip. Restructured the cell to stack (`<div>v{n}</div>` then the chip) and added an ink-toned DRAFT chip gated on `version.status === "draft"` — deliberately NOT a blanket "not-published" chip, so an `expert_review`/`archived` version never gets mislabeled "draft" (its status `Badge` carries the truth).
+2. **Copy:** `detail.back` "← Knowledge" → "← Back to knowledge" / VI "← Quay lại Kiến thức"; new `detail.draft` ("draft" / "bản nháp"). EN+VI lockstep (i18n parity test green).
+
+**Test:** new `app/knowledge/[id]/page.test.tsx` (page had none) — 3 cases: pagehead (back href, title, version meta, pagehead-scoped status badge), version chips (per-row scoped to dodge the duplicate status-label text — ink draft on v3, green live on v2), load-error path. `setMockParams({id})` + M15.2.1 harness.
+
+**Gates:** admin typecheck + `next lint` clean; admin 112 jest green serially (`--runInBand` — the parallel runner OOMs/timeouts workers in 4GB sandbox; all green in isolation, confirming contention not regression); root `knip` + `lint:css` clean. No new ds.css, no hardcoded hex/px, no DTO changes (real-data fidelity per §M19).

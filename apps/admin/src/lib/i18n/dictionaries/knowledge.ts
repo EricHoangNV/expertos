@@ -56,7 +56,7 @@ export const en = {
   },
   // Detail / version-history page.
   detail: {
-    back: "← Knowledge",
+    back: "← Back to knowledge",
     fallbackTitle: "Document",
     versionCountOne: "{count} version",
     versionCountMany: "{count} versions",
@@ -67,6 +67,7 @@ export const en = {
     colCreated: "Created",
     colActions: "Actions",
     live: "live",
+    draft: "draft",
     noSummary: "—",
     actions: {
       submit: "Submit for review",
@@ -140,7 +141,7 @@ export const vi = {
     draftAction: "Soạn nháp",
   },
   detail: {
-    back: "← Kiến thức",
+    back: "← Quay lại Kiến thức",
     fallbackTitle: "Tài liệu",
     versionCountOne: "{count} phiên bản",
     versionCountMany: "{count} phiên bản",
@@ -151,6 +152,7 @@ export const vi = {
     colCreated: "Ngày tạo",
     colActions: "Hành động",
     live: "đang hoạt động",
+    draft: "bản nháp",
     noSummary: "—",
     actions: {
       submit: "Gửi để duyệt",

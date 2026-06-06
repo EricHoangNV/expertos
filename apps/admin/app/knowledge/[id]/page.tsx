@@ -174,13 +174,12 @@ export default function KnowledgeDetailPage() {
             {doc.versions.map((version) => (
               <tr key={version.id}>
                 <td className="mono">
-                  v{version.versionNumber}
-                  {version.isPublished && (
-                    <>
-                      {" "}
-                      <Badge tone="green">{t("detail.live")}</Badge>
-                    </>
-                  )}
+                  <div>v{version.versionNumber}</div>
+                  {version.isPublished ? (
+                    <Badge tone="green">{t("detail.live")}</Badge>
+                  ) : version.status === "draft" ? (
+                    <Badge tone="ink">{t("detail.draft")}</Badge>
+                  ) : null}
                 </td>
                 <td>
                   <Badge tone={publishStatusTone(version.status)}>
