@@ -3,7 +3,7 @@ import type { Messages } from "@expertos/ui";
 /** M13.3: string extraction for the `funnel` admin page (consultation funnel). */
 export const en = {
   // Page head + window selector.
-  eyebrow: "Analytics",
+  eyebrow: "M10.2 · Platform attribution",
   title: "Consultation funnel",
   window: "Window",
   windowOption: "Last {days} days",
@@ -15,9 +15,13 @@ export const en = {
   booked: "Booked · {days}d",
   consultations: "Consultations · {days}d",
   revenue: "Revenue · {days}d",
-  // Conversion-rate stat cards.
-  rateConversationToRecommendation: "Conversation → recommendation",
-  rateRecommendationToBooked: "Recommendation → booked",
+  // Stage attribution card (M19.4.2) — one bar row per funnel stage.
+  stageAttribution: "Stage attribution",
+  stageConversations: "Conversations",
+  stageRecommendations: "Recommendations",
+  stageBooked: "Booked",
+  stageConsultations: "Consultations",
+  stageRevenue: "Revenue",
   // Breakdown sections.
   byTrigger: "Recommendations by trigger",
   byResponse: "Recommendations by response",
@@ -31,7 +35,7 @@ export const en = {
 } satisfies Messages;
 
 export const vi = {
-  eyebrow: "Phân tích",
+  eyebrow: "M10.2 · Phân bổ nền tảng",
   title: "Phễu tư vấn",
   window: "Khoảng thời gian",
   windowOption: "{days} ngày qua",
@@ -42,8 +46,12 @@ export const vi = {
   booked: "Đã đặt · {days} ngày",
   consultations: "Buổi tư vấn · {days} ngày",
   revenue: "Doanh thu · {days} ngày",
-  rateConversationToRecommendation: "Cuộc trò chuyện → đề xuất",
-  rateRecommendationToBooked: "Đề xuất → đã đặt",
+  stageAttribution: "Phân bổ theo giai đoạn",
+  stageConversations: "Cuộc trò chuyện",
+  stageRecommendations: "Đề xuất",
+  stageBooked: "Đã đặt",
+  stageConsultations: "Buổi tư vấn",
+  stageRevenue: "Doanh thu",
   byTrigger: "Đề xuất theo yếu tố kích hoạt",
   byResponse: "Đề xuất theo phản hồi",
   byStatus: "Buổi tư vấn theo trạng thái",

@@ -5219,3 +5219,20 @@ Restyled `apps/web/app/history/page.tsx` to the mockup-01 layout: `.umain` > `.p
 **Notes for next iteration:**
 - Host-run E2E still pending (sandbox can't run live Playwright, LEARNINGS #22); the two updated specs are tsc+eslint clean.
 - 22 M19 tasks remain open. The `Modal.header` slot is now available for any future modal that needs a richer head.
+
+---
+
+## M19.4.2 — consultation funnel: stage attribution card (2026-06-06)
+
+**Task:** Add the mockup's (19-funnel) centerpiece — the "STAGE ATTRIBUTION" card — to `apps/admin/app/funnel/page.tsx`. This is the M19 worked-template screen; the pattern (pagehead → KPI stat row → labeled bar card → breakdowns) models the remaining M19 tasks.
+
+**What changed:**
+- `apps/admin/app/funnel/page.tsx` — new "STAGE ATTRIBUTION" `Card` (reusing the dashboard's `.funnel-card`/`.funnel-rows`/`.funnel-row-head` classes from M13.2.4, so **zero new ds.css**) with a `Bar` row per funnel stage. Fill = stage's share of the top stage (Conversations=100%, `top>0` guard); trailing mono `count · NN.N%` = conversion vs the prior stage via the existing `rate()` helper. Revenue is a value-only row (no bar). Removed the now-redundant two-card conversion-rate `Stat` row (those rates are inline in the bars now), matching the screenshot.
+- `apps/admin/src/lib/i18n/dictionaries/funnel.ts` — eyebrow "Analytics" → "M10.2 · Platform attribution" / "M10.2 · Phân bổ nền tảng"; added `stageAttribution` + 5 `stage*` keys (EN+VI lockstep); deleted the orphaned `rateConversationToRecommendation`/`rateRecommendationToBooked` keys.
+- `apps/admin/app/funnel/page.test.tsx` (new) — 4 cases: stage rows (count + prior-stage %, value-only revenue, no bar on revenue), KPI row + breakdowns retained, divide-by-zero → `0 · —` not `NaN%`, load-error badge.
+
+**Gotcha (LEARNINGS #19 again):** the page reloads several times on mount (admin-session role resolution → `setReport(null)`→`setReport(data)`), which detaches any node captured by an early `findByText`; a later synchronous `within(captured).getByText` flaked under parallel-run load. Fixed by asserting on the unique composed stage strings via `findByText` (retries across re-renders).
+
+**Gates:** admin typecheck + lint + 105 jest (`--runInBand`; parallel runner OOMs workers in-sandbox), root `lint:css` + `knip` green. No hardcoded hex/px.
+
+**Next:** 21 M19 tasks remain. Batch 4 continues (17-conversions, 15-recommendation-rules, 16-reconcile, 25-retention, 18-analytics verify+polish); Batch 2/3/5 untouched.

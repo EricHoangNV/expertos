@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Field, Select, Stat, Table } from "@expertos/ui";
+import { Badge, Bar, Card, Field, Select, Stat, Table } from "@expertos/ui";
 import type {
   ConsultationStatusValue,
   FunnelAnalyticsDto,
@@ -122,16 +122,62 @@ export default function FunnelPage() {
             <Stat label={t("revenue", { days })} value={usd(report.bookedRevenueCents)} />
           </div>
 
-          <div className="row gap1">
-            <Stat
-              label={t("rateConversationToRecommendation")}
-              value={rate(report.recommendations, report.conversations)}
-            />
-            <Stat
-              label={t("rateRecommendationToBooked")}
-              value={rate(report.byResponse.book, report.recommendations)}
-            />
-          </div>
+          {/* Stage attribution (M19.4.2): each funnel stage as a horizontal bar whose fill is its
+              share of the top stage (conversations = 100%), trailed by its count and its conversion
+              vs. the previous stage. Revenue is a value-only row (no bar). Reuses the dashboard's
+              `.funnel-card` pattern (M13.2.4) for zero new ds.css. */}
+          {(() => {
+            const top = report.conversations;
+            const fill = (n: number): number => (top > 0 ? (n / top) * 100 : 0);
+            const stages: { key: string; label: string; value: string; fill: number | null }[] = [
+              {
+                key: "conversations",
+                label: t("stageConversations"),
+                value: count(report.conversations),
+                fill: fill(report.conversations),
+              },
+              {
+                key: "recommendations",
+                label: t("stageRecommendations"),
+                value: `${count(report.recommendations)} · ${rate(report.recommendations, report.conversations)}`,
+                fill: fill(report.recommendations),
+              },
+              {
+                key: "booked",
+                label: t("stageBooked"),
+                value: `${count(report.byResponse.book)} · ${rate(report.byResponse.book, report.recommendations)}`,
+                fill: fill(report.byResponse.book),
+              },
+              {
+                key: "consultations",
+                label: t("stageConsultations"),
+                value: `${count(report.consultations)} · ${rate(report.consultations, report.byResponse.book)}`,
+                fill: fill(report.consultations),
+              },
+              {
+                key: "revenue",
+                label: t("stageRevenue"),
+                value: usd(report.bookedRevenueCents),
+                fill: null,
+              },
+            ];
+            return (
+              <Card pad className="funnel-card">
+                <div className="eyebrow">{t("stageAttribution")}</div>
+                <div className="funnel-rows">
+                  {stages.map((s) => (
+                    <div key={s.key}>
+                      <div className="funnel-row-head">
+                        <span className="funnel-row-label">{s.label}</span>
+                        <span className="funnel-row-value">{s.value}</span>
+                      </div>
+                      {s.fill != null && <Bar value={s.fill} aria-label={`${s.label}: ${s.value}`} />}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            );
+          })()}
 
           <h3 className="h3">{t("byTrigger")}</h3>
           <Table>
