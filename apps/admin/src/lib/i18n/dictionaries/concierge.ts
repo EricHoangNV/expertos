@@ -8,22 +8,23 @@ export const en = {
     "When the AI is low-confidence, a human expert can step in. Changes take effect on the next chat turn — no deploy.",
   signInRequired: "Please sign in to continue.",
   loadFailed: "Failed to load the concierge config.",
-  // Trigger-mode select control.
+  // Trigger-mode radio cards (M19.3.1).
   triggerMode: "Trigger mode",
-  modeOff: "Off",
-  modeUserPrompted: "Mode A — user-prompted",
-  modeAutoSilent: "Mode B — auto-silent",
-  modeAutoSilentPending: " (pending legal sign-off)",
-  // Inline help text shown beneath the mode select.
+  modeOffTitle: "Off",
+  modeATitle: "Mode A · User-prompted",
+  modeBTitle: "Mode B · Auto-silent",
+  // Static metadata badge per mode card.
+  badgeNoTrigger: "No trigger",
+  badgeActive: "Active",
+  badgeAwaitingSignoff: "Awaiting OD#5 sign-off",
+  // Description shown beneath each mode card's title.
   modeHelp: {
     off: "No human-review trigger. Low-confidence answers are delivered as-is.",
     userPrompted:
-      "Mode A — the chat offers “would you like our team to review this?” and the user opts in.",
+      "Below the confidence threshold, the user is offered a “request human review” option. Opt-in, fully visible.",
     autoSilent:
-      "Mode B — the user sees a normal AI answer while it is quietly queued for human review.",
+      "The user sees a normal AI answer while it is quietly queued for human review.",
   },
-  silentReviewPending:
-    "Mode B (silent review) is pending the OD#5 legal/brand sign-off and can’t be enabled yet.",
   // Numeric fields.
   confidenceThreshold: "Confidence threshold (0–1)",
   slaHours: "SLA (hours)",
@@ -47,19 +48,19 @@ export const vi = {
   signInRequired: "Vui lòng đăng nhập để tiếp tục.",
   loadFailed: "Không tải được cấu hình hỗ trợ.",
   triggerMode: "Chế độ kích hoạt",
-  modeOff: "Tắt",
-  modeUserPrompted: "Chế độ A — người dùng chủ động",
-  modeAutoSilent: "Chế độ B — tự động ngầm",
-  modeAutoSilentPending: " (đang chờ phê duyệt pháp lý)",
+  modeOffTitle: "Tắt",
+  modeATitle: "Chế độ A · Người dùng chủ động",
+  modeBTitle: "Chế độ B · Tự động ngầm",
+  badgeNoTrigger: "Không kích hoạt",
+  badgeActive: "Đang hoạt động",
+  badgeAwaitingSignoff: "Chờ phê duyệt OD#5",
   modeHelp: {
     off: "Không kích hoạt duyệt bởi người. Câu trả lời độ tin cậy thấp được gửi nguyên trạng.",
     userPrompted:
-      "Chế độ A — cửa sổ trò chuyện đề nghị “bạn có muốn đội ngũ của chúng tôi duyệt nội dung này không?” và người dùng chủ động đồng ý.",
+      "Dưới ngưỡng độ tin cậy, người dùng được đề nghị tùy chọn “yêu cầu duyệt bởi người”. Chủ động đồng ý, hoàn toàn công khai.",
     autoSilent:
-      "Chế độ B — người dùng thấy một câu trả lời AI bình thường trong khi nội dung được lặng lẽ đưa vào hàng đợi duyệt bởi người.",
+      "Người dùng thấy một câu trả lời AI bình thường trong khi nội dung được lặng lẽ đưa vào hàng đợi duyệt bởi người.",
   },
-  silentReviewPending:
-    "Chế độ B (duyệt ngầm) đang chờ phê duyệt pháp lý/thương hiệu OD#5 và chưa thể bật.",
   confidenceThreshold: "Ngưỡng độ tin cậy (0–1)",
   slaHours: "SLA (giờ)",
   volumeCap: "Giới hạn khối lượng mỗi ngày",

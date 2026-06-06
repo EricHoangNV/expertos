@@ -464,3 +464,12 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Fix: `forExpert` returns `null` (skip) when a configured token won't decrypt; the caller drops that target, counts it as `failedTargets`, logs a warn, and surfaces the count to the operator. The global fallback is kept ONLY for an expert with no configured token (and the no-expert legacy poll).
 
 **Rule:** Distinguish "no credential configured" (fall back to the shared default if that's the design) from "a credential is configured but unusable" (skip + alert) — never let a decrypt/parse failure of a per-principal secret silently resolve to a different principal's or a global credential, or you misattribute that credential's data to the failing principal.
+
+## 39. A sync `getByRole` for a *controlled, checked* radio can miss it right after an async `findByRole` — use async `findByRole`
+
+**Context:** M19.3.1 (concierge-settings radio cards) — the new test queried `await findByRole("radio", { name: "Off" })` then a synchronous `getByRole("radio", { name: "Mode A · User-prompted" })` for the *checked* option (`triggerMode: user_prompted`). The sync query deterministically failed "Unable to find" while the same query as `findByRole` passed; the two unchecked siblings (Off, Mode B) were found by sync queries fine.
+
+- Root cause: under React 18 + the jest/RTL harness, a *controlled* `<input type="radio" checked>` commits/settles a tick after its unchecked siblings, so a synchronous `getByRole` run immediately after an async `findByRole` for a different element can observe the checked input not-yet-queryable. (The OWC mount's stale-read flakiness — DIRECTIVE #40 — amplified the confusion, but the failure was reproducible after `--no-cache`/`--runInBand`, so it is a real timing gotcha, not just contention.)
+- Fix: query each radio (especially the checked/active one) with `await screen.findByRole(...)`, not sync `getByRole`. Separately, give each radio an explicit `aria-label` so its accessible name is the option title alone — deterministic, instead of the wrapping `<label>`'s whole title+badge+description paragraph.
+
+**Rule:** In RTL, reach for async `findBy*` when asserting on a controlled/`checked` form control's presence — a sync `getBy*` immediately after an unrelated `findBy*` can race the control's commit. And when a selectable card wraps a radio, set `aria-label` on the input so the accessible name is stable and assertable.

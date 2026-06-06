@@ -5319,3 +5319,23 @@ The deferred structured voice widgets (M13.5.3–5.6 dimension bars / do-don't r
 **Test.** New file `app/voice-profiles/[id]/page.test.tsx` (page had none): 1 M19.2.6 case asserting the warning text resolves inside `.msg-notice.tone-amber`, both sign-off buttons + awaiting badge render for `expert_review`, and `.avatar.avatar-lg` is present. M15.2.1 provider harness + `setMockParams`, mocks `GET /voice-profiles/:id`.
 
 **Gates.** admin typecheck + `next lint` clean; admin **120** jest green (`--runInBand` — the parallel runner flakes/OOMs workers in-sandbox: a parallel run reported 7 spurious suite failures that all pass serially); root `knip` + `lint:css` clean.
+
+---
+
+## M19.3.1 — concierge-settings radio cards (screenshot 10)
+
+**Scope.** `apps/admin/app/concierge/page.tsx` (`getConciergeConfig` / `updateConciergeConfig` → `ReviewConfigDto`). Mockup parity only — replaced the single mode `<Select>` with three selectable radio cards and moved Save into the `.pagehead` as the primary action. No API/DTO change; client + DTO unchanged.
+
+**Radio cards.** `.card .card-pad` panel → `.label` "Trigger mode" → `[role="radiogroup"]` of three `.verdict-card`s (the existing selectable-card primitive: hover + crimson `.is-active` 2px border + red-50 bg — matches the screenshot's active Mode A card; **no new ds.css**, per §M19's "reuse `.card` with a crimson active border"). Each card is a `<label>` wrapping a native `<input type="radio" name="concierge-mode">` styled `accentColor: var(--red-600)` (token, not hex) so selection is keyboard-accessible with a crimson radio dot; `.verdict-card-name` row = radio + `.grow` title + static `Badge`, `.verdict-card-note` = description. Each input also carries `aria-label={title}` so its accessible name is the option title alone (deterministic for tests + cleaner SR announcement than the wrapping label's whole paragraph).
+
+**Per-mode metadata badges** (static descriptors, not selection-state): Off → ink `badgeNoTrigger`; Mode A → red `badgeActive` (ties to the crimson active theme — the mockup's solid-dark "ACTIVE" pill has no ds tone, red is the honest closest); Mode B → amber `badgeAwaitingSignoff` with a dot, rendered only while `!silentReviewAllowed`. Mode B's radio is `disabled` until the OD#5 sign-off flips `silentReviewAllowed` (the server rejects it too — UX gate only); once granted the awaiting badge drops and the radio enables.
+
+**Save in pagehead.** Lifted the `.pagehead` into `ConfigEditor` (which owns save state) so the primary `Button` + green "Saved" `Badge` sit top-right; the parent renders a minimal action-less pagehead during load. Save body still collapses Off→`enabled:false` keeping the last on-mode as the inert stored `triggerMode`. Added `htmlFor`+`id` to the threshold/SLA/cap `Field`s (directive #38 — the old Select-era fields had unassociated labels); wrapped them in a second `.card .card-pad`.
+
+**i18n (`dictionaries/concierge.ts`, EN+VI lockstep).** Added `modeOffTitle`/`modeATitle`/`modeBTitle` (with the screenshot's "·" separator), `badgeNoTrigger`/`badgeActive`/`badgeAwaitingSignoff`; reworded `modeHelp.userPrompted`/`.autoSilent` to the mockup card copy. Pruned the now-orphaned Select-era keys (`modeOff`, `modeUserPrompted`, `modeAutoSilent`, `modeAutoSilentPending`, `silentReviewPending`) — confirmed unreferenced (concierge-reviews/concierge-analytics use their own namespaces). i18n parity test green.
+
+**Test (new file, page had none).** `app/concierge/page.test.tsx` (3 cases): three mode cards + metadata badges + active/checked state + Mode B gated-disabled; Mode B enables and awaiting-badge drops when `silentReviewAllowed`; pagehead Save posts `{enabled:false}` (await the "Saved" badge before inspecting the recorded PATCH).
+
+**Gotcha → LEARNINGS #39.** A sync `getByRole("radio", { name })` for the controlled **checked** radio (Mode A) deterministically "Unable to find" right after an async `findByRole` for a sibling — the checked input commits a tick later under React 18. Fixed by querying with async `findByRole`. (OWC mount stale-reads — DIRECTIVE #40 — also produced confusing intermediate states during rapid edits: `querySelectorAll` finding 0 radios just after `findByRole` found one; resolved once the file settled + `--no-cache`/`--runInBand`.)
+
+**Gates.** admin typecheck + `next lint` clean; admin **123** jest green (`--runInBand` — the parallel runner flakes/OOMs/serves stale files in-sandbox; the same suites pass serially); root `knip` + `lint:css` clean. No hardcoded hex/px, no new ds.css.
