@@ -5,7 +5,7 @@ export const en = {
   eyebrow: "System",
   heading: "Access control",
   intro:
-    "The admin portal is invite-only. Only the emails below can sign in; each one's role is synced from this list on every sign-in. Removing an entry blocks access on the next sign-in. The consumer app is unaffected.",
+    "The admin portal is invite-only — only the emails below can sign in, and each one's role syncs from this list on every sign-in. Granting {admin} or {expert} here decides what they see after Google sign-in. Removing an entry blocks access on the next sign-in; the consumer app is unaffected.",
   // Add-to-whitelist form.
   emailLabel: "Email",
   emailPlaceholder: "person@example.com",
@@ -42,7 +42,7 @@ export const vi = {
   eyebrow: "Hệ thống",
   heading: "Kiểm soát truy cập",
   intro:
-    "Cổng quản trị chỉ dành cho người được mời. Chỉ những email dưới đây mới có thể đăng nhập; vai trò của mỗi email được đồng bộ từ danh sách này mỗi lần đăng nhập. Xóa một mục sẽ chặn truy cập ở lần đăng nhập kế tiếp. Ứng dụng người dùng không bị ảnh hưởng.",
+    "Cổng quản trị chỉ dành cho người được mời — chỉ những email dưới đây mới có thể đăng nhập, và vai trò của mỗi email được đồng bộ từ danh sách này mỗi lần đăng nhập. Cấp quyền {admin} hoặc {expert} ở đây quyết định những gì họ thấy sau khi đăng nhập bằng Google. Xóa một mục sẽ chặn truy cập ở lần đăng nhập kế tiếp; ứng dụng người dùng không bị ảnh hưởng.",
   // Add-to-whitelist form.
   emailLabel: "Email",
   emailPlaceholder: "person@example.com",

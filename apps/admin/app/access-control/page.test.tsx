@@ -80,6 +80,21 @@ describe("AccessControlPage — table", () => {
 
     await screen.findByText("No emails are whitelisted yet.");
   });
+
+  it("frames the add form in a card and bolds the grantable roles in the intro (screenshot 22)", async () => {
+    mockApi("GET", LIST, { body: [] });
+    const { container } = renderWithProviders(<AccessControlPage />, { role: "admin" });
+    await screen.findByText("No emails are whitelisted yet.");
+
+    // The intro emphasizes both grantable roles in <strong> (no separate copy key).
+    const emphasized = Array.from(container.querySelectorAll("p.muted strong")).map(
+      (n) => n.textContent,
+    );
+    expect(emphasized).toEqual(expect.arrayContaining(["Admin", "Expert"]));
+
+    // The add-to-whitelist form sits inside a bordered `.card .card-pad` panel.
+    expect(screen.getByRole("button", { name: "Add" }).closest(".card.card-pad")).not.toBeNull();
+  });
 });
 
 describe("AccessControlPage — add", () => {

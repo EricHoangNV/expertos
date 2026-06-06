@@ -5467,3 +5467,18 @@ New i18n key `detail.back` in `dictionaries/users.ts` (EN "← Back to users" / 
 Real-data fidelity kept (`getUser`/`AdminUserDetailDto`; mockup "J&P GLOBAL" branding + sample user ignored). No hardcoded hex/px; reused existing `.eyebrow` ds.css + next/link.
 
 Gates: admin typecheck + next lint clean; full admin suite 128/128 with `--runInBand` (default parallel run flakes rotating async-timeout suites in-sandbox — OOM under load, DIRECTIVE #40; all green individually/in-band); root knip + lint:css clean.
+
+## M19.5.3 — access-control design parity (screenshot 22)
+
+**Task.** M19.5.3 (verify+polish on M14.4.3): wrap the add-form row in a `.card .card-pad` panel; bold the "admin"/"expert" words in the intro — keep the real client (`listAllowedEmails`/`addAllowedEmail`/`updateAllowedEmail`/`removeAllowedEmail`, `AllowedEmailDto`) and the existing form + Table. Constraint: **No new keys.**
+
+**Implementation.**
+- `apps/admin/app/access-control/page.tsx`: (1) `AddAllowedEmail`'s outer `<div className="row gap2">` → `"card card-pad row gap2"` — the form now renders as a bordered/padded panel (matches screenshot 22), `.row` still drives the flex layout. (2) New `renderIntro(template, admin, expert)` helper splits the translated `intro` on `(\{admin\}|\{expert\})` and substitutes the localized `roleAdmin`/`roleExpert` labels wrapped in `<strong>`, with literal segments in `<Fragment>`; the intro `<p className="muted">` now renders `renderIntro(t("intro"), t("roleAdmin"), t("roleExpert"))`. Added `Fragment` + `ReactNode` imports.
+- `apps/admin/src/lib/i18n/dictionaries/access-control.ts`: reworded the existing `intro` value (EN+VI) to embed `{admin}`/`{expert}` placeholders + a "Granting … decides what they see after Google sign-in" sentence; **no key added** — the bolded words reuse the existing role keys.
+- `apps/admin/app/access-control/page.test.tsx`: +1 test asserting `p.muted strong` contains both "Admin" and "Expert" and the Add button's nearest `.card.card-pad` ancestor exists.
+
+**Why the placeholder approach.** The `createTranslator` engine is string-only (no rich/JSX interpolation), and the task forbids new keys, so the only way to bold inline words that survive EN↔VI translation is to embed positional placeholders in the one `intro` string and substitute React `<strong>` nodes at render. The i18n lockstep placeholder-parity test guarantees `{admin}`/`{expert}` stay in both locales.
+
+**Gates.** admin typecheck + `next lint` clean; access-control suite 10/10; full admin suite **129/129** green with `--runInBand` (default parallel run flakes rotating async-timeout suites in-sandbox — OOM under load, DIRECTIVE #40; all pass in-band); root `knip` + `lint:css` clean. Unit total 1723→1724.
+
+**Remaining M19:** M19.5.4 audit, M19.5.5 settings (both `apps/admin` platform).

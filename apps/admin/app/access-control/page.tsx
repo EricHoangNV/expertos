@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Badge, Button, Field, Input, Select, Table } from "@expertos/ui";
 import type { AllowedEmailDto, AllowedEmailRole } from "@expertos/shared";
 import { AdminFrame } from "../../src/components/AdminFrame";
@@ -16,6 +16,19 @@ import {
 /** Role → badge tone: admin reads as the elevated (red) role, expert as informational (info). */
 function roleTone(role: AllowedEmailRole): "red" | "info" {
   return role === "admin" ? "red" : "info";
+}
+
+/**
+ * Render the intro, emphasizing the two grantable roles (screenshot 22). The translated `intro`
+ * carries `{admin}`/`{expert}` placeholders; we split on them and substitute the localized role
+ * labels wrapped in `<strong>` — so the bolding survives translation without a separate copy key.
+ */
+function renderIntro(template: string, admin: string, expert: string): ReactNode[] {
+  return template.split(/(\{admin\}|\{expert\})/).map((seg, i) => {
+    if (seg === "{admin}") return <strong key={i}>{admin}</strong>;
+    if (seg === "{expert}") return <strong key={i}>{expert}</strong>;
+    return <Fragment key={i}>{seg}</Fragment>;
+  });
 }
 
 /** The add-to-whitelist form: email + role, posting a new entry then refreshing the table. */
@@ -59,7 +72,7 @@ function AddAllowedEmail({
   }, [email, role, getToken, onAdded, onError, t]);
 
   return (
-    <div className="row gap2">
+    <div className="card card-pad row gap2">
       <Field label={t("emailLabel")}>
         <Input
           type="email"
@@ -173,7 +186,7 @@ export default function AccessControlPage() {
         <div>
           <div className="eyebrow">{t("eyebrow")}</div>
           <h1 className="h1">{t("heading")}</h1>
-          <p className="muted">{t("intro")}</p>
+          <p className="muted">{renderIntro(t("intro"), t("roleAdmin"), t("roleExpert"))}</p>
         </div>
       </div>
 
