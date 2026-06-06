@@ -5307,3 +5307,15 @@ Styling/alignment parity pass on `apps/admin/app/experts/[id]/page.tsx` (real `A
 - ProfileEditor / CalendarEditor / voice-link sections already `.card .card-pad` — verified.
 - Added one M19.2.5 test to `app/experts/[id]/page.test.tsx` (pagehead status badge + slug + Deactivate toggle + both stat cards). No new i18n keys, no new ds.css.
 - Gates: admin typecheck + next lint clean; root lint:css + knip clean; experts suites green (9 tests). No hardcoded hex/px.
+
+## 2026-06-06 — M19.2.6 voice-profile-detail design parity (screenshot 09)
+
+Picked the next open M19 task. Confirmed the Security Cycle 4 / Product Cycle 2 FAIL verdicts are already remediated in-sandbox (`apps/api/src/knowledge/bulk-publish.cli.ts` routes through `publishReviewedVersionTx`); their verdicts stay FAIL pending external re-review (not in-sandbox actionable). No open requests.
+
+**What changed.** `apps/admin/app/voice-profiles/[id]/page.tsx`. The page (built in M13.5) already rendered the head row the screenshot wants — right-aligned Approve (primary) + Request-changes (ghost) sign-off buttons via `ACTIONS[status]`, `.avatar avatar-lg` identity, `publishStatusTone` status `Badge` + amber "Awaiting your sign-off" badge, `.muted .mono` meta. Verified each against the mockup; the only real delta was the reputation warning: it was a plain white `.card card-pad` with an amber title `Badge` + `.muted` body. Restyled it to the shared `.msg-notice tone-amber` warm-amber callout (the same surface the web chat `ChatStateNotice` uses) with a `.msg-notice-head` = ⚠ warning-triangle inline SVG (reusing `.consult-card-icon`, the project's amber inline-flex icon idiom, `currentColor`) + `.msg-notice-title`, body as `.msg-notice-body`. Kept both existing `detail.warningTitle`/`detail.warningBody` keys — no new i18n keys, no new ds.css (per task).
+
+The deferred structured voice widgets (M13.5.3–5.6 dimension bars / do-don't rules / fidelity) stay out — still no schema backing.
+
+**Test.** New file `app/voice-profiles/[id]/page.test.tsx` (page had none): 1 M19.2.6 case asserting the warning text resolves inside `.msg-notice.tone-amber`, both sign-off buttons + awaiting badge render for `expert_review`, and `.avatar.avatar-lg` is present. M15.2.1 provider harness + `setMockParams`, mocks `GET /voice-profiles/:id`.
+
+**Gates.** admin typecheck + `next lint` clean; admin **120** jest green (`--runInBand` — the parallel runner flakes/OOMs workers in-sandbox: a parallel run reported 7 spurious suite failures that all pass serially); root `knip` + `lint:css` clean.

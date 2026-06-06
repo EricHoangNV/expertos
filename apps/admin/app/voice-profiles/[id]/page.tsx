@@ -144,11 +144,31 @@ export default function VoiceProfileDetailPage() {
             </div>
           </div>
 
-          <section className="card card-pad">
-            <Badge tone="amber" dot>
-              {t("detail.warningTitle")}
-            </Badge>
-            <p className="muted">{t("detail.warningBody")}</p>
+          {/* Reputation warning (M19.2.6, screenshot 09): a warm amber callout with a ⚠ glyph,
+              reusing the shared `.msg-notice tone-amber` card + the amber `.consult-card-icon`. */}
+          <section className="msg-notice tone-amber">
+            <div className="msg-notice-head">
+              <span className="consult-card-icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" focusable="false">
+                  <path
+                    d="M12 3 1.8 21h20.4L12 3z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M12 10v5M12 18h.01"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>
+              <p className="msg-notice-title">{t("detail.warningTitle")}</p>
+            </div>
+            <p className="msg-notice-body">{t("detail.warningBody")}</p>
           </section>
 
           {profile.description != null && profile.description !== "" && (
