@@ -30,8 +30,8 @@ test.describe("history + saved answers", () => {
     await page.getByRole("button", { name: "Search" }).click();
     await expect(page.getByText("Search results")).toBeVisible();
 
-    // Saved answers panel reflects the bookmark made above.
-    await expect(page.getByText("Saved answers")).toBeVisible();
+    // Saved answers live behind their own tab (M19.1.1); switch to it and confirm the bookmark.
+    await page.getByRole("tab", { name: "Saved answers" }).click();
     await expect(page.getByRole("button", { name: "Open conversation" }).first()).toBeVisible();
   });
 
@@ -39,6 +39,8 @@ test.describe("history + saved answers", () => {
     await ask(page, `Rename target ${marker}`);
     await page.goto(`${env.webBaseUrl}/history`);
 
+    // Open a conversation via the saved-answers tab's "Open conversation" jump (M19.1.1).
+    await page.getByRole("tab", { name: "Saved answers" }).click();
     await page.getByRole("button", { name: "Open conversation" }).first().click();
     // Exact: conversation entries are buttons whose name is the title, and prior runs leave
     // titles containing "Rename"/"Renamed" — match only the rename *action* button.

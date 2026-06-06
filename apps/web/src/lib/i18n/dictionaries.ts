@@ -158,7 +158,10 @@ const en = {
     conciergeOfferOption: "Concierge review offer",
   },
   history: {
+    eyebrow: "Your conversations",
     heading: "History",
+    tabConversations: "Conversations",
+    tabSaved: "Saved answers",
     signInPrompt: "Please sign in on the home page to view your history.",
     untitled: "Untitled conversation",
     back: "← Back",
@@ -382,7 +385,10 @@ const vi = {
     conciergeOfferOption: "Đề nghị xem xét hỗ trợ",
   },
   history: {
+    eyebrow: "Cuộc trò chuyện của bạn",
     heading: "Lịch sử",
+    tabConversations: "Cuộc trò chuyện",
+    tabSaved: "Câu trả lời đã lưu",
     signInPrompt: "Vui lòng đăng nhập ở trang chủ để xem lịch sử của bạn.",
     untitled: "Cuộc trò chuyện chưa đặt tên",
     back: "← Quay lại",

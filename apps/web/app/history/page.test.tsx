@@ -222,6 +222,9 @@ describe("HistoryPage", () => {
     mockApi("DELETE", "/saved-answers/saved-1", { status: 204 });
     renderWithProviders(<HistoryPage />);
 
+    // Saved answers now live behind the "Saved answers" tab (M19.1.1); switch to it first.
+    await user.click(await screen.findByRole("tab", { name: "Saved answers" }));
+
     // The saved-answers panel renders its bookmark with a Remove control once loaded.
     await user.click(await screen.findByRole("button", { name: "Remove" }));
 

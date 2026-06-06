@@ -30,6 +30,8 @@ test.describe("cross-user isolation", () => {
 
       // Rename the conversation to the unique marker title so we assert on a deterministic string.
       await memberPage.goto(`${env.webBaseUrl}/history`);
+      // Saved answers (and their "Open conversation" jump) live behind their own tab (M19.1.1).
+      await memberPage.getByRole("tab", { name: "Saved answers" }).click();
       await memberPage.getByRole("button", { name: "Open conversation" }).first().click();
       await memberPage.getByRole("button", { name: "Rename", exact: true }).click();
       await memberPage.getByLabel("Conversation title").fill(renamed);
