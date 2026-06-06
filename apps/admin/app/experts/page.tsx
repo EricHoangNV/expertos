@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Badge, Button, Field, Input, Select, Table, Textarea } from "@expertos/ui";
+import { avatarInitials, avatarTone, Badge, Button, Field, Input, Select, Table, Textarea } from "@expertos/ui";
 import type { AdminExpertSummaryDto } from "@expertos/shared";
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
@@ -21,6 +21,7 @@ export default function ExpertsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [active, setActive] = useState<ActiveFilter>("");
   const [search, setSearch] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -53,21 +54,28 @@ export default function ExpertsPage() {
         <div>
           <div className="eyebrow">{t("eyebrow")}</div>
           <h1 className="h1">{t("list.title")}</h1>
-          <p className="muted">{t("list.intro")}</p>
+          <p className="lede">{t("list.intro")}</p>
         </div>
+        <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
+          {t("create.newExpert")}
+        </Button>
       </div>
 
       {error != null && <Badge tone="red">{error}</Badge>}
       {notice != null && <Badge tone="green">{notice}</Badge>}
 
-      <CreateExpert
-        getToken={getIdToken}
-        onCreated={(name) => {
-          setNotice(t("list.created", { name }));
-          void load();
-        }}
-        onError={setError}
-      />
+      {createOpen && (
+        <CreateExpert
+          getToken={getIdToken}
+          onClose={() => setCreateOpen(false)}
+          onCreated={(name) => {
+            setCreateOpen(false);
+            setNotice(t("list.created", { name }));
+            void load();
+          }}
+          onError={setError}
+        />
+      )}
 
       <div className="row gap2">
         <Field label={t("list.activeLabel")}>
@@ -109,7 +117,14 @@ export default function ExpertsPage() {
           <tbody>
             {rows.map((e) => (
               <tr key={e.id}>
-                <td>{e.displayName}</td>
+                <td>
+                  <span className="row gap2">
+                    <span className={`avatar avatar-sm tone-${avatarTone(e.displayName)}`} aria-hidden>
+                      {avatarInitials(e.displayName)}
+                    </span>
+                    {e.displayName}
+                  </span>
+                </td>
                 <td className="mono muted">{e.slug}</td>
                 <td>{e.title ?? <span className="muted">—</span>}</td>
                 <td>
@@ -117,7 +132,7 @@ export default function ExpertsPage() {
                 </td>
                 <td className="mono">{e.voiceProfileCount}</td>
                 <td>
-                  <Link href={`/experts/${e.id}`} className="navitem">
+                  <Link href={`/experts/${e.id}`} className="btn btn-subtle btn-sm">
                     {t("list.manage")}
                   </Link>
                 </td>
@@ -133,12 +148,12 @@ export default function ExpertsPage() {
 interface CreateExpertProps {
   getToken: () => Promise<string | null>;
   onCreated: (displayName: string) => void;
+  onClose: () => void;
   onError: (message: string) => void;
 }
 
-function CreateExpert({ getToken, onCreated, onError }: CreateExpertProps) {
+function CreateExpert({ getToken, onCreated, onClose, onError }: CreateExpertProps) {
   const t = useT("experts");
-  const [open, setOpen] = useState(false);
   const [slug, setSlug] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [title, setTitle] = useState("");
@@ -165,7 +180,6 @@ function CreateExpert({ getToken, onCreated, onError }: CreateExpertProps) {
         bio: bio.trim() === "" ? undefined : bio.trim(),
       });
       reset();
-      setOpen(false);
       onCreated(displayName.trim());
     } catch (err) {
       onError(err instanceof Error ? err.message : t("create.createError"));
@@ -173,16 +187,6 @@ function CreateExpert({ getToken, onCreated, onError }: CreateExpertProps) {
       setBusy(false);
     }
   }, [slug, displayName, title, bio, getToken, reset, onCreated, onError, t]);
-
-  if (!open) {
-    return (
-      <div className="row">
-        <Button variant="primary" size="sm" onClick={() => setOpen(true)}>
-          {t("create.newExpert")}
-        </Button>
-      </div>
-    );
-  }
 
   return (
     <section className="card card-pad">
@@ -231,7 +235,7 @@ function CreateExpert({ getToken, onCreated, onError }: CreateExpertProps) {
           >
             {busy ? t("create.creating") : t("create.create")}
           </Button>
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setOpen(false)}>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>
             {t("create.cancel")}
           </Button>
         </div>

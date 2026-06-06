@@ -235,6 +235,7 @@ button { font-family: inherit; cursor: pointer; }
 .avatar { border-radius: 50%; object-fit: cover; background: var(--sand-200); display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 700; color: var(--ink-700); overflow: hidden; flex: none; }
 .avatar-ring { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--red-200, var(--red-100)); }
 .avatar-lg { width: 52px; height: 52px; font-size: 18px; }
+.avatar-sm { width: 32px; height: 32px; font-size: 12px; }
 
 /* ============================================================
    Layout helpers

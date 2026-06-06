@@ -5275,3 +5275,27 @@ Picked the next open M19 task. FAIL verdicts (Security Cycle 4 / Product Cycle 2
 **Test:** new `app/knowledge-drafts/[id]/page.test.tsx` (page had none) — 3 cases: callout + status badge render for a conversation-sourced draft; callout omitted for `conversationId: null`; load-error badge. M15.2.1 harness + `setMockParams({id})`.
 
 **Gates:** admin typecheck + `next lint` clean; admin 115 jest green serially (`--runInBand` — parallel runner OOMs/times-out workers in-sandbox; all green in isolation, confirming contention not regression); root `knip` clean. No DTO changes (real-data fidelity per §M19).
+
+---
+
+## M19.2.4 — Experts list page design parity (screenshot 07)
+**Date:** 2026-06-06
+**Ref:** PRD §M19 (mockup design-parity pass); PRD-TRACKING M19.2.4
+
+**What was done:**
+- Applied the four screenshot-07 layout deltas to `apps/admin/app/experts/page.tsx`: "New expert" trigger moved into the right-aligned `.pagehead`; leading avatar cell before each name; Manage rendered as a button-styled link; intro `.muted`→`.lede`.
+- Added a reusable `.avatar-sm` (32px) size to `packages/ui/src/ds.css` (there was only `.avatar-lg`).
+- New `apps/admin/app/experts/page.test.tsx` (3 cases — the list page had no test before).
+
+**Key decisions:**
+- **Controlled CreateExpert.** To put the trigger in the pagehead while keeping the form below, I lifted the create-form `open` state into the page (`createOpen`) and made `CreateExpert` a controlled child (renders form only, new `onClose` prop). Removed its old self-owned `if(!open) return <trigger>` branch. Cleaner than duplicating a second trigger.
+- **`.avatar-sm` in ds.css, not an inline px.** Each avatar context previously defined its own size; a named reusable size keeps the table-row avatar on the ds.css scale and is ready for M19.5.1 (users) which wants the same. px lives inside ds.css (the scale source), so no token violation.
+- **Manage = `<Link className="btn btn-subtle btn-sm">`.** The repo's established "link styled as button" pattern (e.g. `knowledge/page.tsx`); `btn-subtle` matches the screenshot's light-outlined Manage button. Kept the `/experts/{id}` href.
+- **No copy/key changes.** The task line specifies "No new keys" and lists only layout deltas (unlike M19.4.1, which explicitly called for copy alignment) — so eyebrow/intro values were left as-is; only the intro's class changed to `.lede`.
+
+**Files changed:**
+- `apps/admin/app/experts/page.tsx` — pagehead trigger + avatar cell + Manage button + lede; CreateExpert made controlled.
+- `packages/ui/src/ds.css` — new `.avatar-sm` rule next to `.avatar-lg`.
+- `apps/admin/app/experts/page.test.tsx` — new (pagehead/trigger, roster table avatar+badges+Manage, error state).
+
+**Gates:** admin typecheck + `next lint` clean; root `lint:css` clean; admin 118 jest (+3) + ui 252 jest green (`--runInBand` — the parallel runner times out workers on the OWC mount; same suites pass in isolation, confirming resource contention not regression). No `knip`/`deadcode` script configured in this repo. No hardcoded hex/px.
