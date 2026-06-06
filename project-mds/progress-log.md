@@ -5365,3 +5365,17 @@ i18n (`dictionaries/answers.ts`, EN+VI lockstep): `eyebrow` "Quality" → "M8.5 
 Real-data fidelity kept: "J&P GLOBAL" mockup branding ignored, model shows the real value (`gpt-4o-mini`, not the mockup's illustrative "GPT-PREMIUM"), no DTO fields added, no hardcoded hex/px, no new ds.css.
 
 Gates: admin typecheck + `next lint` clean; admin 126/127 jest green serially (`--runInBand`; the single fail is an order-dependent `experts/page` act-warning flake that passes in isolation — the parallel runner OOM/SIGKILLs workers in-sandbox, DIRECTIVE #40); the answers page carries no dedicated test (two cosmetic edits; the lockstep test covers the dictionary). Root `knip` + `lint:css` clean. Unit total unchanged at 1722.
+
+---
+
+## M19.3.4 — failed-queries (inspector feed) design parity (screenshot 13)
+
+Restyled `apps/admin/app/failed-queries/page.tsx` to match the mockup, on the real `FailedQueryDto` feed (no API/DTO change). Three deltas:
+
+1. **Per-card "Draft knowledge" action (new).** The page previously had no per-card CTA. Added a trailing `.row` with `<Link href="/knowledge-drafts" className="btn btn-primary btn-sm">{t("draftKnowledge")}</Link>` — same destination as the dashboard low-confidence card (`app/page.tsx:390`), which routes to the draft pipeline rather than mutating in-card. Imported `Link` from `next/link`.
+2. **Intro `.muted` → `.lede`** to match the mockup's lead paragraph treatment.
+3. **Copy alignment (i18n EN+VI lockstep, `dictionaries/failed-queries.ts`).** `eyebrow` "Quality" → "Content roadmap · Inspector"; `title` "Flagged answers" → "Failed queries"; `intro` reworded to "Answers users flagged as unhelpful or that returned insufficient knowledge — the raw signal for what to write next."; `reason` "Reason" → "Reason flagged"; new key `draftKnowledge` = "Draft knowledge". VI mirrored (`Lộ trình nội dung · Trình kiểm tra` / `Truy vấn thất bại` / `Lý do gắn cờ` / `Soạn kiến thức`).
+
+The badge-row (insufficient-knowledge amber / model info / confidence ink), the `.label` QUESTION/ANSWER/REASON card feed, and the Load-more pagination are unchanged. Per the manifest's "keep the badge-row", the model/confidence stay as info/ink `Badge`s rather than the mockup's flat gray pills. "J&P GLOBAL" mockup branding ignored. No hardcoded hex/px, no new ds.css.
+
+Gates: admin typecheck + `next lint` clean; admin **127/127 jest green** with `--maxWorkers=2` (the default parallel runner OOM-crashes workers in-sandbox, producing 7 spurious "suite failed to run" — DIRECTIVE #40; the failed-queries page has no dedicated test, the lockstep test covers the new dict key); root `knip` + `lint:css` clean. Unit total unchanged at 1722. Committed `2ed0eea`, pushed to `main`.
