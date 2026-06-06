@@ -115,6 +115,10 @@ describe("UserDetailPage — render", () => {
       // No subscription → the managed-elsewhere note.
       expect(screen.getByText("No subscription — effectively on the Free plan.")).toBeInTheDocument();
     });
+
+    // Back-to-users eyebrow link (M19.5.2).
+    const back = screen.getByRole("link", { name: "← Back to users" });
+    expect(back).toHaveAttribute("href", "/users");
   });
 });
 

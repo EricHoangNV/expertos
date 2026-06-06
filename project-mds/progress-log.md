@@ -5457,3 +5457,13 @@ No new i18n keys (reused `list.intro`, `list.manage`; the raw `planKey` string d
 Real-data fidelity kept (`listUsers`/`AdminUserSummaryDto`; mockup "J&P GLOBAL" branding ignored). No hardcoded hex/px; reused existing ds.css.
 
 Gates: admin typecheck + next lint clean; users suite 9/9; full admin suite 128/128 with `--runInBand` (default parallel run flakes rotating async-timeout suites in-sandbox — OOM under load, DIRECTIVE #40; all green individually/in-band); root knip + lint:css clean. Tests now 1723 total (admin 127→128).
+
+## M19.5.2 — user-detail design parity (screenshot 21)
+
+Added the missing "← Back to users" eyebrow link to `apps/admin/app/users/[id]/page.tsx`. The `.pagehead` eyebrow previously rendered the static `t("eyebrow")` ("People"); per screenshot 21 it now renders a crimson `next/link` to `/users` (`t("detail.back")`), mirroring the M19.2.1 knowledge-detail back-eyebrow pattern. Added `import Link from "next/link"`. The 3 `.stat` cards (conversations/uploads/consultations) + Subscription/Role/FairUse/Deletion `.card` sections already matched the mockup — no rebuild.
+
+New i18n key `detail.back` in `dictionaries/users.ts` (EN "← Back to users" / VI "← Quay lại Người dùng"), lockstep parity green. Extended the existing render test with a back-link href assertion (9/9 users suite).
+
+Real-data fidelity kept (`getUser`/`AdminUserDetailDto`; mockup "J&P GLOBAL" branding + sample user ignored). No hardcoded hex/px; reused existing `.eyebrow` ds.css + next/link.
+
+Gates: admin typecheck + next lint clean; full admin suite 128/128 with `--runInBand` (default parallel run flakes rotating async-timeout suites in-sandbox — OOM under load, DIRECTIVE #40; all green individually/in-band); root knip + lint:css clean.

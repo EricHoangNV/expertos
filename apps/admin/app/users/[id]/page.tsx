@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Badge, Button, Field, Input, Select, Stat } from "@expertos/ui";
 import {
@@ -63,7 +64,9 @@ export default function UserDetailPage() {
     <AdminFrame>
       <div className="pagehead">
         <div>
-          <div className="eyebrow">{t("eyebrow")}</div>
+          <div className="eyebrow">
+            <Link href="/users">{t("detail.back")}</Link>
+          </div>
           <h1 className="h1">{user?.email ?? t("detail.fallbackTitle")}</h1>
         </div>
       </div>

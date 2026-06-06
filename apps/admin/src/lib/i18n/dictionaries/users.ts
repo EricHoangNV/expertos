@@ -29,6 +29,7 @@ export const en = {
     manage: "Manage",
   },
   detail: {
+    back: "← Back to users",
     fallbackTitle: "User",
     loadError: "Failed to load the user.",
     roleUpdated: "Role updated.",
@@ -109,6 +110,7 @@ export const vi = {
     manage: "Quản lý",
   },
   detail: {
+    back: "← Quay lại Người dùng",
     fallbackTitle: "Người dùng",
     loadError: "Không thể tải người dùng.",
     roleUpdated: "Đã cập nhật vai trò.",
