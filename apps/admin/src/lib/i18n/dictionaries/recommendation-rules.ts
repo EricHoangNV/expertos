@@ -2,7 +2,7 @@ import type { Messages } from "@expertos/ui";
 
 /** Funnel recommendation-rules editor (M13.3): header, per-trigger meta, rule controls, validation. */
 export const en = {
-  eyebrow: "Consultation funnel",
+  eyebrow: "When to recommend a consultation",
   title: "Recommendation rules",
   subtitle:
     "When to surface an in-chat “book a consultation” prompt. Changes take effect on the next chat turn — no deploy. Higher priority wins when several rules fire on one answer.",
@@ -47,7 +47,7 @@ export const en = {
 } satisfies Messages;
 
 export const vi = {
-  eyebrow: "Phễu tư vấn",
+  eyebrow: "Khi nào nên đề xuất tư vấn",
   title: "Quy tắc gợi ý",
   subtitle:
     "Thời điểm hiển thị lời mời “đặt lịch tư vấn” ngay trong chat. Thay đổi có hiệu lực ở lượt chat kế tiếp — không cần triển khai. Quy tắc có độ ưu tiên cao hơn sẽ thắng khi nhiều quy tắc cùng kích hoạt trên một câu trả lời.",

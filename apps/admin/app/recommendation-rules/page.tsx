@@ -61,7 +61,7 @@ export default function RecommendationRulesPage() {
         <div>
           <div className="eyebrow">{t("eyebrow")}</div>
           <h1 className="h1">{t("title")}</h1>
-          <p className="muted">{t("subtitle")}</p>
+          <p className="lede">{t("subtitle")}</p>
         </div>
       </div>
 
@@ -81,7 +81,7 @@ export default function RecommendationRulesPage() {
                 <td>
                   <div className="col gap1">
                     <strong>{t(`trigger.${TRIGGER_KEY[rule.trigger]}.label`)}</strong>
-                    <Badge tone={rule.kind === "keyword" ? "info" : "ink"}>{rule.kind}</Badge>
+                    <span className="chip">{rule.kind.toUpperCase()}</span>
                     <span className="muted">{t(`trigger.${TRIGGER_KEY[rule.trigger]}.help`)}</span>
                   </div>
                 </td>
@@ -203,16 +203,19 @@ function RuleEditor({ rule, consultationTypes, getToken, onSaved }: RuleEditorPr
 
   return (
     <div className="col gap1">
-      <label className="row gap1">
-        <input
-          type="checkbox"
-          checked={enabled}
-          disabled={saving}
-          onChange={(e) => {
-            setEnabled(e.target.checked);
-            touched();
-          }}
-        />
+      <label className="row gap2">
+        <span className="switch">
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={saving}
+            onChange={(e) => {
+              setEnabled(e.target.checked);
+              touched();
+            }}
+          />
+          <span className="track" />
+        </span>
         {t("enabled")}
       </label>
 
