@@ -47,6 +47,7 @@ export default function DraftQueuePage() {
         <div>
           <div className="eyebrow">{t("eyebrow")}</div>
           <h1 className="h1">{t("title")}</h1>
+          <p className="lede">{t("lede")}</p>
         </div>
         <Field label={t("statusFilter")}>
           <Select

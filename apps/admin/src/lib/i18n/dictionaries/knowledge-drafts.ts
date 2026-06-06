@@ -9,6 +9,7 @@ export const en = {
   // Queue page header.
   eyebrow: "Drafts",
   title: "Conversation-to-knowledge",
+  lede: "Drafts authored directly or auto-created from recurring conversation gaps. Submit → expert review → publish.",
   statusFilter: "Status",
   statusAll: "All",
   // Queue table.
@@ -48,6 +49,7 @@ export const en = {
 export const vi = {
   eyebrow: "Bản nháp",
   title: "Hội thoại thành kiến thức",
+  lede: "Bản nháp được soạn trực tiếp hoặc tự động tạo từ các lỗ hổng hội thoại lặp lại. Gửi → chuyên gia duyệt → xuất bản.",
   statusFilter: "Trạng thái",
   statusAll: "Tất cả",
   empty: "Không có bản nháp nào trong chế độ xem này.",
