@@ -42,6 +42,27 @@ beforeEach(() => {
   mockApi("GET", `/admin/experts/${EXPERT_ID}`, { body: expert() });
 });
 
+describe("expert-detail header (M19.2.5)", () => {
+  it("renders the status badge, slug, toggle action, and the two stat cards", async () => {
+    mockApi("GET", `/admin/experts/${EXPERT_ID}`, {
+      body: expert({ active: true, slug: "dr-lan", voiceProfileCount: 2, documentCount: 5 }),
+    });
+    mockApi("GET", `/admin/experts/${EXPERT_ID}/calendar`, { body: settings() });
+    renderWithProviders(<ExpertDetailPage />, { role: "admin" });
+
+    // Status badge + slug meta in the pagehead.
+    expect(await screen.findByText("active")).toBeInTheDocument();
+    expect(screen.getByText("dr-lan")).toBeInTheDocument();
+    // Active expert offers the deactivate toggle.
+    expect(screen.getByRole("button", { name: "Deactivate" })).toBeInTheDocument();
+    // Stat cards render their values ("Voice profiles" also labels the voice-link card below).
+    expect(screen.getAllByText("Voice profiles").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Documents")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
+  });
+});
+
 describe("CalendarEditor — data source", () => {
   it("reads via the admin endpoint for an admin", async () => {
     mockApi("GET", `/admin/experts/${EXPERT_ID}/calendar`, {

@@ -76,7 +76,18 @@ export default function ExpertDetailPage() {
         <div>
           <div className="eyebrow">{t("eyebrow")}</div>
           <h1 className="h1">{expert?.displayName ?? t("detail.fallbackTitle")}</h1>
+          {expert != null && <p className="muted mono">{expert.slug}</p>}
         </div>
+        {expert != null && (
+          <div className="row gap2">
+            <Button variant="subtle" size="sm" onClick={() => void toggleActive()}>
+              {expert.active ? t("detail.deactivate") : t("detail.activate")}
+            </Button>
+            <Badge tone={expert.active ? "green" : "ink"}>
+              {expert.active ? t("active") : t("inactive")}
+            </Badge>
+          </div>
+        )}
       </div>
 
       {error != null && <Badge tone="red">{error}</Badge>}
@@ -84,17 +95,6 @@ export default function ExpertDetailPage() {
 
       {expert != null && (
         <div className="col gap3">
-          <div className="row gap2">
-            <Badge tone={expert.active ? "green" : "ink"}>
-              {expert.active ? t("active") : t("inactive")}
-            </Badge>
-            <span className="muted mono">{expert.slug}</span>
-            <span className="grow" />
-            <Button variant="subtle" size="sm" onClick={() => void toggleActive()}>
-              {expert.active ? t("detail.deactivate") : t("detail.activate")}
-            </Button>
-          </div>
-
           <div className="row gap3">
             <Stat label={t("detail.statVoiceProfiles")} value={String(expert.voiceProfileCount)} />
             <Stat label={t("detail.statDocuments")} value={String(expert.documentCount)} />

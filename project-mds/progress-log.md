@@ -5299,3 +5299,11 @@ Picked the next open M19 task. FAIL verdicts (Security Cycle 4 / Product Cycle 2
 - `apps/admin/app/experts/page.test.tsx` — new (pagehead/trigger, roster table avatar+badges+Manage, error state).
 
 **Gates:** admin typecheck + `next lint` clean; root `lint:css` clean; admin 118 jest (+3) + ui 252 jest green (`--runInBand` — the parallel runner times out workers on the OWC mount; same suites pass in isolation, confirming resource contention not regression). No `knip`/`deadcode` script configured in this repo. No hardcoded hex/px.
+
+## M19.2.5 — expert-detail page design parity (screenshot 08) — 2026-06-06
+Styling/alignment parity pass on `apps/admin/app/experts/[id]/page.tsx` (real `AdminExpertDetailDto`; `getExpert`/`updateExpert`/`setExpertActive`). Screenshot 08 renders a draft-editor layout, so per §M19 I mirrored its hierarchy (eyebrow → h1 → muted-mono meta → right-aligned status badge → stacked card sections), not its content.
+- Moved the active/inactive `Badge` into the `.pagehead` right (paired with the activate/deactivate toggle `Button` in a `.row.gap2`); moved `slug` to a `.muted .mono` meta line under the `.h1`.
+- Promoted the two `Stat` cards (Voice profiles / Documents) to the top of the content column, ahead of the editor sections; removed the old badge+slug+toggle row.
+- ProfileEditor / CalendarEditor / voice-link sections already `.card .card-pad` — verified.
+- Added one M19.2.5 test to `app/experts/[id]/page.test.tsx` (pagehead status badge + slug + Deactivate toggle + both stat cards). No new i18n keys, no new ds.css.
+- Gates: admin typecheck + next lint clean; root lint:css + knip clean; experts suites green (9 tests). No hardcoded hex/px.
