@@ -5167,3 +5167,21 @@ Built the admin **Answer settings** page wiring the M17 runtime answer-tuning si
 **Still pending (external deploy/run gate)**: deploy `main` (carries `ae7e234`) + `prisma migrate deploy` → set prod `EMBEDDING_PROVIDER=openai` + `OPENAI_API_KEY` + restart → `reembed -- --commit` against prod DB → restart/await 30s cache TTL → the four M17.7 verifications (temp=0 in the request within 30s, usage log shows `gpt-4o`, score floor drops low-score chunks, a paraphrased query retrieves the right note). Then M17.7 → `[x]`.
 
 **Tests/gates**: api typecheck + lint clean; api **800 pass / 0 fail** (unchanged — reembed CLI is coverage-exempt, `collectCoverageFrom` = `*.service.ts`). Fix committed + pushed `ae7e234`.
+
+---
+
+## M18 — Uploaded document management ("My Knowledge") — COMPLETE (2026-06-06)
+
+Closed the M5 write-only gap: a user can now see/confirm/delete the documents they "remembered." Read+delete API over the existing `uploaded_files`, a consumer "My Knowledge" page, and a sidebar entry point. No change to upload/parse/embed/retrieval/scoping.
+
+**State found.** The functional core (M18.1 schema, M18.2 API + tests, M18.3.1/.3/.4/.5 client/nav/i18n/jest) had already been committed in `d6dad4a` ("account popup, My Knowledge management, …") **without flipping the manifest or writing build notes** — the board still showed all of M18 `[ ]`. Two legs were genuinely open: **M18.3.2 mockup design-parity** (the page worked but wasn't pinned to screenshot 02 — no `.pagehead`/`.eyebrow`, no file icon, plain filename, no `.mono` size, no `eyebrow` i18n key) and **M18.4.1 E2E** (the upload E2E covered M5 only, not the navigate→delete round-trip).
+
+**This loop.**
+- **Verified the committed legs against §M18 + the spec**, then ran their gates: api 809 tests green (`upload.service.ts` 100% lines), web 112 green. Confirmed the controller carries `@Roles("user")` only on `@Get()`/`@Delete(":id")` (no entitlement guard — a downgraded user keeps see+delete), RLS-scoped list/delete, `_count`-derived `chunkCount`, best-effort blob reclaim after commit (directive §46), `ParseUUIDPipe` + 204 on delete, and the shared `toUploadedFileDto`/`UPLOADED_FILE_SELECT` mapper.
+- **M18.3.2 design parity** (`apps/web/app/knowledge/page.tsx`): page now renders `<main className="umain">` → `.pagehead` (`.eyebrow` "Upload management" + `.h1` heading + `.lede`); each `UploadRow` leads with a document `FileIcon` (shares the sidebar glyph), the filename is `.h3`, the size is `.mono`, and Delete is a right-aligned ghost `Button` with the inline confirm block dropping below the row. New `knowledge.eyebrow` key (EN: "Upload management" / VI: "Quản lý tài liệu tải lên"). All existing text-based jest assertions still pass.
+- **M18.4.1 E2E** (`e2e/specs/web-my-knowledge.spec.ts`): sign in (member) → chat → attach popover → persistent CSV upload (per-run-unique `e2e-my-knowledge-<ts>.csv`) → click the sidebar **My Knowledge** link → assert file + searchable-chunk count visible → Delete + confirm → assert row gone. Self-cleaning + userId-scoped so the global teardown reclaims it on early failure. tsc+eslint clean; host-run pending (sandbox can't run live E2E).
+- **Reconciled tracking**: flipped all M18.x.y `[ ]→[x]`, header → COMPLETE, appended the M18 BUILD-NOTES entry.
+
+**Gates.** web typecheck + lint + 112 tests; e2e typecheck + lint; root `lint:css` + `knip`; full api 809 tests — all green. No new learnings/directives (no bug fixed — the committed code was correct; this was completion + reconciliation).
+
+**Next.** M19 mockup design-parity pass (24 open one-screen-per-loop tasks); M19.4.2 funnel is the worked template.

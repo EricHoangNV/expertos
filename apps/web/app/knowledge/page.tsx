@@ -45,6 +45,29 @@ function SearchableBadge({ count, t }: { count: number; t: Translator }) {
   return <Badge tone="green">{t(key, { count })}</Badge>;
 }
 
+/** Leading document glyph for an upload row (M18.3.2 design parity) — shares the sidebar's icon. */
+function FileIcon() {
+  return (
+    <svg
+      className="ic muted"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      focusable="false"
+      style={{ flex: "none" }}
+    >
+      <path
+        d="M4 5h9l2 2h5v12H4z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** One upload row: filename, mode badge, size, searchable badge, added date, expiry, delete. */
 function UploadRow({
   file,
@@ -70,21 +93,42 @@ function UploadRow({
   const persistent = file.mode === "persistent";
   return (
     <div className="meter">
-      <div className="row gap2 wrap" style={{ alignItems: "baseline" }}>
-        <span>{file.filename}</span>
-        <Badge tone={persistent ? "green" : "info"}>
-          {persistent ? t("badgePersistent") : t("badgeTemporary")}
-        </Badge>
-        <span className="muted">{formatBytes(file.sizeBytes)}</span>
-        <SearchableBadge count={file.chunkCount} t={t} />
-        <span className="muted">
-          {t("added", { when: formatDateTime(locale, file.createdAt, { dateStyle: "medium" }) })}
-        </span>
-        {!persistent && file.expiresAt && (
-          <span className="muted">{expiryLabel(file.expiresAt, now, t)}</span>
+      <div
+        className="row gap2"
+        style={{ alignItems: "flex-start", justifyContent: "space-between" }}
+      >
+        <div className="row gap2" style={{ alignItems: "flex-start", minWidth: 0 }}>
+          <FileIcon />
+          <div className="col gap1" style={{ minWidth: 0 }}>
+            <span className="h3">{file.filename}</span>
+            <div className="row gap2 wrap" style={{ alignItems: "baseline" }}>
+              <Badge tone={persistent ? "green" : "info"}>
+                {persistent ? t("badgePersistent") : t("badgeTemporary")}
+              </Badge>
+              <span className="mono muted">{formatBytes(file.sizeBytes)}</span>
+              <SearchableBadge count={file.chunkCount} t={t} />
+              <span className="muted">
+                {t("added", {
+                  when: formatDateTime(locale, file.createdAt, { dateStyle: "medium" }),
+                })}
+              </span>
+              {!persistent && file.expiresAt && (
+                <span className="muted">{expiryLabel(file.expiresAt, now, t)}</span>
+              )}
+            </div>
+          </div>
+        </div>
+        {!confirming && (
+          <Button
+            variant="ghost"
+            aria-label={t("deleteAria", { name: file.filename })}
+            onClick={onRequestDelete}
+          >
+            {t("delete")}
+          </Button>
         )}
       </div>
-      {confirming ? (
+      {confirming && (
         <div className="col gap1">
           <span className="label">{t("confirmTitle")}</span>
           <span className="muted">{t("confirmBody")}</span>
@@ -97,14 +141,6 @@ function UploadRow({
             </Button>
           </div>
         </div>
-      ) : (
-        <Button
-          variant="ghost"
-          aria-label={t("deleteAria", { name: file.filename })}
-          onClick={onRequestDelete}
-        >
-          {t("delete")}
-        </Button>
       )}
     </div>
   );
@@ -181,8 +217,13 @@ export default function KnowledgePage() {
 
   if (!user) {
     return (
-      <main className="card card-pad">
-        <h1>{t("heading")}</h1>
+      <main className="umain">
+        <div className="pagehead">
+          <div>
+            <div className="eyebrow">{t("eyebrow")}</div>
+            <h1 className="h1">{t("heading")}</h1>
+          </div>
+        </div>
         <Badge tone="info">{t("signInPrompt")}</Badge>
       </main>
     );
@@ -210,9 +251,14 @@ export default function KnowledgePage() {
   );
 
   return (
-    <main className="card card-pad">
-      <h1>{t("heading")}</h1>
-      <p className="lede">{t("lede")}</p>
+    <main className="umain">
+      <div className="pagehead">
+        <div>
+          <div className="eyebrow">{t("eyebrow")}</div>
+          <h1 className="h1">{t("heading")}</h1>
+          <p className="lede">{t("lede")}</p>
+        </div>
+      </div>
 
       {loading && <Badge tone="info">{t("loading")}</Badge>}
       {error && <Badge tone="red">{error}</Badge>}

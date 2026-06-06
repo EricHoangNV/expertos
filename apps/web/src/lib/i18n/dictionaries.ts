@@ -228,6 +228,7 @@ const en = {
   // "My Knowledge" upload-management page + its chat-sidebar entry point (M18.3).
   knowledge: {
     sidebarLink: "My Knowledge",
+    eyebrow: "Upload management",
     heading: "My Knowledge",
     lede: "Documents you've saved or attached. Saved files power future answers; temporary files expire on their own.",
     signInPrompt: "Please sign in on the home page to view your knowledge.",
@@ -449,6 +450,7 @@ const vi = {
   },
   knowledge: {
     sidebarLink: "Kho kiến thức của tôi",
+    eyebrow: "Quản lý tài liệu tải lên",
     heading: "Kho kiến thức của tôi",
     lede: "Các tài liệu bạn đã lưu hoặc đính kèm. Tệp đã lưu hỗ trợ các câu trả lời sau; tệp tạm thời sẽ tự hết hạn.",
     signInPrompt: "Vui lòng đăng nhập ở trang chủ để xem kho kiến thức của bạn.",
