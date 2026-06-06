@@ -473,3 +473,15 @@ Distilled insights from code reviews, security reviews, and product reviews.
 - Fix: query each radio (especially the checked/active one) with `await screen.findByRole(...)`, not sync `getByRole`. Separately, give each radio an explicit `aria-label` so its accessible name is the option title alone — deterministic, instead of the wrapping `<label>`'s whole title+badge+description paragraph.
 
 **Rule:** In RTL, reach for async `findBy*` when asserting on a controlled/`checked` form control's presence — a sync `getBy*` immediately after an unrelated `findBy*` can race the control's commit. And when a selectable card wraps a radio, set `aria-label` on the input so the accessible name is stable and assertable.
+
+---
+
+## 40. An OWC-mount corruption can hit the just-written git loose OBJECT, not the working file — recover with `git hash-object -w`, don't re-clone
+
+**Context:** M19.5.4 (audit copy parity) — after a clean `git commit`, `git push` failed with `fatal: loose object <sha> is corrupt` / `git fsck` → `inflate: data stream error (invalid stored block lengths)`. The corrupt blob turned out to be the commit's freshly-written `progress-log.md` object; the **working-tree file was intact** (correct line count, and `git hash-object` of it reproduced the exact expected SHA).
+
+- Root cause: the OWC mount corrupted the zlib-compressed loose object as git wrote it into `.git/objects/` during the commit — a sibling of the file-truncation flakiness in DIRECTIVE #40 / LEARNINGS #23, but on the *object store* side rather than the source file. The commit succeeded locally (git read the in-memory blob) but the persisted object was unreadable, so push (which re-inflates objects to build the pack) aborted.
+- Diagnosis that pinned it: `git diff-tree -r <commit>` showed the corrupt SHA was one of the commit's blobs; `git ls-tree -r` + `git hash-object <working-file>` confirmed the working file still hashed to that same SHA → only the stored copy was bad, content was recoverable in place.
+- Fix (no re-clone, no reset needed): `rm -f .git/objects/<xx>/<rest>` (the loose object is mode `0444`, so `-f`), then `git hash-object -w <path>` to rewrite a fresh valid object at the identical SHA, `git fsck`/`git cat-file -s` to confirm, then push. Because content is unchanged the SHA is identical, so the existing commit stays valid.
+
+**Rule:** On a `loose object is corrupt` push/fsck failure, first check whether the working file still `git hash-object`es to the corrupt SHA; if so the bytes are intact and you just `rm` the bad loose object and `git hash-object -w` it back — reserve re-clone/`reset` for when the content itself is lost.
