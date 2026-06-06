@@ -2,8 +2,8 @@ import type { Messages } from "@expertos/ui";
 
 /** Expert AI-answer review feed (M8.5) — `apps/admin/app/answers/page.tsx` (M13.3). */
 export const en = {
-  eyebrow: "Quality",
-  heading: "AI answers",
+  eyebrow: "M8.5 · Render quality feed",
+  heading: "Answer review",
   expertLabel: "Expert",
   selectExpert: "Select an expert…",
   intro:
@@ -25,8 +25,8 @@ export const en = {
 } satisfies Messages;
 
 export const vi = {
-  eyebrow: "Chất lượng",
-  heading: "Câu trả lời AI",
+  eyebrow: "M8.5 · Nguồn cấp chất lượng trả lời",
+  heading: "Xem xét câu trả lời",
   expertLabel: "Chuyên gia",
   selectExpert: "Chọn một chuyên gia…",
   intro:

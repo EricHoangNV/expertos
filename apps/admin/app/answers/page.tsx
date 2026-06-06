@@ -104,7 +104,7 @@ export default function AnswersPage() {
           </Field>
         )}
       </div>
-      <p className="muted">{t("intro")}</p>
+      <p className="lede">{t("intro")}</p>
 
       {error != null && <Badge tone="red">{error}</Badge>}
       {isAdmin && expertId === "" && <p className="muted">{t("selectExpertPrompt")}</p>}
@@ -118,7 +118,7 @@ export default function AnswersPage() {
                 {row.helpful === true && <Badge tone="green">{t("helpful")}</Badge>}
                 {row.helpful === false && <Badge tone="red">{t("unhelpful")}</Badge>}
                 {row.insufficientKnowledge && <Badge tone="amber">{t("insufficient")}</Badge>}
-                {row.model != null && <Badge tone="info">{row.model}</Badge>}
+                {row.model != null && <span className="chip">{row.model}</span>}
                 {row.confidence != null && (
                   <Badge tone="ink">{t("confidence", { value: row.confidence.toFixed(2) })}</Badge>
                 )}

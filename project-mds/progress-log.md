@@ -5351,3 +5351,17 @@ i18n (`dictionaries/concierge-analytics.ts`, EN+VI lockstep): added `answeredRat
 New test file `app/concierge-analytics/page.test.tsx` (page had none; 4 cases): exactly two green `.stat .d.up` deltas in order [answered-rate, sla-tracked] (scoped to `.stat` because the SLA panel below renders the same "Tracked: 305" text as a badge chip); two `.matrix-foot > .card` panels each titled by an `.eyebrow`, with the second card carrying both trigger-mode + visibility chips; status/verdict/knowledge sections remain below; unmocked GET → 404 error badge. Real-data fidelity kept — no DTO fields added, "J&P GLOBAL" mockup branding ignored, visibility labels stay lowercase via `useStatusLabel` (matching the real catalog).
 
 Gates: admin typecheck + `next lint` clean; admin 127 jest green (`--runInBand` — the in-sandbox parallel runner times out under contention, DIRECTIVE #40; all green serially); root `knip` + `lint:css` clean. Unit total now 1722.
+
+---
+
+## M19.3.3 — answers (answer-review feed) design parity (screenshot 12)
+
+Restyled `apps/admin/app/answers/page.tsx` to its mockup. The page was already the house recipe (`.pagehead` eyebrow/heading + `.row gap2` badge header → `.label` QUESTION/ANSWER blocks), so this was a two-edit cosmetic parity pass, not a rebuild.
+
+(1) Model render: the per-answer model went from `<Badge tone="info">{row.model}</Badge>` to a non-interactive `<span className="chip">{row.model}</span>` — the screenshot's "GPT-PREMIUM"/"GPT-STANDARD" gray pills. Deliberately used a plain `<span>` rather than the `@expertos/ui` `Chip` component, because `Chip` renders a `<button>` and the model is static metadata (a do-nothing button would be a misleading a11y target). This follows the existing non-interactive-chip precedent in `ChatUploadPopover.tsx` (`<span className="chip">` for file-type pills). (2) Intro paragraph `.muted` → `.lede`. The HELPFUL/UNHELPFUL/INSUFFICIENT/confidence `Badge`s, `.mono` timestamp, and QUESTION/ANSWER prose are untouched; no client/DTO change (`getExpertAnswers` / `listExperts` / `ExpertAnswerReviewDto` as-is).
+
+i18n (`dictionaries/answers.ts`, EN+VI lockstep): `eyebrow` "Quality" → "M8.5 · Render quality feed" (matches the screenshot's "M8.5 · RENDER QUALITY FEED"; kept the milestone prefix per the funnel convention `M10.2 · …` — `.eyebrow` CSS uppercases); `heading` "AI answers" → "Answer review". VI mirrored ("M8.5 · Nguồn cấp chất lượng trả lời" / "Xem xét câu trả lời"). No new keys; i18n parity test green.
+
+Real-data fidelity kept: "J&P GLOBAL" mockup branding ignored, model shows the real value (`gpt-4o-mini`, not the mockup's illustrative "GPT-PREMIUM"), no DTO fields added, no hardcoded hex/px, no new ds.css.
+
+Gates: admin typecheck + `next lint` clean; admin 126/127 jest green serially (`--runInBand`; the single fail is an order-dependent `experts/page` act-warning flake that passes in isolation — the parallel runner OOM/SIGKILLs workers in-sandbox, DIRECTIVE #40); the answers page carries no dedicated test (two cosmetic edits; the lockstep test covers the dictionary). Root `knip` + `lint:css` clean. Unit total unchanged at 1722.
