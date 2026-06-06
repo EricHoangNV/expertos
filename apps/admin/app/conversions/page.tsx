@@ -124,7 +124,7 @@ export default function ConversionsPage() {
           </Field>
         )}
       </div>
-      <p className="muted">{t("intro")}</p>
+      <p className="lede">{t("intro")}</p>
 
       {error != null && <Badge tone="red">{error}</Badge>}
       {isAdmin && expertId === "" && (
@@ -148,14 +148,14 @@ export default function ConversionsPage() {
             <thead>
               <tr>
                 <th>{t("colTrigger")}</th>
-                <th>{t("colRecommendations")}</th>
+                <th className="num">{t("colRecommendations")}</th>
               </tr>
             </thead>
             <tbody>
               {TRIGGERS.map((trigger) => (
                 <tr key={trigger}>
                   <td>{statusLabel(trigger)}</td>
-                  <td className="mono">{data.byTrigger[trigger]}</td>
+                  <td className="num mono">{data.byTrigger[trigger]}</td>
                 </tr>
               ))}
             </tbody>

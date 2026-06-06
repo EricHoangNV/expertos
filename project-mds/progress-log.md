@@ -5400,3 +5400,16 @@ Gates: admin typecheck + `next lint` clean; admin **127/127 jest green** with `-
 - `project-mds/PRD-TRACKING.md`, `project-mds/BUILD-NOTES.md`, `project-mds/progress-state.md` — status flip + notes.
 
 **Gates:** admin `tsc --noEmit` + `next lint` clean; admin 127/127 jest green (`--runInBand`; the default parallel runner OOM/times-out in-sandbox per DIRECTIVE #40); root `knip` + `lint:css` clean.
+
+## M19.4.3 — conversions design parity (screenshot 17) — 2026-06-06
+
+Design-parity pass on `apps/admin/app/conversions/page.tsx` (expert consultation-conversions, M8.5). Picked as the next open M19 task; the FAIL verdicts (Security Cycle 4 / Product Cycle 2) are already remediated in-sandbox (`bulk-publish.cli.ts` + `publishReviewedVersionTx` present, `publish-drafts.cli.ts` deleted — DIRECTIVE #50/#51, LEARNINGS #37/#38) and stay FAIL only pending external re-review.
+
+**Changes** (3 small edits, page was already the house recipe):
+- Right-aligned the "By trigger" RECOMMENDATIONS count column: `<th>` → `<th className="num">`, count `<td className="mono">` → `<td className="num mono">` (ds.css `.table th.num/td.num { text-align: right }`, same pattern as `analytics/page.tsx` cost columns).
+- Intro `<p className="muted">` → `<p className="lede">`.
+- i18n (`dictionaries/conversions.ts`, EN+VI): `eyebrow` "Funnel"→"M8.5 · Your voice → consultations" (uppercased by `.eyebrow` CSS, matches screenshot), `title` "Consultation conversions"→"Conversions", `intro` → "The funnel from conversations held in your voice. Admins can pick any expert." VI mirrored. No new keys.
+
+No API/DTO/ds.css change. The byResponse/byStatus/recent breakdowns (a superset of the mockup) kept per the task note.
+
+**Gates:** admin typecheck + `next lint` clean; admin 127/127 jest green with `--runInBand` (parallel runner OOM/times-out in-sandbox → different suites spuriously "fail to run" each run — DIRECTIVE #40; i18n lockstep test green confirms EN/VI parity of the changed dict); root `knip` + `lint:css` clean. Manifest M19.4.3 flipped; build note appended.

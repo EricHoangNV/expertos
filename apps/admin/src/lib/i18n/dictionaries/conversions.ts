@@ -3,12 +3,12 @@ import type { Messages } from "@expertos/ui";
 /** M13.3: string extraction for the `conversions` admin/expert page (expert conversions). */
 export const en = {
   // Page head + expert selector.
-  eyebrow: "Funnel",
-  title: "Consultation conversions",
+  eyebrow: "M8.5 · Your voice → consultations",
+  title: "Conversions",
   expert: "Expert",
   selectExpertPlaceholder: "Select an expert…",
   intro:
-    "Recommendations, bookings, and attributed revenue from conversations held in this expert’s voice.",
+    "The funnel from conversations held in your voice. Admins can pick any expert.",
   selectExpertPrompt: "Select an expert to view their conversions.",
   noExpertProfile:
     "Your account isn’t linked to an expert profile yet, so there are no conversions to show.",
@@ -35,12 +35,12 @@ export const en = {
 } satisfies Messages;
 
 export const vi = {
-  eyebrow: "Phễu",
-  title: "Chuyển đổi tư vấn",
+  eyebrow: "M8.5 · Giọng nói của bạn → tư vấn",
+  title: "Chuyển đổi",
   expert: "Chuyên gia",
   selectExpertPlaceholder: "Chọn một chuyên gia…",
   intro:
-    "Đề xuất, lượt đặt lịch và doanh thu được phân bổ từ các cuộc trò chuyện theo giọng nói của chuyên gia này.",
+    "Phễu từ các cuộc trò chuyện theo giọng nói của bạn. Quản trị viên có thể chọn bất kỳ chuyên gia nào.",
   selectExpertPrompt: "Chọn một chuyên gia để xem chuyển đổi của họ.",
   noExpertProfile:
     "Tài khoản của bạn chưa được liên kết với hồ sơ chuyên gia, nên chưa có chuyển đổi nào để hiển thị.",
