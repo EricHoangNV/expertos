@@ -2,10 +2,9 @@ import type { Messages } from "@expertos/ui";
 
 /** Admin audit-log feed (M13.3): page header, table headers, empty/error states. */
 export const en = {
-  eyebrow: "Security",
+  eyebrow: "Every privileged action, recorded",
   title: "Audit log",
-  subtitle:
-    "Every admin mutation — role changes, fair-use flags, deletions — newest first. Immutable and append-only.",
+  subtitle: "Who did what, when. Immutable — for compliance and incident review.",
   empty: "No admin actions recorded yet.",
   signInError: "Please sign in to continue.",
   loadError: "Failed to load the audit log.",
@@ -22,10 +21,9 @@ export const en = {
 } satisfies Messages;
 
 export const vi = {
-  eyebrow: "Bảo mật",
+  eyebrow: "Mọi hành động đặc quyền đều được ghi lại",
   title: "Nhật ký kiểm toán",
-  subtitle:
-    "Mọi thay đổi của quản trị viên — đổi vai trò, gắn cờ sử dụng hợp lý, xóa dữ liệu — mới nhất trước. Bất biến và chỉ ghi thêm.",
+  subtitle: "Ai đã làm gì, khi nào. Bất biến — phục vụ tuân thủ và điều tra sự cố.",
   empty: "Chưa có hành động quản trị nào được ghi nhận.",
   signInError: "Vui lòng đăng nhập để tiếp tục.",
   loadError: "Không thể tải nhật ký kiểm toán.",

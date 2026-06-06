@@ -5482,3 +5482,22 @@ Gates: admin typecheck + next lint clean; full admin suite 128/128 with `--runIn
 **Gates.** admin typecheck + `next lint` clean; access-control suite 10/10; full admin suite **129/129** green with `--runInBand` (default parallel run flakes rotating async-timeout suites in-sandbox — OOM under load, DIRECTIVE #40; all pass in-band); root `knip` + `lint:css` clean. Unit total 1723→1724.
 
 **Remaining M19:** M19.5.4 audit, M19.5.5 settings (both `apps/admin` platform).
+
+## M19.5.4 — audit design parity (screenshot 23)
+**Date:** 2026-06-06
+**Ref:** PRD §M19 (mockup design-parity pass) / PRD-TRACKING M19.5.4
+
+**What was done:**
+- Aligned the `audit` admin namespace copy to mockup screenshot 23: `eyebrow` → "Every privileged action, recorded", `subtitle` → "Who did what, when. Immutable — for compliance and incident review." `title` already matched ("Audit log").
+- Updated EN + VI in lockstep; no new keys (reworded existing values).
+
+**Key decisions:**
+- Copy-only change: the page (`app/audit/page.tsx`) already had the correct structure (`.pagehead` eyebrow/h1/subtitle, WHEN/ACTOR/ACTION `.badge-ink`/TARGET/DETAIL `Table`, Load-more), so no page-file or test edits were needed. The `.eyebrow` CSS uppercases, so the dictionary stays sentence-case.
+
+**Files changed:**
+- `apps/admin/src/lib/i18n/dictionaries/audit.ts` — reworded `eyebrow`/`subtitle` (EN+VI).
+- `project-mds/PRD-TRACKING.md` — M19.5.4 [ ]→[x].
+- `project-mds/BUILD-NOTES.md` — appended M19.5.4 note.
+
+**Notes for next iteration:**
+- 2 M19 tasks remain: M19.5.5 settings (verify+polish, M17.5). After that all M19 design-parity is done. Remaining open `[ ]` are externally blocked (NT.3–6, M11.4 sign-offs, OD#6) or deferred voice-bar widgets (M13.5.3–.6, M13.7.4 — no schema backing).
