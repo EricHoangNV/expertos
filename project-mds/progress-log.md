@@ -5501,3 +5501,16 @@ Gates: admin typecheck + next lint clean; full admin suite 128/128 with `--runIn
 
 **Notes for next iteration:**
 - 2 M19 tasks remain: M19.5.5 settings (verify+polish, M17.5). After that all M19 design-parity is done. Remaining open `[ ]` are externally blocked (NT.3–6, M11.4 sign-offs, OD#6) or deferred voice-bar widgets (M13.5.3–.6, M13.7.4 — no schema backing).
+
+## 2026-06-06 — M19.5.5 settings design parity (screenshot 24) — M19 COMPLETE
+Picked the last open in-sandbox task: M19.5.5 (verify+polish on the M17.5 runtime answer-tuning admin page). The Security Cycle 4 + Product Cycle 2 FAIL verdicts are already remediated in-sandbox (DIRECTIVES #50/#51, LEARNINGS #37/#38) and only await external re-review; all other open `[ ]` items are externally blocked (prod cutover, PM/legal sign-offs, deferred no-schema voice widgets).
+
+**Change** (`apps/admin/app/settings/page.tsx` + `dictionaries/settings.ts`):
+- `SettingsEditor` now owns the `.pagehead` (mirroring the M19.3.1 concierge editor) so a primary `<Button>` Save sits top-right with the saved `Badge`; the page-level component renders only a minimal loading pagehead.
+- The four `Field`s (temperature / default chat model / retrieval score-floor / read-only embedding) wrapped in a `.card .card-pad .col .gap2` panel; the pre-existing secondary `variant="subtle"` bottom Save + error `Badge` kept (the task asked the pagehead Save to mirror the bottom one) just below the card.
+- The score-floor label's rich `Tooltip` (the `(i)` revealing the RRF floor guide table) wrapped in `<span className="chip">` + trailing `{t("scoreFloorGuide")}` → the mockup's "ⓘ GUIDE" pill. `.chip` is `inline-flex`; span→div is not in React's `validateDOMNesting` checked set, so no warning.
+- New i18n key `scoreFloorGuide` (EN "Guide" / VI "Hướng dẫn"); the i18n lockstep test auto-covers parity (no dedicated settings spec).
+
+**Gates:** admin typecheck + `next lint` clean; full admin suite 129/129 green with `--runInBand` (default parallel run flakes rotating async-timeout suites in-sandbox under OOM — DIRECTIVE #40; all pass in-band); root `knip` + `lint:css` clean. Reverted an accidental prettier-80 re-wrap of two existing dictionary strings (repo has no prettier config / uses a wider width) to keep the diff minimal.
+
+With M19.5.5 done, **all 24 M19 mockup design-parity tasks are complete**. Remaining open manifest items are all externally blocked (M11.4/NT.* sign-offs, OD#6, M17.7 prod cutover, the deferred no-schema-backing voice-dimension widgets M13.5.3–.6/M13.7.4) or pending external review re-verdicts.

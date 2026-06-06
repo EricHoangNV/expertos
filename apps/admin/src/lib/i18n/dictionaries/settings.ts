@@ -34,6 +34,8 @@ export const en = {
   scoreFloorTipStrict: "Strict — keeps only chunks found by both keyword and vector.",
   scoreFloorTipKill: "Filters everything — don't.",
   scoreFloorTipFoot: "Start at 0; raise to ~0.015 only when weak chunks degrade answers.",
+  // Retrieval score floor — the GUIDE chip beside the label (M19.5.5).
+  scoreFloorGuide: "Guide",
   // Embedding provider (read-only).
   embeddingProvider: "Embedding provider",
   embeddingProviderNote:
@@ -77,6 +79,7 @@ export const vi = {
   scoreFloorTipStrict: "Nghiêm — chỉ giữ các đoạn được tìm thấy bởi cả từ khóa và vector.",
   scoreFloorTipKill: "Lọc bỏ tất cả — đừng dùng.",
   scoreFloorTipFoot: "Bắt đầu từ 0; chỉ nâng lên ~0.015 khi các đoạn yếu làm giảm chất lượng câu trả lời.",
+  scoreFloorGuide: "Hướng dẫn",
   embeddingProvider: "Nhà cung cấp nhúng",
   embeddingProviderNote:
     "Cần khởi động lại — đặt qua biến môi trường EMBEDDING_PROVIDER. Đổi bộ nhúng làm vô hiệu các vector hiện có, nên không thể thay đổi khi đang chạy.",
