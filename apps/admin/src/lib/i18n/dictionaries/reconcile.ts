@@ -2,8 +2,8 @@ import type { Messages } from "@expertos/ui";
 
 /** EN/VI strings for the `reconcile` booking page (M13.3). Keep `en`/`vi` in lockstep. */
 export const en = {
-  eyebrow: "Consultations",
-  heading: "Bookings",
+  eyebrow: "M7.3 · OD#10 · TidyCal",
+  heading: "Reconcile bookings",
   intro:
     "Booking confirmations arrive by webhook. Re-poll TidyCal to recover any the webhook missed, and review bookings that couldn't be tied to a user — kept here so none silently vanish.",
   // Run reconcile card.
@@ -35,8 +35,8 @@ export const en = {
 } satisfies Messages;
 
 export const vi = {
-  eyebrow: "Tư vấn",
-  heading: "Lịch hẹn",
+  eyebrow: "M7.3 · OD#10 · TidyCal",
+  heading: "Đối soát lịch hẹn",
   intro:
     "Xác nhận đặt lịch được gửi qua webhook. Truy vấn lại TidyCal để khôi phục những lịch mà webhook bỏ sót, và xem lại các lịch không thể gắn với người dùng — được giữ lại ở đây để không có lịch nào âm thầm biến mất.",
   // Run reconcile card.

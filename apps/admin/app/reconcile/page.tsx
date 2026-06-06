@@ -90,10 +90,10 @@ export default function ReconcilePage() {
           <h1 className="h1">{t("heading")}</h1>
         </div>
       </div>
-      <p className="muted">{t("intro")}</p>
+      <p className="lede">{t("intro")}</p>
 
       <Card pad>
-        <div className="label">{t("runReconcile")}</div>
+        <div className="eyebrow">{t("runReconcile")}</div>
         <div className="row gap2">
           <Field label={t("sinceLabel")} htmlFor="since">
             <Input
