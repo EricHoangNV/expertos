@@ -224,6 +224,8 @@ button { font-family: inherit; cursor: pointer; }
 .table th { text-align: left; font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-500); padding: 11px 16px; border-bottom: 1px solid var(--line); }
 .table td { padding: 14px 16px; border-bottom: 1px solid var(--line); color: var(--ink-700); }
 .table tr:last-child td { border-bottom: none; }
+/* Right-align a numeric column (e.g. currency totals) — overrides the default left header alignment. */
+.table th.num, .table td.num { text-align: right; }
 .table tbody tr { transition: background .12s; }
 .table tbody tr:hover { background: var(--paper); }
 

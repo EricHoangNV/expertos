@@ -3,8 +3,8 @@ import type { Messages } from "@expertos/ui";
 /** M13.3: string extraction for the `analytics` admin page (usage & cost). */
 export const en = {
   // Page head + window selector.
-  eyebrow: "Analytics",
-  title: "Usage & cost",
+  eyebrow: "AI cost & token usage",
+  title: "Usage analytics",
   window: "Window",
   windowOption: "Last {days} days",
   // KPI stat cards.
@@ -33,8 +33,8 @@ export const en = {
 } satisfies Messages;
 
 export const vi = {
-  eyebrow: "Phân tích",
-  title: "Mức sử dụng & chi phí",
+  eyebrow: "Chi phí AI & sử dụng token",
+  title: "Phân tích sử dụng",
   window: "Khoảng thời gian",
   windowOption: "{days} ngày qua",
   aiEvents: "Sự kiện AI · {days} ngày",

@@ -5236,3 +5236,10 @@ Restyled `apps/web/app/history/page.tsx` to the mockup-01 layout: `.umain` > `.p
 **Gates:** admin typecheck + lint + 105 jest (`--runInBand`; parallel runner OOMs workers in-sandbox), root `lint:css` + `knip` green. No hardcoded hex/px.
 
 **Next:** 21 M19 tasks remain. Batch 4 continues (17-conversions, 15-recommendation-rules, 16-reconcile, 25-retention, 18-analytics verify+polish); Batch 2/3/5 untouched.
+
+## M19.4.1 — usage analytics page design parity (mockup 18-analytics) — 2026-06-06
+Verify+polish pass on `apps/admin/app/analytics/page.tsx` (the M19 "reference recipe" page; `getUsageAnalytics` → `UsageAnalyticsDto`). The page already carried the house recipe (pagehead eyebrow+h1, window `<Select>`, 5-`Stat` row, byFeature/byModel/byDay `.h3` `Table`s), so the loop was strictly copy + alignment to screenshot 18.
+- **Copy/i18n** (`dictionaries/analytics.ts`): EN eyebrow "Analytics"→"AI cost & token usage", title "Usage & cost"→"Usage analytics"; VI eyebrow→"Chi phí AI & sử dụng token", title→"Phân tích sử dụng". No new keys → lockstep test unaffected.
+- **Cost-column right-align**: new reusable ds.css helper `.table th.num, .table td.num { text-align: right; }` (specificity beats default `.table th{text-align:left}`; no color/px → stylelint-safe); `className="num"` on the COST `<th>`+`<td>` in all three tables. Honest deviation from the task's plural "right-align numeric columns": screenshot 18 right-aligns only the currency column (integer columns stay left), so only cost was right-aligned — matches the verification screenshot.
+- **Tests**: new `analytics/page.test.tsx` (4 cases — KPI+tables, cost `.num` header/cells, empty-state ×3, load-error). Reload-fan-out detach gotcha (LEARNINGS #19) handled by settle-then-`findByText` + `waitFor` around point-in-time `getAllBy*`.
+- **Gates**: admin typecheck+lint, lint:css, admin 109 jest (`--runInBand`; parallel runner OOMs workers in-sandbox), ui 252 jest + build, knip — all green. Tracking flipped M19.4.1 [x]; build note appended. 20 M19 tasks remain open.

@@ -93,7 +93,7 @@ export default function AnalyticsPage() {
                   <th>{t("colEvents")}</th>
                   <th>{t("colPromptTokens")}</th>
                   <th>{t("colCompletionTokens")}</th>
-                  <th>{t("colCost")}</th>
+                  <th className="num">{t("colCost")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -103,7 +103,7 @@ export default function AnalyticsPage() {
                     <td>{count(row.events)}</td>
                     <td>{count(row.promptTokens)}</td>
                     <td>{count(row.completionTokens)}</td>
-                    <td>{usdFromMicros(row.costMicros)}</td>
+                    <td className="num">{usdFromMicros(row.costMicros)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -121,7 +121,7 @@ export default function AnalyticsPage() {
                   <th>{t("colEvents")}</th>
                   <th>{t("colPromptTokens")}</th>
                   <th>{t("colCompletionTokens")}</th>
-                  <th>{t("colCost")}</th>
+                  <th className="num">{t("colCost")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -131,7 +131,7 @@ export default function AnalyticsPage() {
                     <td>{count(row.events)}</td>
                     <td>{count(row.promptTokens)}</td>
                     <td>{count(row.completionTokens)}</td>
-                    <td>{usdFromMicros(row.costMicros)}</td>
+                    <td className="num">{usdFromMicros(row.costMicros)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -148,7 +148,7 @@ export default function AnalyticsPage() {
                   <th>{t("colDay")}</th>
                   <th>{t("colEvents")}</th>
                   <th>{t("colActiveUsers")}</th>
-                  <th>{t("colCost")}</th>
+                  <th className="num">{t("colCost")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -157,7 +157,7 @@ export default function AnalyticsPage() {
                     <td className="mono">{period.period}</td>
                     <td>{count(period.events)}</td>
                     <td>{count(period.activeUsers)}</td>
-                    <td>{usdFromMicros(period.costMicros)}</td>
+                    <td className="num">{usdFromMicros(period.costMicros)}</td>
                   </tr>
                 ))}
               </tbody>
