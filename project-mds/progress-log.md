@@ -5422,3 +5422,26 @@ Design-parity polish on the admin TidyCal reconcile page. The page already match
 - `apps/admin/app/reconcile/page.tsx`: intro `<p className="muted">` → `.lede`; "RUN RECONCILE" card heading `<div className="label">` → `.eyebrow`.
 - `apps/admin/src/lib/i18n/dictionaries/reconcile.ts` (EN+VI lockstep): `eyebrow` "Consultations" → "M7.3 · OD#10 · TidyCal" (technical reference, kept identical in both locales — not translated); `heading` "Bookings" → "Reconcile bookings" / VI "Lịch hẹn" → "Đối soát lịch hẹn". No new keys.
 - Gates: admin typecheck + `next lint` clean; admin 127/127 jest green with `--runInBand` (parallel runner flakes in-sandbox per DIRECTIVE #40 — confirmed pre-existing on clean tree); root `knip` + `lint:css` clean. i18n lockstep test covers the dict change. 6 M19 tasks remain open (M19.4.6 retention, M19.5.1–.5 platform).
+
+## M19.4.6 — retention design parity (screenshot 25)
+**Date:** 2026-06-06
+**Ref:** PRD §"M19 — Mockup design-parity pass" → M19.4.6 (admin `apps/admin/app/retention/page.tsx`, screenshot 25)
+
+**What was done:**
+- Added the `.muted` "In production a Cloud Scheduler job hits this same endpoint on a cadence." note **inside the existing action `.row gap2`**, so it sits beside the Refresh/Run-sweep buttons (matches screenshot 25).
+- Thousands-formatted every `Stat` value (`.toLocaleString()`) on both the preview row and the result row (mockup shows `1,902` / `48,310`).
+- New i18n key `retention.cronNote` (EN + VI lockstep).
+
+**Key decisions:**
+- Scoped strictly to the task: did NOT convert the `.muted` intro to `.lede` (task only specified the cron note + number formatting); left the page's existing `.pagehead` + ELIGIBLE-NOW card + 5-`Stat` row + result card untouched (already matched the mockup).
+- Put the cron note as a third child of the action `.row` (not a separate block) so it flows to the right of the buttons like the screenshot, rather than below.
+- Applied `toLocaleString()` to the result-card stats too (not just preview) for consistency, since both render the same numeric classes.
+
+**Files changed:**
+- `apps/admin/app/retention/page.tsx` — cron note span in the action row; `.toLocaleString()` on all 10 `Stat` values (5 preview + 5 result).
+- `apps/admin/src/lib/i18n/dictionaries/retention.ts` — new `cronNote` key (EN + VI).
+
+**Notes for next iteration:**
+- 5 M19 tasks remain open: M19.5.1 users, M19.5.2 user-detail, M19.5.3 access-control, M19.5.4 audit, M19.5.5 settings (all `apps/admin`).
+- Admin jest full parallel run flakes one rotating async-`findByText`-timeout suite in-sandbox (OOM under load, DIRECTIVE #40) — run suites in isolation or `--runInBand` to confirm; all 127 pass individually.
+- No dedicated retention page test exists; i18n lockstep test (13/13) covers the new dict key.
