@@ -1,7 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Button, Card, formatCurrency, UsageMeter, type Locale, type Translator } from "@expertos/ui";
+import {
+  avatarInitials,
+  avatarTone,
+  Badge,
+  Button,
+  Card,
+  formatCurrency,
+  UsageMeter,
+  type Locale,
+  type Translator,
+} from "@expertos/ui";
 import type {
   AvailablePlansDto,
   EntitlementsDto,
@@ -67,12 +77,37 @@ function BooleanFeature({ feature }: { feature: EntitlementView }) {
 }
 
 /**
+ * The account identity header (M19.1.2, screenshot 03): an avatar (initials on an expert-style
+ * colored circle), the "Account" title, and the signed-in email. Rendered as the modal head's left
+ * slot (the chat-header popup) and at the top of the standalone `/account` route, so both surfaces
+ * share one identity block and never drift. Returns nothing when signed out — the panel below then
+ * shows the sign-in prompt instead.
+ */
+export function AccountIdentityHeader() {
+  const { user } = useAuth();
+  const t = useT("account");
+  if (!user) return null;
+  const seed = user.displayName?.trim() || user.email?.split("@")[0]?.trim() || "You";
+  return (
+    <div className="account-identity">
+      <span className={`avatar avatar-lg tone-${avatarTone(seed)}`} aria-hidden="true">
+        {avatarInitials(seed)}
+      </span>
+      <div className="account-identity-text">
+        <h2 className="h2 modal-title">{t("modalTitle")}</h2>
+        {user.email && <span className="muted">{user.email}</span>}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The plan & usage surface (M6.1/M6.3): the current-plan badge, per-feature usage meters + boolean
  * rows, the self-serve upgrade CTA (→ `POST /billing/checkout`, M6.2), and the customer-portal
  * "Manage billing" link. Rendered both by the standalone `/account` route and, as a popup, inside the
- * chat workspace's account {@link Modal} (M12.3.3 entry point) — the inner content only, so the host
- * supplies the heading (the route's `<h1>`, the modal's title). The signed-out state is a single
- * sign-in prompt badge.
+ * chat workspace's account {@link Modal} (M12.3.3 entry point) — the inner content only; the
+ * {@link AccountIdentityHeader} (avatar + "Account" + email) is supplied by the host above it (the
+ * modal head's left slot, the route's top). The signed-out state is a single sign-in prompt badge.
  */
 export function AccountPanel() {
   const { user, getIdToken } = useAuth();
@@ -153,7 +188,7 @@ export function AccountPanel() {
 
           {metered.length > 0 && (
             <Card className="card-pad">
-              <span className="label">{t("usageThisPeriod")}</span>
+              <span className="eyebrow">{t("usageThisPeriod")}</span>
               {metered.map((feature) => (
                 <MeteredFeature key={feature.key} feature={feature} />
               ))}
@@ -162,7 +197,7 @@ export function AccountPanel() {
 
           {boolean.length > 0 && (
             <Card className="card-pad">
-              <span className="label">{t("features")}</span>
+              <span className="eyebrow">{t("features")}</span>
               {boolean.map((feature) => (
                 <BooleanFeature key={feature.key} feature={feature} />
               ))}
@@ -171,7 +206,7 @@ export function AccountPanel() {
 
           {plans && plans.upgrades.length > 0 && (
             <Card className="card-pad">
-              <span className="label">{t("upgrade")}</span>
+              <span className="eyebrow">{t("upgrade")}</span>
               {actionError && <Badge tone="red">{actionError}</Badge>}
               {plans.upgrades.map((plan) => (
                 <div key={plan.key} className="meter">
@@ -201,7 +236,7 @@ export function AccountPanel() {
 
           {plans?.hasActiveSubscription && (
             <Card className="card-pad">
-              <span className="label">{t("billing")}</span>
+              <span className="eyebrow">{t("billing")}</span>
               {actionError && plans.upgrades.length === 0 && (
                 <Badge tone="red">{actionError}</Badge>
               )}

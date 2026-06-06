@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { Badge } from "./Badge";
 import { Bar } from "./Bar";
 import { StackedBar } from "./StackedBar";
@@ -441,6 +441,23 @@ describe("Modal — centered dialog", () => {
     expect(kids(titleEl)).toBe("Account");
     expect(cls(body)).toBe("modal-body");
     expect(kids(body)).toBe("body");
+  });
+
+  it("renders a custom `header` node in the head's left slot while keeping `title` as the aria-label", () => {
+    const header = createElement("div", { className: "account-identity" }, "id");
+    const el = Modal({
+      open: true,
+      onClose: () => {},
+      title: "Account",
+      header,
+      children: "body",
+    }) as ReactElement;
+    const panel = kids(el) as ReactElement;
+    // The dialog's accessible name still comes from `title`, not the header node.
+    expect((panel.props as { "aria-label"?: string })["aria-label"]).toBe("Account");
+    const [head] = kids(panel) as [ReactElement];
+    const [leftSlot] = kids(head) as [ReactElement];
+    expect(leftSlot).toBe(header);
   });
 
   it("falls back to a spacer (no `<h2>` title) when no title is given", () => {

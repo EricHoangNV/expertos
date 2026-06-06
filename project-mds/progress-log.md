@@ -5188,3 +5188,34 @@ Closed the M5 write-only gap: a user can now see/confirm/delete the documents th
 
 ## M19.1.1 — history page design parity (2026-06-06)
 Restyled `apps/web/app/history/page.tsx` to the mockup-01 layout: `.umain` > `.pagehead` (`.eyebrow` "Your conversations" + `.h1` "History") with a right-aligned `.seg` Conversations/Saved-answers tablist that switches the body (not both stacked). Conversation + search rows now render as full-width clickable `.card` rows (new `.urow` ds.css class) with a leading chat icon, title, trailing mono date + chevron; accessible name = `aria-label={title}` to keep existing role/name selectors green. New `history` i18n keys `eyebrow`/`tabConversations`/`tabSaved` (EN+VI); dropped the now-unused `Field` import; wrapped list sections in `.col gap` for sibling-card spacing (`.umain` isn't flex). Saved answers moved behind a tab → updated `app/history/page.test.tsx` + e2e `web-history.spec.ts` (×2) + `web-isolation.spec.ts` to click the Saved-answers tab before the "Open conversation" jump. Gates: web tsc+lint+112 jest, ui 251 jest, e2e tsc+eslint, root lint:css+knip green. Host E2E pending. Manifest M19.1.1 → [x]; 23 M19 tasks remain open.
+
+## M19.1.2 — account page design parity (mockup 03-account)
+**Date:** 2026-06-06
+**Ref:** PRD §M19 (mockup design-parity pass), PRD-TRACKING M19.1.2, screenshot `requirements/design/screenshots/pages/03-account.png`
+
+**What was done:**
+- Added `AccountIdentityHeader` to `src/components/account-panel.tsx` — the screenshot's identity block the panel lacked: `.avatar.avatar-lg` (initials + deterministic `avatarTone` from `useAuth` display-name/email) + "Account" `.h2` + signed-in email `.muted`. Returns `null` when signed out.
+- Converted the four in-card section labels (`usageThisPeriod`, `features`, `upgrade`, `billing`) from `.label` to `.eyebrow` to match the "USAGE THIS PERIOD" / "FEATURES" treatment.
+- Added an optional `header?: ReactNode` slot to `packages/ui/src/Modal.tsx` (renders in the head's left slot in place of the plain `title`; `title` still drives the dialog `aria-label`). Rebuilt `@expertos/ui` so consumers see the new prop.
+- Wired the chat account `Modal` (`apps/web/app/chat/page.tsx`) to pass `header={<AccountIdentityHeader/>}`, and the standalone `/account` route (`apps/web/app/account/page.tsx`) to render `<AccountIdentityHeader/>` in place of the old `<h1>{heading}</h1>` (kept the "← Back to chat" link).
+- ds.css: `.account-identity` / `.account-identity-text` / `.account-identity .modal-title`.
+
+**Key decisions:**
+- **Shared identity component over duplicating markup.** Both the modal head and the route need the same avatar+title+email; one `AccountIdentityHeader` keeps them from drifting (mirrors the existing "both render the same AccountPanel" invariant).
+- **`Modal.header` slot instead of suppressing the modal title.** Passing the identity block as the head's left slot while keeping `title` for `aria-label` matches the screenshot (avatar + Account + email on the same row as the close ×) AND preserves the dialog's accessible name — the chat test's `getByRole("dialog",{name:"Account"})` still passes. Backward compatible (`header ?? (title ? … : <span/>)`).
+- **Reused `account.modalTitle`, added no i18n key.** The task said add `accountTitle` only if distinct from `heading`; `modalTitle` ("Account"/"Tài khoản") already carries the exact string in both locales, so a new key would be redundant.
+- Left the now-orphaned `account.heading` key in the dictionary (the i18n test asserts EN/VI parity + non-empty, not usage; removing it risks nothing but adds churn).
+
+**Files changed:**
+- `packages/ui/src/Modal.tsx` — optional `header` prop in the head's left slot; `title` retained for `aria-label`.
+- `apps/web/src/components/account-panel.tsx` — new exported `AccountIdentityHeader`; section labels `.label`→`.eyebrow`; doc comment updated.
+- `apps/web/app/account/page.tsx` — render `<AccountIdentityHeader/>` instead of `<h1>`.
+- `apps/web/app/chat/page.tsx` — pass `header={<AccountIdentityHeader/>}` to the account `Modal`.
+- `packages/ui/src/ds.css` — `.account-identity` styles.
+- `packages/ui/src/primitives.test.ts` — Modal `header`-slot coverage (ui 252).
+- `apps/web/app/account/page.test.tsx` — new identity-header test; VI test re-pointed to "Tài khoản" (web 113).
+- `e2e/specs/account-billing.spec.ts`, `e2e/specs/web-i18n.spec.ts` — assert the "Account"/"Tài khoản" identity heading.
+
+**Notes for next iteration:**
+- Host-run E2E still pending (sandbox can't run live Playwright, LEARNINGS #22); the two updated specs are tsc+eslint clean.
+- 22 M19 tasks remain open. The `Modal.header` slot is now available for any future modal that needs a richer head.

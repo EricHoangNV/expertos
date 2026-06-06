@@ -8,6 +8,12 @@ export interface ModalProps {
   onClose: () => void;
   /** Heading shown in the header bar and used as the accessible dialog label. */
   title?: string;
+  /**
+   * Custom header content for the head bar's left slot — replaces the plain `title` heading when
+   * supplied (the account view renders an avatar + name + email identity block here). `title` is
+   * still used for the dialog's `aria-label`, so always pass it alongside `header` for accessibility.
+   */
+  header?: ReactNode;
   /** The modal body — scrolls within the panel when it overflows the viewport. */
   children?: ReactNode;
   /** Accessible label for the close (X) button (i18n M13). Defaults to English. */
@@ -30,6 +36,7 @@ export function Modal({
   open,
   onClose,
   title,
+  header,
   children,
   closeLabel = "Close",
   className,
@@ -49,7 +56,7 @@ export function Modal({
         }}
       >
         <div className="modal-head">
-          {title ? <h2 className="h3 modal-title">{title}</h2> : <span />}
+          {header ?? (title ? <h2 className="h3 modal-title">{title}</h2> : <span />)}
           <button
             type="button"
             className={cx("btn", "btn-subtle", "btn-icon")}

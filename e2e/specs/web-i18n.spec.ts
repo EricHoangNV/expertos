@@ -43,7 +43,8 @@ test.describe("web i18n (EN ↔ VI)", () => {
     // The locale persists to the other pages (localStorage + profile), so a fresh load of each
     // renders its Vietnamese heading rather than reverting to the English default.
     await page.goto(`${env.webBaseUrl}/account`);
-    await expect(page.getByRole("heading", { name: "Gói & mức dùng" })).toBeVisible();
+    // VI identity header (M19.1.2) — "Tài khoản".
+    await expect(page.getByRole("heading", { name: "Tài khoản" })).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("lang", "vi");
 
     await page.goto(`${env.webBaseUrl}/history`);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useT } from "../../src/lib/i18n";
-import { AccountPanel } from "../../src/components/account-panel";
+import { AccountIdentityHeader, AccountPanel } from "../../src/components/account-panel";
 
 /**
  * The standalone `/account` route (plan & usage). Kept as a real page so direct navigation and the
@@ -16,7 +16,7 @@ export default function AccountPage() {
       <a className="btn btn-ghost btn-sm" href="/chat">
         {t("backToChat")}
       </a>
-      <h1>{t("heading")}</h1>
+      <AccountIdentityHeader />
       <AccountPanel />
     </main>
   );

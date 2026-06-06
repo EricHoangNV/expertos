@@ -118,6 +118,16 @@ describe("AccountPage", () => {
     expect(screen.getByText("40 / 200")).toBeInTheDocument();
   });
 
+  it("renders the identity header (avatar initials + Account title + email) for a signed-in user", async () => {
+    mockMountFetches();
+    renderWithProviders(<AccountPage />);
+
+    // Identity block (M19.1.2, screenshot 03): "Account" title + the signed-in email + avatar initials.
+    expect(await screen.findByText("Account")).toBeInTheDocument();
+    expect(screen.getByText("member@example.com")).toBeInTheDocument();
+    expect(screen.getByText("TM")).toBeInTheDocument();
+  });
+
   it("renders a disabled metered feature as not-included instead of a 0/0 meter", async () => {
     mockMountFetches({
       entitlements: entitlements("Free", [
@@ -238,10 +248,11 @@ describe("AccountPage", () => {
     });
     renderWithProviders(<AccountPage />, { locale: "vi" });
 
-    // VI heading + upgrade label from the account dictionary (await the data-dependent
-    // upgrade section so we don't race the mount fetches; the heading is always present).
+    // VI identity title (M19.1.2 header) + upgrade label from the account dictionary (await the
+    // data-dependent upgrade section so we don't race the mount fetches; the identity header is
+    // always present for a signed-in user).
     expect(await screen.findByText("Nâng cấp")).toBeInTheDocument();
-    expect(screen.getByText("Gói & mức dùng")).toBeInTheDocument();
+    expect(screen.getByText("Tài khoản")).toBeInTheDocument();
     // VI formats the price comma-decimal ("9,99") with a localized interval suffix ("tháng").
     const upgrade = screen.getByRole("button", {
       name: (name) => name.includes("9,99") && name.includes("tháng"),

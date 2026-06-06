@@ -15,7 +15,8 @@ test.describe("plan & usage", () => {
 
   test("the account page shows the current plan and a usage meter", async ({ page }) => {
     await page.goto(`${env.webBaseUrl}/account`);
-    await expect(page.getByRole("heading", { name: "Plan & usage" })).toBeVisible();
+    // The account page leads with the identity header (M19.1.2) — avatar + "Account" + email.
+    await expect(page.getByRole("heading", { name: "Account" })).toBeVisible();
 
     await expect(page.getByText(/Current plan:/i)).toBeVisible();
     // A metered plan renders the transparent usage indicator (M6.3 `.bar` meter); a plan with

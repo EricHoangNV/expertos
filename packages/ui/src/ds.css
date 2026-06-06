@@ -916,6 +916,12 @@ button.source-card:focus-visible { outline: none; box-shadow: var(--sh-focus); }
 .account-modal .modal-body > .card,
 .account-page > .card { align-self: stretch; }
 
+/* Identity header (M19.1.2) — avatar + "Account" title + email; sits in the modal head's left slot
+   and at the top of the standalone route. */
+.account-identity { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.account-identity-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.account-identity .modal-title { margin: 0; }
+
 /* ============================================================
    Chat sidebar (consumer web) — M12.2
    Reuses the dark `.side` rail + `.brand` header inside the `.chat-layout`

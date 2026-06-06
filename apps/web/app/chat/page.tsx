@@ -77,7 +77,7 @@ import {
   searchConversations,
 } from "../../src/lib/history-client";
 import { fetchEntitlements } from "../../src/lib/account-client";
-import { AccountPanel } from "../../src/components/account-panel";
+import { AccountIdentityHeader, AccountPanel } from "../../src/components/account-panel";
 import { uploadFile, UploadEntitlementError, UPLOAD_ACCEPT } from "../../src/lib/upload-client";
 import { useMediaQuery } from "../../src/lib/use-media-query";
 
@@ -1487,6 +1487,7 @@ export default function ChatPage() {
         open={accountOpen}
         onClose={() => setAccountOpen(false)}
         title={tAccount("modalTitle")}
+        header={<AccountIdentityHeader />}
         closeLabel={tAccount("close")}
         className="account-modal"
       >
