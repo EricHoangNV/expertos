@@ -5259,3 +5259,19 @@ Picked the next open M19 task. FAIL verdicts (Security Cycle 4 / Product Cycle 2
 **Test:** new `app/knowledge/[id]/page.test.tsx` (page had none) — 3 cases: pagehead (back href, title, version meta, pagehead-scoped status badge), version chips (per-row scoped to dodge the duplicate status-label text — ink draft on v3, green live on v2), load-error path. `setMockParams({id})` + M15.2.1 harness.
 
 **Gates:** admin typecheck + `next lint` clean; admin 112 jest green serially (`--runInBand` — the parallel runner OOMs/timeouts workers in 4GB sandbox; all green in isolation, confirming contention not regression); root `knip` + `lint:css` clean. No new ds.css, no hardcoded hex/px, no DTO changes (real-data fidelity per §M19).
+
+---
+
+## M19.2.3 — knowledge-draft-detail design parity (screenshot 06) — 2026-06-06
+
+**Task:** Add the info-callout above the Title field on `apps/admin/app/knowledge-drafts/[id]/page.tsx`; keep the existing Title/Content editor + lifecycle buttons + back-eyebrow + status badge. Omit the screenshot's "N asks" count + "View source queries" link (no DTO backing). Real client `getDraft`/`updateDraft`/`draftAction` → `KnowledgeDraftDto`.
+
+**Change:** Inserted a `.panel card-pad row gap2` callout (`ⓘ` `aria-hidden` glyph + `.muted` `<p>{t("detail.autoDraftedNote")}</p>`) above the Title `Field`. Reuses existing ds.css classes (same shape as the `concierge-reviews` AI-answer panel) — no new CSS, no hardcoded hex/px.
+
+**Honest gating:** The "auto-drafted from low-confidence asks" claim is only true for chat-promoted drafts, so the callout renders **only when `draft.conversationId != null`** (the same real signal driving the existing "· from conversation" meta) — never on a manually-authored draft where the note would be false. Per the baked-in M19 decision, the count + source-queries link are omitted (no `KnowledgeDraftDto` field), static note only.
+
+**i18n:** new `detail.autoDraftedNote` (EN + VI lockstep) in `dictionaries/knowledge-drafts.ts`; existing i18n parity test auto-covers it.
+
+**Test:** new `app/knowledge-drafts/[id]/page.test.tsx` (page had none) — 3 cases: callout + status badge render for a conversation-sourced draft; callout omitted for `conversationId: null`; load-error badge. M15.2.1 harness + `setMockParams({id})`.
+
+**Gates:** admin typecheck + `next lint` clean; admin 115 jest green serially (`--runInBand` — parallel runner OOMs/times-out workers in-sandbox; all green in isolation, confirming contention not regression); root `knip` clean. No DTO changes (real-data fidelity per §M19).

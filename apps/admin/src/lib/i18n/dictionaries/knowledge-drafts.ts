@@ -29,6 +29,7 @@ export const en = {
     titleLabel: "Title",
     contentLabel: "Content",
     save: "Save changes",
+    autoDraftedNote: "Auto-drafted from low-confidence asks with no strong chunk. Edit, then publish to close the gap.",
   },
   // Lifecycle action buttons.
   actions: {
@@ -67,6 +68,7 @@ export const vi = {
     titleLabel: "Tiêu đề",
     contentLabel: "Nội dung",
     save: "Lưu thay đổi",
+    autoDraftedNote: "Tự động soạn từ các câu hỏi độ tin cậy thấp không có đoạn nội dung phù hợp. Chỉnh sửa rồi xuất bản để lấp lỗ hổng.",
   },
   actions: {
     submit: "Gửi để duyệt",

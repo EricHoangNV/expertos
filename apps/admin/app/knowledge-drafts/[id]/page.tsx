@@ -124,6 +124,12 @@ export default function DraftDetailPage() {
 
       {draft != null && (
         <>
+          {draft.conversationId != null && (
+            <div className="panel card-pad row gap2">
+              <span aria-hidden="true">ⓘ</span>
+              <p className="muted">{t("detail.autoDraftedNote")}</p>
+            </div>
+          )}
           <Field label={t("detail.titleLabel")} htmlFor="draft-title">
             <Input
               id="draft-title"
