@@ -5,10 +5,10 @@ import type { Messages } from "@expertos/ui";
  * their badges and section labels, empty states, and the paginated "Load more" control.
  */
 export const en = {
-  eyebrow: "Quality",
-  title: "Flagged answers",
+  eyebrow: "Content roadmap · Inspector",
+  title: "Failed queries",
   intro:
-    "Answers users rated unhelpful, newest first — across all tenants. Triage these to feed weak answers back into knowledge.",
+    "Answers users flagged as unhelpful or that returned insufficient knowledge — the raw signal for what to write next.",
   emptyFlagged: "No answers have been flagged unhelpful.",
   // Card badges.
   insufficientKnowledge: "Insufficient knowledge",
@@ -17,7 +17,9 @@ export const en = {
   question: "Question",
   questionMissing: "— (question not found)",
   answer: "Answer",
-  reason: "Reason",
+  reason: "Reason flagged",
+  // Per-card action → the draft pipeline.
+  draftKnowledge: "Draft knowledge",
   // Pagination.
   loadMore: "Load more",
   loading: "Loading…",
@@ -29,17 +31,18 @@ export const en = {
 } satisfies Messages;
 
 export const vi = {
-  eyebrow: "Chất lượng",
-  title: "Câu trả lời bị gắn cờ",
+  eyebrow: "Lộ trình nội dung · Trình kiểm tra",
+  title: "Truy vấn thất bại",
   intro:
-    "Câu trả lời người dùng đánh giá không hữu ích, mới nhất trước — trên tất cả khách hàng. Phân loại để đưa các câu trả lời yếu trở lại kiến thức.",
+    "Câu trả lời người dùng gắn cờ không hữu ích hoặc trả về thiếu kiến thức — tín hiệu thô cho biết cần viết gì tiếp theo.",
   emptyFlagged: "Chưa có câu trả lời nào bị gắn cờ không hữu ích.",
   insufficientKnowledge: "Thiếu kiến thức",
   confidence: "độ tin cậy {value}",
   question: "Câu hỏi",
   questionMissing: "— (không tìm thấy câu hỏi)",
   answer: "Câu trả lời",
-  reason: "Lý do",
+  reason: "Lý do gắn cờ",
+  draftKnowledge: "Soạn kiến thức",
   loadMore: "Tải thêm",
   loading: "Đang tải…",
   errors: {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Badge, Button, Card } from "@expertos/ui";
 import type { FailedQueryDto } from "@expertos/shared";
 import { AdminFrame } from "../../src/components/AdminFrame";
@@ -57,7 +58,7 @@ export default function FailedQueriesPage() {
           <h1 className="h1">{t("title")}</h1>
         </div>
       </div>
-      <p className="muted">{t("intro")}</p>
+      <p className="lede">{t("intro")}</p>
 
       {error != null && <Badge tone="red">{error}</Badge>}
       {rows != null && rows.length === 0 && <p className="muted">{t("emptyFlagged")}</p>}
@@ -90,6 +91,12 @@ export default function FailedQueriesPage() {
                   <p className="muted">{row.reason}</p>
                 </>
               )}
+
+              <div className="row">
+                <Link href="/knowledge-drafts" className="btn btn-primary btn-sm">
+                  {t("draftKnowledge")}
+                </Link>
+              </div>
             </Card>
           ))}
         </div>
