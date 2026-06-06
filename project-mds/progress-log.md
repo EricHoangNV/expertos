@@ -5445,3 +5445,15 @@ Design-parity polish on the admin TidyCal reconcile page. The page already match
 - 5 M19 tasks remain open: M19.5.1 users, M19.5.2 user-detail, M19.5.3 access-control, M19.5.4 audit, M19.5.5 settings (all `apps/admin`).
 - Admin jest full parallel run flakes one rotating async-`findByText`-timeout suite in-sandbox (OOM under load, DIRECTIVE #40) — run suites in isolation or `--runInBand` to confirm; all 127 pass individually.
 - No dedicated retention page test exists; i18n lockstep test (13/13) covers the new dict key.
+
+## M19.5.1 — users design parity (screenshot 20) — 2026-06-06
+Design-parity pass on `apps/admin/app/users/page.tsx` against mockup screenshot 20. Three deltas, no structural rebuild (pagehead + role Select + search Input + Apply + EMAIL/NAME/ROLE/PLAN/JOINED/Manage Table already matched):
+1. Intro `.muted` → `.lede`.
+2. Premium plan rendered as a colored `Badge tone="red"` (crimson, matching matrix premium emphasis). Only `planKey === "premium"` is badged; `plus`/other keys stay plain text; `· {subscriptionStatus}` suffix stays `.muted`. Cell children wrapped in `.row gap1`. Matches the screenshot's "Plus · active" (plain) vs "PREMIUM · active" (badged) contrast.
+3. "Manage" action: `<Link className="navitem">` → `<Link className="btn btn-subtle btn-sm">` (button-styled link, same pattern as experts page M19.2.4). Keeps the `<a>`/link role + href so navigation and the existing `getByRole("link", { name: "Manage" })` test are unaffected.
+
+No new i18n keys (reused `list.intro`, `list.manage`; the raw `planKey` string drives the Badge, which uppercases via ds.css `.badge`). Added test "renders the premium plan as a colored badge" (`app/users/page.test.tsx`): premium+active row asserts the `premium` cell carries the `badge` class.
+
+Real-data fidelity kept (`listUsers`/`AdminUserSummaryDto`; mockup "J&P GLOBAL" branding ignored). No hardcoded hex/px; reused existing ds.css.
+
+Gates: admin typecheck + next lint clean; users suite 9/9; full admin suite 128/128 with `--runInBand` (default parallel run flakes rotating async-timeout suites in-sandbox — OOM under load, DIRECTIVE #40; all green individually/in-band); root knip + lint:css clean. Tests now 1723 total (admin 127→128).

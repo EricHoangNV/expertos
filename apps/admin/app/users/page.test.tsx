@@ -80,6 +80,19 @@ describe("UsersPage — list", () => {
     });
   });
 
+  it("renders the premium plan as a colored badge", async () => {
+    mockApi("GET", "/admin/users", {
+      body: [summary({ id: "u_p", email: "pro@example.com", planKey: "premium", subscriptionStatus: "active" })],
+    });
+    renderWithProviders(<UsersPage />, { role: "admin" });
+
+    await waitFor(() => {
+      const row = screen.getByText("pro@example.com").closest("tr") as HTMLElement;
+      const badge = within(row).getByText("premium");
+      expect(badge.className).toContain("badge");
+    });
+  });
+
   it("shows the empty state when no users match", async () => {
     mockApi("GET", "/admin/users", { body: [] });
     renderWithProviders(<UsersPage />, { role: "admin" });

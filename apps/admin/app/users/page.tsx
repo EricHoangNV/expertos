@@ -52,7 +52,7 @@ export default function UsersPage() {
         <div>
           <div className="eyebrow">{t("eyebrow")}</div>
           <h1 className="h1">{t("list.title")}</h1>
-          <p className="muted">{t("list.intro")}</p>
+          <p className="lede">{t("list.intro")}</p>
         </div>
       </div>
 
@@ -107,8 +107,12 @@ export default function UsersPage() {
                 </td>
                 <td>
                   {u.planKey != null ? (
-                    <span>
-                      {u.planKey}
+                    <span className="row gap1">
+                      {u.planKey === "premium" ? (
+                        <Badge tone="red">{u.planKey}</Badge>
+                      ) : (
+                        <span>{u.planKey}</span>
+                      )}
                       {u.subscriptionStatus != null && (
                         <span className="muted"> · {statusLabel(u.subscriptionStatus)}</span>
                       )}
@@ -119,7 +123,7 @@ export default function UsersPage() {
                 </td>
                 <td className="muted mono">{new Date(u.createdAt).toLocaleDateString()}</td>
                 <td>
-                  <Link href={`/users/${u.id}`} className="navitem">
+                  <Link href={`/users/${u.id}`} className="btn btn-subtle btn-sm">
                     {t("list.manage")}
                   </Link>
                 </td>
