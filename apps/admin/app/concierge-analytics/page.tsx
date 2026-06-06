@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Field, Select, Stat, Table } from "@expertos/ui";
+import { Badge, Card, Field, Select, Stat, Table } from "@expertos/ui";
 import type { BadgeTone } from "@expertos/ui";
 import {
   REVIEW_REQUEST_STATUSES,
@@ -127,18 +127,53 @@ export default function ConciergeAnalyticsPage() {
         <>
           <div className="row gap1">
             <Stat label={t("requests", { days })} value={count(report.totalRequests)} />
-            <Stat label={t("answered", { days })} value={count(report.byStatus.answered)} />
-            <Stat label={t("slaMet")} value={rate(report.sla.met, report.sla.tracked)} />
+            <Stat
+              label={t("answered", { days })}
+              value={count(report.byStatus.answered)}
+              delta={t("answeredRate", { rate: rate(report.byStatus.answered, report.totalRequests) })}
+              trend="up"
+            />
+            <Stat
+              label={t("slaMet")}
+              value={rate(report.sla.met, report.sla.tracked)}
+              delta={t("slaTracked", { count: count(report.sla.tracked) })}
+              trend="up"
+            />
             <Stat label={t("avgResponse")} value={responseTime(report.sla.avgResponseMinutes)} />
             <Stat label={t("verdicts", { days })} value={count(report.verdicts.total)} />
           </div>
 
-          <h3 className="h3">{t("slaAdherence")}</h3>
-          <div className="row gap2">
-            <Badge tone="info">{t("slaTracked", { count: count(report.sla.tracked) })}</Badge>
-            <Badge tone="green">{t("slaMetBadge", { count: count(report.sla.met) })}</Badge>
-            <Badge tone="red">{t("slaBreached", { count: count(report.sla.breached) })}</Badge>
-            <Badge tone="amber">{t("slaOpenOverdue", { count: count(report.sla.openOverdue) })}</Badge>
+          {/* SLA adherence + trigger-mode/visibility as two side-by-side titled cards (M19.3.2,
+              screenshot 11) — reuses the established `.matrix-foot` 2-up info-card grid (M13.4.4)
+              for zero new ds.css; each card is an `.eyebrow` label over its Badge chips. */}
+          <div className="matrix-foot">
+            <Card pad>
+              <div className="eyebrow">{t("slaAdherence")}</div>
+              <div className="row gap2 wrap">
+                <Badge tone="info">{t("slaTracked", { count: count(report.sla.tracked) })}</Badge>
+                <Badge tone="green">{t("slaMetBadge", { count: count(report.sla.met) })}</Badge>
+                <Badge tone="red">{t("slaBreached", { count: count(report.sla.breached) })}</Badge>
+                <Badge tone="amber">{t("slaOpenOverdue", { count: count(report.sla.openOverdue) })}</Badge>
+              </div>
+            </Card>
+            <Card pad>
+              <div className="eyebrow">{t("byTriggerModeVisibility")}</div>
+              <div className="row gap2 wrap">
+                {REVIEW_TRIGGER_MODES.map((m) => (
+                  <Badge key={m} tone="ink">
+                    {t("triggerModeBadge", {
+                      label: t(TRIGGER_MODE_LABEL_KEYS[m]),
+                      count: count(report.byTriggerMode[m]),
+                    })}
+                  </Badge>
+                ))}
+                {VISIBILITIES.map((v) => (
+                  <Badge key={v} tone={v === "visible" ? "info" : "ink"}>
+                    {t("visibilityBadge", { label: statusLabel(v), count: count(report.byVisibility[v]) })}
+                  </Badge>
+                ))}
+              </div>
+            </Card>
           </div>
 
           <h3 className="h3">{t("byStatus")}</h3>
@@ -158,27 +193,6 @@ export default function ConciergeAnalyticsPage() {
               ))}
             </tbody>
           </Table>
-
-          <h3 className="h3">{t("byTriggerMode")}</h3>
-          <div className="row gap2">
-            {REVIEW_TRIGGER_MODES.map((m) => (
-              <Badge key={m} tone="ink">
-                {t("triggerModeBadge", {
-                  label: t(TRIGGER_MODE_LABEL_KEYS[m]),
-                  count: count(report.byTriggerMode[m]),
-                })}
-              </Badge>
-            ))}
-          </div>
-
-          <h3 className="h3">{t("byVisibility")}</h3>
-          <div className="row gap2">
-            {VISIBILITIES.map((v) => (
-              <Badge key={v} tone={v === "visible" ? "info" : "ink"}>
-                {t("visibilityBadge", { label: statusLabel(v), count: count(report.byVisibility[v]) })}
-              </Badge>
-            ))}
-          </div>
 
           <h3 className="h3">{t("reviewerVerdicts")}</h3>
           <div className="row gap2">

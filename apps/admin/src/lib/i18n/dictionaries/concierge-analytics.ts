@@ -12,6 +12,7 @@ export const en = {
   // KPI stat cards.
   requests: "Requests · {days}d",
   answered: "Answered · {days}d",
+  answeredRate: "{rate} answered",
   slaMet: "SLA met",
   avgResponse: "Avg response",
   verdicts: "Verdicts · {days}d",
@@ -27,8 +28,7 @@ export const en = {
   triggerModeBadge: "{label}: {count}",
   // Breakdown sections.
   byStatus: "Requests by status",
-  byTriggerMode: "Requests by trigger mode",
-  byVisibility: "Requests by visibility",
+  byTriggerModeVisibility: "By trigger mode & visibility",
   reviewerVerdicts: "Reviewer verdicts",
   // Status table headers.
   colStatus: "Status",
@@ -60,6 +60,7 @@ export const vi = {
     "Số liệu có con người tham gia trên toàn nền tảng. Số lượt yêu cầu và phán quyết tính trong khoảng thời gian; số liệu gắn cờ chất lượng tri thức là lũy kế.",
   requests: "Yêu cầu · {days} ngày",
   answered: "Đã trả lời · {days} ngày",
+  answeredRate: "{rate} đã trả lời",
   slaMet: "Đạt SLA",
   avgResponse: "Thời gian phản hồi trung bình",
   verdicts: "Phán quyết · {days} ngày",
@@ -72,8 +73,7 @@ export const vi = {
   triggerModeAutoSilent: "Tự động ẩn (Chế độ B)",
   triggerModeBadge: "{label}: {count}",
   byStatus: "Yêu cầu theo trạng thái",
-  byTriggerMode: "Yêu cầu theo chế độ kích hoạt",
-  byVisibility: "Yêu cầu theo khả năng hiển thị",
+  byTriggerModeVisibility: "Theo chế độ kích hoạt & khả năng hiển thị",
   reviewerVerdicts: "Phán quyết của người duyệt",
   colStatus: "Trạng thái",
   colRequests: "Yêu cầu",
