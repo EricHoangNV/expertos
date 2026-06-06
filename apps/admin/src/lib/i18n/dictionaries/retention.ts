@@ -15,6 +15,7 @@ export const en = {
   runSweep: "Run sweep",
   sweeping: "Sweeping…",
   sweepComplete: "Sweep complete",
+  cronNote: "In production a Cloud Scheduler job hits this same endpoint on a cadence.",
   preview: {
     temporaryUploads: "Temporary uploads",
     expiredConversations: "Idle conversations",
@@ -45,6 +46,7 @@ export const vi = {
   runSweep: "Chạy quét",
   sweeping: "Đang quét…",
   sweepComplete: "Quét hoàn tất",
+  cronNote: "Trong môi trường sản xuất, một tác vụ Cloud Scheduler sẽ gọi cùng endpoint này theo định kỳ.",
   preview: {
     temporaryUploads: "Tệp tải lên tạm thời",
     expiredConversations: "Hội thoại không hoạt động",

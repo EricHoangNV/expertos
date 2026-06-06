@@ -76,14 +76,23 @@ export default function RetentionPage() {
         <div className="label">{t("eligibleNow")}</div>
         {preview != null ? (
           <div className="row gap1">
-            <Stat label={t("preview.temporaryUploads")} value={preview.temporaryUploads} />
-            <Stat label={t("preview.expiredConversations")} value={preview.expiredConversations} />
-            <Stat label={t("preview.oldUsageLogs")} value={preview.oldUsageLogs} />
+            <Stat
+              label={t("preview.temporaryUploads")}
+              value={preview.temporaryUploads.toLocaleString()}
+            />
+            <Stat
+              label={t("preview.expiredConversations")}
+              value={preview.expiredConversations.toLocaleString()}
+            />
+            <Stat label={t("preview.oldUsageLogs")} value={preview.oldUsageLogs.toLocaleString()} />
             <Stat
               label={t("preview.consultationTranscripts")}
-              value={preview.consultationTranscripts}
+              value={preview.consultationTranscripts.toLocaleString()}
             />
-            <Stat label={t("preview.conciergeRecords")} value={preview.conciergeRecords} />
+            <Stat
+              label={t("preview.conciergeRecords")}
+              value={preview.conciergeRecords.toLocaleString()}
+            />
           </div>
         ) : (
           <p className="muted">{t("loading")}</p>
@@ -95,6 +104,7 @@ export default function RetentionPage() {
           <Button variant="primary" onClick={() => void runSweep()} disabled={running}>
             {running ? t("sweeping") : t("runSweep")}
           </Button>
+          <span className="muted">{t("cronNote")}</span>
         </div>
       </Card>
 
@@ -107,14 +117,23 @@ export default function RetentionPage() {
             <span className="muted mono">{new Date(result.sweptAt).toLocaleString()}</span>
           </div>
           <div className="row gap1">
-            <Stat label={t("result.temporaryUploads")} value={result.temporaryUploads} />
-            <Stat label={t("result.expiredConversations")} value={result.expiredConversations} />
-            <Stat label={t("result.oldUsageLogs")} value={result.oldUsageLogs} />
+            <Stat
+              label={t("result.temporaryUploads")}
+              value={result.temporaryUploads.toLocaleString()}
+            />
+            <Stat
+              label={t("result.expiredConversations")}
+              value={result.expiredConversations.toLocaleString()}
+            />
+            <Stat label={t("result.oldUsageLogs")} value={result.oldUsageLogs.toLocaleString()} />
             <Stat
               label={t("result.consultationTranscripts")}
-              value={result.consultationTranscripts}
+              value={result.consultationTranscripts.toLocaleString()}
             />
-            <Stat label={t("result.conciergeRecords")} value={result.conciergeRecords} />
+            <Stat
+              label={t("result.conciergeRecords")}
+              value={result.conciergeRecords.toLocaleString()}
+            />
           </div>
         </Card>
       )}
