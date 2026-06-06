@@ -385,6 +385,41 @@ button { font-family: inherit; cursor: pointer; }
 .sla-sub { margin: 0 0 18px; }
 
 /* ============================================================
+   User app shell (web · history / knowledge / account)
+   Layout utility classes mirroring the consumer-web mockup shell:
+   left rail + top-right user/settings + Account popup. Branding-neutral
+   (ExpertOS): primary nav left, user info & settings top-right.
+   ============================================================ */
+.uapp { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
+.urail { background: var(--surface); border-right: 1px solid var(--line); padding: 18px 16px; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; height: 100vh; }
+.ubrand { display: flex; align-items: center; padding: 4px 6px 16px; }
+.unav { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: var(--r-sm); color: var(--ink-600); font-size: 14px; font-weight: 500; transition: background .13s, color .13s; }
+.unav:hover { background: var(--paper); color: var(--ink-900); }
+.unav.active { background: var(--paper-2); color: var(--ink-900); font-weight: 600; box-shadow: inset 2px 0 0 var(--red-600); }
+.ucard-usage { padding: 12px 13px; border: 1px solid var(--line); border-radius: var(--r-md); margin-bottom: 4px; }
+
+.umaincol { display: flex; flex-direction: column; min-width: 0; }
+
+/* top bar — user info + settings live top-right */
+.utopbar { height: 60px; background: var(--surface); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; padding: 0 24px; position: sticky; top: 0; z-index: 40; }
+.utop-title { font-family: var(--font-display); font-weight: 600; font-size: 16px; color: var(--ink-900); }
+.usettings { position: relative; }
+.usettings-pop { position: absolute; top: calc(100% + 8px); right: 0; width: 248px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--sh-lg); padding: 14px; z-index: 50; }
+.uuser-chip { display: flex; align-items: center; gap: 9px; padding: 5px 9px 5px 6px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--r-pill); cursor: pointer; color: var(--ink-500); transition: border-color .13s, background .13s; }
+.uuser-chip:hover { border-color: var(--ink-400); background: var(--paper); }
+.uuser-name { font-size: 13.5px; font-weight: 600; color: var(--ink-800); }
+
+.umain { padding: 36px; max-width: 920px; margin: 0 auto; width: 100%; }
+
+/* account popup */
+.umodal-backdrop { position: fixed; inset: 0; background: rgba(23,24,28,.5); backdrop-filter: blur(3px); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.umodal { background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--sh-lg); width: 480px; max-width: 100%; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
+.umodal-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 22px; border-bottom: 1px solid var(--line); }
+.umodal-body { padding: 20px 22px 24px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+
+.uesc { position: fixed; bottom: 18px; right: 18px; z-index: 60; box-shadow: var(--sh-md); }
+
+/* ============================================================
    Knowledge approval — status pipeline + kanban board (M13.3)
    A numbered horizontal step indicator (active stage crimson) over
    a 4-column status board. `.kanban` is a horizontal flex row of
