@@ -23,8 +23,9 @@ import {
  *   answer: per the PRD, steer these toward a human rather than a confident AI answer.
  * - `low_confidence` — the answer was insufficient-knowledge, or cited at most `threshold` sources:
  *   the AI couldn't ground a strong answer, so offer the human path (M3.4's graceful next step).
- * - `depth` — the conversation has reached `threshold` assistant turns: an engaged user who keeps
- *   asking is a high-intent consultation candidate.
+ * - `depth` — the conversation reaches *exactly* `threshold` assistant turns: an engaged user who
+ *   keeps asking is a high-intent consultation candidate. Exact equality (not `>=`) so the engine
+ *   fires once at the moment of engagement instead of under every answer past the threshold.
  */
 export function evaluateRecommendation(
   signals: RecommendationSignals,
@@ -77,8 +78,10 @@ function matchRule(
     }
     case "depth": {
       // A null/≤0 threshold can never fire — an unconfigured depth rule must not nag every turn.
+      // Exact equality: the engine is stateless across turns, so `>=` would re-fire under every
+      // answer once the threshold is crossed; `===` marks only the turn that reaches it.
       const min = rule.threshold ?? 0;
-      return { fired: min > 0 && signals.assistantTurnCount >= min, matchedKeyword: null };
+      return { fired: min > 0 && signals.assistantTurnCount === min, matchedKeyword: null };
     }
     case "low_confidence": {
       const max = rule.threshold ?? 0;

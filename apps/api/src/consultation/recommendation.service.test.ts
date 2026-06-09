@@ -46,7 +46,13 @@ function makeTx() {
     recommendationRule: { findMany: jest.fn(), findUnique: jest.fn() },
     message: { count: jest.fn() },
     consultationType: { findFirst: jest.fn() },
-    consultationRecommendation: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    consultationRecommendation: {
+      create: jest.fn(),
+      // No prior prompts in the conversation by default — guard tests override this.
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
     consultation: { create: jest.fn(), findUnique: jest.fn() },
   };
 }
@@ -172,6 +178,78 @@ describe("RecommendationService.recommend", () => {
     const result = await service.recommend(USER, input({ question: "I want to hire" }));
 
     expect(result).toMatchObject({ id: "rec-4", trigger: "high_intent", consultationType: null });
+  });
+
+  it("never re-fires a trigger that already prompted in this conversation (once per trigger)", async () => {
+    const tx = makeTx();
+    tx.recommendationRule.findMany.mockResolvedValue(RULES);
+    tx.consultationRecommendation.findMany.mockResolvedValue([
+      { trigger: "high_intent", createdAt: new Date("2026-06-01T00:00:00Z") },
+    ]);
+    // First count = turns since the last prompt (cooldown passes), second = depth signal (≠ 4).
+    tx.message.count.mockResolvedValueOnce(5).mockResolvedValueOnce(8);
+    const { service } = makeService(tx);
+
+    // The question would re-fire high_intent, but that trigger is spent for this conversation.
+    const result = await service.recommend(USER, input({ question: "Can I hire you?" }));
+
+    expect(result).toBeNull();
+    expect(tx.consultationRecommendation.create).not.toHaveBeenCalled();
+  });
+
+  it("returns null without counting turns when every enabled trigger has already prompted", async () => {
+    const tx = makeTx();
+    tx.recommendationRule.findMany.mockResolvedValue(RULES);
+    tx.consultationRecommendation.findMany.mockResolvedValue([
+      { trigger: "high_intent", createdAt: new Date("2026-06-01T00:00:00Z") },
+      { trigger: "depth", createdAt: new Date("2026-06-01T00:01:00Z") },
+    ]);
+    const { service } = makeService(tx);
+
+    const result = await service.recommend(USER, input({ question: "Can I hire you?" }));
+
+    expect(result).toBeNull();
+    expect(tx.message.count).not.toHaveBeenCalled();
+    expect(tx.consultationRecommendation.create).not.toHaveBeenCalled();
+  });
+
+  it("suppresses every trigger within the cooldown window after a prompt", async () => {
+    const tx = makeTx();
+    tx.recommendationRule.findMany.mockResolvedValue(RULES);
+    const lastPromptAt = new Date("2026-06-01T00:00:00Z");
+    tx.consultationRecommendation.findMany.mockResolvedValue([
+      { trigger: "depth", createdAt: lastPromptAt },
+    ]);
+    tx.message.count.mockResolvedValueOnce(1); // only 1 assistant turn since the last prompt
+    const { service } = makeService(tx);
+
+    // high_intent would fire, but the conversation just saw a prompt — stay quiet.
+    const result = await service.recommend(USER, input({ question: "Can I hire you?" }));
+
+    expect(result).toBeNull();
+    // The cooldown counts assistant turns strictly after the last prompt's row.
+    expect(tx.message.count).toHaveBeenCalledWith({
+      where: { conversationId: "conv-1", role: "assistant", createdAt: { gt: lastPromptAt } },
+    });
+    expect(tx.consultationRecommendation.create).not.toHaveBeenCalled();
+  });
+
+  it("lets a different trigger fire once the cooldown has elapsed", async () => {
+    const tx = makeTx();
+    tx.recommendationRule.findMany.mockResolvedValue(RULES);
+    tx.consultationRecommendation.findMany.mockResolvedValue([
+      { trigger: "depth", createdAt: new Date("2026-06-01T00:00:00Z") },
+    ]);
+    // 3 turns since the last prompt = cooldown satisfied; then the depth-signal count.
+    tx.message.count.mockResolvedValueOnce(3).mockResolvedValueOnce(7);
+    tx.consultationType.findFirst.mockResolvedValue(INTRO_TYPE);
+    tx.consultationRecommendation.create.mockResolvedValue({ id: "rec-5" });
+    const { service } = makeService(tx);
+
+    const result = await service.recommend(USER, input({ question: "Can I hire you?" }));
+
+    expect(result?.trigger).toBe("high_intent");
+    expect(tx.consultationRecommendation.create).toHaveBeenCalledTimes(1);
   });
 
   it("degrades to null and logs (never throws) when the transaction fails — an answer already streamed", async () => {

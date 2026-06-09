@@ -46,6 +46,13 @@ const REASONS: Record<RecommendationTriggerValue, string> = {
   depth: "You've gone deep on this — a focused consultation can give you personalized, end-to-end guidance.",
 };
 
+/**
+ * Minimum assistant turns between two consultation prompts in one conversation. Together with the
+ * once-per-conversation-per-trigger guard, this keeps the funnel CTA an occasional, well-timed
+ * nudge instead of a per-turn nag — the pure engine is stateless, so repeat-suppression lives here.
+ */
+export const RECOMMENDATION_COOLDOWN_TURNS = 3;
+
 const RULE_SELECT = {
   trigger: true,
   enabled: true,
@@ -66,7 +73,9 @@ const CONSULTATION_TYPE_SELECT = {
  * The consultation-recommendation seam (M7.1, PRD §"Consultation funnel"). After a chat turn is
  * persisted, decides whether to surface an in-chat "book a consultation" prompt by feeding the
  * turn's signals + the admin-editable `recommendation_rules` config into the pure
- * {@link evaluateRecommendation} engine. When a rule fires it persists a
+ * {@link evaluateRecommendation} engine. Repeat suppression lives here (the engine is stateless):
+ * each trigger fires at most once per conversation, and consecutive prompts are spaced at least
+ * {@link RECOMMENDATION_COOLDOWN_TURNS} assistant turns apart. When a rule fires it persists a
  * `consultation_recommendations` row (the funnel's first datapoint — M7.2 records the user's
  * Book / Maybe later / Ask another response against its id; M10.2 attributes revenue through it)
  * and returns the wire DTO; otherwise null.
@@ -98,6 +107,39 @@ export class RecommendationService {
           return null;
         }
 
+        // Repeat-suppression guards. The engine is pure/stateless, so without these a standing
+        // condition (e.g. depth past its threshold, a persistently low-cited topic) would surface
+        // the prompt under every subsequent answer. Two layers:
+        //  1. once per conversation per trigger — a trigger that already produced a prompt here
+        //     never re-fires; and
+        //  2. cooldown — any two prompts must be at least RECOMMENDATION_COOLDOWN_TURNS assistant
+        //     turns apart, so distinct triggers can't stack prompts on back-to-back answers.
+        const prior = await tx.consultationRecommendation.findMany({
+          where: { conversationId: input.conversationId },
+          select: { trigger: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+        });
+        const usedTriggers = new Set<string>(prior.map((p) => p.trigger));
+        const candidates = rules.filter((r) => !usedTriggers.has(r.trigger));
+        if (candidates.length === 0) {
+          return null;
+        }
+        if (prior.length > 0) {
+          // The prior row was created after its own turn's messages persisted, so this counts the
+          // assistant turns strictly after the last prompt (the current turn is already persisted
+          // and included).
+          const turnsSinceLast = await tx.message.count({
+            where: {
+              conversationId: input.conversationId,
+              role: "assistant",
+              createdAt: { gt: prior[0].createdAt },
+            },
+          });
+          if (turnsSinceLast < RECOMMENDATION_COOLDOWN_TURNS) {
+            return null;
+          }
+        }
+
         // Count assistant turns in this conversation *including* the one just persisted (the caller
         // runs this after `persistTurn` commits), so `depth` measures true conversation length —
         // not the token-windowed history the prompt replayed.
@@ -114,7 +156,7 @@ export class RecommendationService {
             assistantTurnCount,
             highStakes: input.highStakes,
           },
-          rules,
+          candidates,
         );
         if (!outcome) {
           return null;

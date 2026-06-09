@@ -93,11 +93,14 @@ describe("evaluateRecommendation", () => {
     expect(out).toBeNull();
   });
 
-  it("fires depth when the assistant-turn count reaches the threshold", () => {
+  it("fires depth only on the exact turn the assistant-turn count reaches the threshold", () => {
     const r = [rule({ trigger: "depth", threshold: 3 })];
     expect(evaluateRecommendation(signals({ assistantTurnCount: 2 }), r)).toBeNull();
     expect(evaluateRecommendation(signals({ assistantTurnCount: 3 }), r)?.trigger).toBe("depth");
-    expect(evaluateRecommendation(signals({ assistantTurnCount: 9 }), r)?.trigger).toBe("depth");
+    // Past the threshold it must NOT re-fire — the engine is stateless across turns, so `>=`
+    // would nag under every answer for the rest of the conversation.
+    expect(evaluateRecommendation(signals({ assistantTurnCount: 4 }), r)).toBeNull();
+    expect(evaluateRecommendation(signals({ assistantTurnCount: 9 }), r)).toBeNull();
   });
 
   it("an unconfigured depth threshold (null / ≤ 0) never fires", () => {

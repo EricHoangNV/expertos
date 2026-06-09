@@ -28,7 +28,7 @@ export const en = {
     },
     depth: {
       label: "Conversation depth",
-      help: "The conversation has reached this many assistant turns — an engaged user is a strong candidate.",
+      help: "The conversation reaches exactly this many assistant turns — fires once, at the moment of engagement.",
     },
   },
   enabled: "Enabled",
@@ -73,7 +73,7 @@ export const vi = {
     },
     depth: {
       label: "Độ sâu hội thoại",
-      help: "Cuộc hội thoại đã đạt chừng này lượt trả lời của trợ lý — người dùng đang gắn kết là ứng viên tiềm năng.",
+      help: "Cuộc hội thoại đạt đúng chừng này lượt trả lời của trợ lý — chỉ kích hoạt một lần, vào đúng thời điểm gắn kết.",
     },
   },
   enabled: "Đã bật",
