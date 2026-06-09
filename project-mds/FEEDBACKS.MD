@@ -2,14 +2,12 @@
 
 ## Latest Review Verdicts (read this section first — stop at the breaker line)
 
-### Security: Cycle 4 — FAIL (2026-06-05)
-- auth & access control: FAIL (bulk publish CLI can bypass the expert-review publication gate)
-- data exposure / secrets: PASS (per-expert TidyCal token is write-only/encrypted; no new plaintext echo found)
-- input validation: PASS (reviewed changed API routes use zod/UUID validation and bound SQL parameters)
-- dependency / supply chain: PASS (no new runtime dependency expansion; script entries only)
-- Critical: bulk draft-publish CLI makes draft chunks retrieval-visible while intentionally skipping AI-processing and expert-review gates
-- High: TidyCal decrypt failure falls through to the global/default provider while bookings remain attributed to the failing expert
-- Medium: bulk publish CLI does not invalidate tenant response caches after publishing new retrieval-visible knowledge
+### Security: Cycle 5 — FAIL (2026-06-09)
+- auth & access control: PASS (prior bulk-publish gate bypass now routes through `publishReviewedVersionTx`; admin/expert API routes sampled still use server-side guards)
+- data exposure / secrets: FAIL (failed upload DB writes can leave private GCS objects without DB rows, outside retention/account deletion)
+- input validation: PASS (sampled upload, billing, booking, chat, and admin routes use zod/UUID validation, size/type checks, and bound SQL)
+- dependency / supply chain: PASS (recent changes are mostly UI/docs/tests; no new security-sensitive runtime dependency expansion found)
+- High: upload stores private bytes before DB commit and does not delete them if the DB transaction fails
 
 ### Code Review: Cycle 0 — (no review yet)
 - (awaiting first code review)
@@ -19,6 +17,95 @@
 - core user flow: FAIL
 - data handling / privacy: PASS
 - Critical: draft-publish bypass can ground user answers in unreviewed knowledge; High: TidyCal decrypt fallback can misattribute bookings/revenue to the wrong expert
+
+---
+
+## Daily Architecture Review - Security Cycle 5 (2026-06-09)
+
+### 1. Review Scope
+
+Reviewed the ExpertOS monorepo as a Senior Solution Architect across security, performance, efficiency, cost resilience, reliability, and data isolation. I followed `project-mds/FEEDBACKS-INSTRUCTIONS.MD`, read only the Latest Review Verdicts block before editing feedback, and did not read or reference anything under `requirements/`.
+
+Inputs reviewed:
+
+- `project-mds/DIRECTIVES.md`
+- `project-mds/progress-state.md`
+- relevant `project-mds/PRD.md` sections for grounded answers, uploads, retention, subscriptions, concierge, booking, RLS, and admin controls
+- recent commits since the prior architecture/security review, including web/app-shell updates, admin design-parity changes, upload/account surfaces, and the Cycle 4 remediation notes
+- architecture-sensitive code in `apps/api/src`, `apps/web`, `apps/admin`, `packages/shared/src`, `packages/db/prisma`, `packages/db/src`, `packages/ai/src`, `packages/ui/src`, `infra`, `e2e`, manifests, migrations, env handling, logging, analytics, and retention paths
+
+Verified prior Cycle 4 remediation status:
+
+- Bulk publishing no longer exposes a draft-publish path. The CLI selects `expert_review` documents and calls the shared `publishReviewedVersionTx` primitive, which refuses non-`expert_review` versions.
+- Per-expert TidyCal decrypt failure now returns `null` from the provider factory and is counted as `failedTargets`; the poll skips that expert instead of falling back to the global token.
+- Persistent semantic-cache rows are cleared for affected tenants after bulk publish; in-process API cache staleness remains bounded by TTL/restart and is documented.
+
+### 2. Findings Ordered By Severity
+
+#### High - Failed upload DB writes can orphan private storage objects outside retention and deletion
+
+File and line references:
+
+- `apps/api/src/uploads/upload.service.ts:177`
+- `apps/api/src/uploads/upload.service.ts:181`
+- `apps/api/src/uploads/upload.service.ts:187`
+- `apps/api/src/uploads/upload.service.ts:206`
+- `apps/api/src/admin/retention.service.ts:168`
+- `apps/api/src/admin/retention.service.ts:172`
+- `apps/api/src/admin/admin-user.service.ts:337`
+- `apps/api/src/admin/admin-user.service.ts:340`
+- `apps/api/src/uploads/storage-cleanup.ts:5`
+
+What I found:
+
+`UploadService.upload` parses and embeds the uploaded document, then writes the raw private bytes to storage with `this.storage.put(...)` before entering the RLS-scoped transaction that creates `uploaded_files` and `upload_chunks`. If the DB transaction fails after the object write - for example, a transient database outage, a failed vector update, a constraint error, a timeout, or process termination during chunk persistence - the method has no `try/catch` compensation path to delete the newly written object.
+
+The retention and account-deletion cleanup paths discover objects only from persisted `uploaded_files.gcsUri` rows before deleting rows. A storage object written before a failed DB transaction has no row, so the normal retention sweep and GDPR-style account deletion cannot find it later.
+
+Architectural consequence:
+
+This breaks the private-upload ownership and retention model. A user can receive a failed upload response while their private file bytes remain in GCS indefinitely, unlisted in "My Knowledge", unreachable by user deletion, and invisible to the retention sweeper. That is a private-data retention failure and a trust breach for query-time uploads.
+
+Recommended remediation:
+
+Wrap the post-`storage.put` DB work in a compensation block. If row/chunk persistence fails, call `deleteStorageObjects(this.storage, [gcsUri], logger, { job: "upload-compensation", userId, ... })` before rethrowing. Add a regression test that forces `uploadedFile.create`, `uploadChunk.create`, or the vector `$executeRawUnsafe` to throw after `storage.put` and asserts the object delete is attempted.
+
+Also consider an explicit storage key staging pattern: write under a temporary prefix, persist the DB row with that key, then finalize/move or mark committed only after the DB transaction succeeds. If GCS move/finalize is not available through the abstraction, compensation plus a periodic orphan-audit job over the `uploads/` prefix is the minimum launch-safe path.
+
+### 3. Remediated Prior Findings Verified
+
+Bulk expert-review gate:
+
+- `apps/api/src/knowledge/bulk-publish.cli.ts:100` selects `status: "expert_review"`.
+- `apps/api/src/knowledge/bulk-publish.cli.ts:184` requires `KNOWLEDGE_BULK_PUBLISH=1` and `--approver`.
+- `apps/api/src/knowledge/bulk-publish.cli.ts:205` routes commits through the shared publish primitive.
+- `apps/api/src/knowledge/publish-version.ts:46` refuses any version whose status is not `expert_review`.
+
+TidyCal decrypt fallback:
+
+- `apps/api/src/consultation/tidycal-provider.factory.ts:47` resolves per-expert providers.
+- `apps/api/src/consultation/tidycal-provider.factory.ts:52` catches decrypt failure.
+- `apps/api/src/consultation/tidycal-provider.factory.ts:56` logs only expert id and failure class, then returns `null`.
+- `apps/api/src/consultation/booking.service.ts:225` skips null providers and increments `failedTargets`.
+
+Public booking webhook hardening:
+
+- `apps/api/src/consultation/booking.service.ts:104` keeps the offline webhook seam isolated.
+- `apps/api/src/consultation/booking.service.ts:110` disables unsigned offline booking webhooks in production.
+- `apps/api/src/consultation/http-tidycal-provider.ts:54` rejects inbound TidyCal webhooks because production booking sync is polling-only.
+
+### 4. Residual Risks And Unverified Assumptions
+
+- I did not run live E2E; project notes still identify host Playwright as externally blocked from the sandbox.
+- I did not verify deployed Cloud Run environment variables, Cloud SQL role ownership, GCS lifecycle rules, or production IAM. The code assumes the Prisma connection uses the non-superuser `app_user`.
+- The bulk-publish CLI can clear persistent semantic-cache rows but cannot directly clear in-process API caches; correctness depends on TTL/restart for that tier.
+- Upload malware scanning is only as strong as the configured scanner provider. The code has a scanner seam and rejects dirty scans, but production scanner configuration was not verified from deployed infrastructure.
+
+### 5. Final Verdict
+
+FAIL.
+
+The prior Cycle 4 critical/high findings appear remediated in code, but the upload pipeline still has a plausible private-data retention failure: storage can contain a user's private document without a corresponding database row after a partial failure. Because that object is then outside user-visible management, account deletion, and retention sweeps, this review fails until upload storage writes are made transactional by compensation or a staging/finalization pattern.
 
 ---
 
