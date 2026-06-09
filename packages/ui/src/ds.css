@@ -1086,6 +1086,21 @@ button.chat-user-lang:hover { border-color: var(--line-2); background: var(--pap
 .msg-assistant .msg-assistant-verified { margin-left: auto; }
 .msg-assistant .msg-assistant-body { display: flex; flex-direction: column; gap: var(--s3); }
 
+/* Answer prose (M12.4.3) — the markdown body of an answer: paragraphs, numbered/bullet lists, and
+   `**bold**`, rendered from the model's markdown so groups break onto their own lines instead of
+   running together. Inline `.cite` chips live among the text. Spacing is owned here (a flex column)
+   so the gap between groups reads the same in the chat thread and the history transcript. */
+.answer-prose { display: flex; flex-direction: column; gap: var(--s3); }
+.answer-prose p { margin: 0; }
+.answer-prose strong { font-weight: 600; color: var(--ink-900); }
+/* Block layout (not flex) so the `<li>` keep `display: list-item` and their markers render. */
+.answer-prose ol, .answer-prose ul { margin: 0; padding-left: var(--s6); }
+.answer-prose ol { list-style: decimal; }
+.answer-prose ul { list-style: disc; }
+.answer-prose li { padding-left: var(--s1); }
+.answer-prose li + li { margin-top: var(--s3); }
+.answer-prose li::marker { color: var(--ink-400); }
+
 /* Answer action bar (M12.4.4) — a horizontal row of ghost/subtle controls under a
    completed answer: the "View sources (N)" toggle, Save, and the 👍/👎 feedback
    buttons, with optional follow-up content (the feedback reason field, an error
