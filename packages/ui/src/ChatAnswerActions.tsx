@@ -24,6 +24,10 @@ export interface ChatAnswerActionsProps {
   feedbackBusy?: boolean;
   /** Record a 👍/👎 verdict; when omitted the feedback buttons are not rendered. */
   onFeedback?: (helpful: boolean) => void;
+  /** Copy the answer text to the clipboard; when omitted the Copy control is not rendered. */
+  onCopy?: () => void;
+  /** True just after a successful copy — the Copy control reads "Copied" until the host clears it. */
+  copied?: boolean;
   /** Extra content rendered under the bar (e.g. the feedback reason field, a save/feedback error). */
   children?: ReactNode;
 }
@@ -33,9 +37,11 @@ export interface ChatAnswerActionsProps {
  * laying out the "View sources (N)" toggle (`.btn-ghost`), the Save control (`.btn-ghost`, swapping
  * to a static "Saved" badge once bookmarked), and the 👍/👎 feedback buttons (`.btn-subtle`, the
  * active verdict promoted to primary/dark — text "Yes"/"No" per the anti-emoji rule, with the
- * helpful/not-helpful intent on the `aria-label`). Presentational only: the page owns the auth +
- * network state and threads it in; follow-up content (the feedback reason field, errors) renders as
- * `children` on a row below. Each control is omitted when its callback is not supplied.
+ * helpful/not-helpful intent on the `aria-label`), and a trailing "Copy" control that copies the
+ * answer to the clipboard (reading "Copied" while the host holds `copied`). Presentational only: the
+ * page owns the auth + network + clipboard state and threads it in; follow-up content (the feedback
+ * reason field, errors) renders as `children` on a row below. Each control is omitted when its
+ * callback is not supplied.
  */
 export function ChatAnswerActions({
   sourceCount = 0,
@@ -47,6 +53,8 @@ export function ChatAnswerActions({
   verdict = null,
   feedbackBusy = false,
   onFeedback,
+  onCopy,
+  copied = false,
   children,
 }: ChatAnswerActionsProps) {
   return (
@@ -94,6 +102,16 @@ export function ChatAnswerActions({
               No
             </Button>
           </>
+        )}
+        {onCopy && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCopy}
+            aria-label={copied ? "Answer copied" : "Copy answer"}
+          >
+            {copied ? "Copied" : "Copy"}
+          </Button>
         )}
       </div>
       {children}

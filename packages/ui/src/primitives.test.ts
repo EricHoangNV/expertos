@@ -994,38 +994,65 @@ describe("ChatAssistantMessage — assistant header + body (M12.4.2)", () => {
   });
 });
 
-describe("AnswerProse — answer prose + inline citations, render-after-resolve (M12.4.3)", () => {
-  /** The `<p>` children as a flat array (a single child arrives un-wrapped). */
-  const childArray = (el: ReactElement): unknown[] => {
-    const c = kids(el);
-    return Array.isArray(c) ? c : [c];
+describe("AnswerProse — markdown body + inline citations, render-after-resolve (M12.4.3)", () => {
+  /** Is `v` a React element (has a `type` + `props`)? */
+  const isElement = (v: unknown): v is ReactElement =>
+    typeof v === "object" && v !== null && "type" in (v as object) && "props" in (v as object);
+  /** Walk a rendered subtree, concatenating its plain-text runs (Cite chips contribute no prose text). */
+  const text = (node: unknown): string => {
+    if (typeof node === "string") return node;
+    if (typeof node === "number") return String(node);
+    if (Array.isArray(node)) return node.map(text).join("");
+    if (isElement(node)) {
+      if (node.type === Cite) return "";
+      return text((node.props as { children?: unknown }).children);
+    }
+    return "";
   };
-  /** The first React-element child (a `.cite` chip); undefined when none resolved. */
-  const firstCite = (el: ReactElement): ReactElement | undefined =>
-    childArray(el).find((p): p is ReactElement => typeof p === "object" && p !== null);
-  /** The text content, concatenating the plain-string runs. */
-  const text = (el: ReactElement): string =>
-    childArray(el)
-      .filter((p): p is string => typeof p === "string")
-      .join("");
+  /** Walk a rendered subtree, collecting every `.cite` chip element. */
+  const cites = (node: unknown): ReactElement[] => {
+    if (Array.isArray(node)) return node.flatMap(cites);
+    if (isElement(node)) {
+      const here = node.type === Cite ? [node] : [];
+      return [...here, ...cites((node.props as { children?: unknown }).children)];
+    }
+    return [];
+  };
+  /** The parsed blocks (`<p>` / `<ol>` / `<ul>`) of a rendered `.answer-prose` container. */
+  const blocks = (el: ReactElement): ReactElement[] => {
+    const c = kids(el);
+    return (Array.isArray(c) ? c : [c]).filter(isElement);
+  };
+  /** The single `.cite` chip (asserts exactly one resolved). */
+  const onlyCite = (el: ReactElement): ReactElement => {
+    const found = cites(el);
+    expect(found).toHaveLength(1);
+    return found[0];
+  };
 
-  it("renders verbatim text (no chips) until interactive — render-after-resolve", () => {
+  it("wraps the body in a `.answer-prose` container", () => {
+    const el = AnswerProse({ content: "Hello.", citations: [], interactive: true }) as ReactElement;
+    expect(cls(el)).toBe("answer-prose");
+  });
+
+  it("renders `[n]` markers verbatim (no chips) until interactive — render-after-resolve", () => {
     const el = AnswerProse({
       content: "Aim for a 12-month payback window [1].",
       citations: [{ ordinal: 1, variant: "knowledge" }],
       interactive: false,
     }) as ReactElement;
-    expect(kids(el)).toBe("Aim for a 12-month payback window [1].");
-    expect(firstCite(el)).toBeUndefined();
+    expect(text(el)).toBe("Aim for a 12-month payback window [1].");
+    expect(cites(el)).toHaveLength(0);
   });
 
-  it("renders verbatim text when interactive but nothing has resolved yet", () => {
+  it("renders `[n]` markers verbatim when interactive but nothing has resolved yet", () => {
     const el = AnswerProse({
       content: "No grounded sources here [1].",
       citations: [],
       interactive: true,
     }) as ReactElement;
-    expect(kids(el)).toBe("No grounded sources here [1].");
+    expect(text(el)).toBe("No grounded sources here [1].");
+    expect(cites(el)).toHaveLength(0);
   });
 
   it("turns a resolved `[n]` marker into a crimson knowledge `.cite` chip, text preserved", () => {
@@ -1034,8 +1061,12 @@ describe("AnswerProse — answer prose + inline citations, render-after-resolve 
       citations: [{ ordinal: 1, variant: "knowledge" }],
       interactive: true,
     }) as ReactElement;
-    const cite = firstCite(el) as ReactElement;
-    expect(cite.props).toMatchObject({ label: 1, resolved: true, variant: "knowledge", role: "button" });
+    expect(onlyCite(el).props).toMatchObject({
+      label: 1,
+      resolved: true,
+      variant: "knowledge",
+      role: "button",
+    });
     expect(text(el)).toBe("Aim for 12 months .");
   });
 
@@ -1046,7 +1077,7 @@ describe("AnswerProse — answer prose + inline citations, render-after-resolve 
       citations: [{ ordinal: 2, variant: "upload" }],
       interactive: true,
     }) as ReactElement;
-    expect((firstCite(el) as ReactElement).props).toMatchObject({ variant: "upload" });
+    expect(onlyCite(el).props).toMatchObject({ variant: "upload" });
     expect(text(el)).toBe(" per your sheet.");
   });
 
@@ -1056,9 +1087,83 @@ describe("AnswerProse — answer prose + inline citations, render-after-resolve 
       citations: [{ ordinal: 1, variant: "knowledge" }],
       interactive: true,
     }) as ReactElement;
-    const cites = childArray(el).filter((p) => typeof p === "object" && p !== null);
-    expect(cites).toHaveLength(1);
+    expect(cites(el)).toHaveLength(1);
     expect(text(el)).toContain("[9]");
+  });
+
+  it("splits newline-separated text into its own `<p>` paragraph blocks", () => {
+    const el = AnswerProse({
+      content: "Intro line.\n\nClosing line.",
+      citations: [],
+      interactive: true,
+    }) as ReactElement;
+    const paras = blocks(el);
+    expect(paras).toHaveLength(2);
+    expect(paras.every((b) => b.type === "p")).toBe(true);
+    expect(text(paras[0])).toBe("Intro line.");
+    expect(text(paras[1])).toBe("Closing line.");
+  });
+
+  it("renders a numbered group as an `<ol>` with one `<li>` per item, citations + bold inside", () => {
+    const el = AnswerProse({
+      content: "Steps:\n1. **Assess** the gap [1].\n2. Plan it.",
+      citations: [{ ordinal: 1, variant: "knowledge" }],
+      interactive: true,
+    }) as ReactElement;
+    const [intro, list] = blocks(el);
+    expect(intro.type).toBe("p");
+    expect(list.type).toBe("ol");
+    const items = (kids(list) as ReactElement[]).filter(isElement);
+    expect(items).toHaveLength(2);
+    expect(items.every((li) => li.type === "li")).toBe(true);
+    // The bold span survived as a <strong>, the marker resolved to a chip.
+    expect(cites(items[0])).toHaveLength(1);
+    expect(text(items[0])).toBe("Assess the gap .");
+    expect(text(items[1])).toBe("Plan it.");
+  });
+
+  it("keeps blank-line-separated items in ONE `<ol>` so the numbering counts up (loose list)", () => {
+    // Models commonly emit a blank line between items (and even `1.` for every item). They must
+    // land in a single <ol> — one list per item would restart every marker at "1".
+    const el = AnswerProse({
+      content: "1. **First** step.\n\n1. **Second** step.\n\n1. **Third** step.",
+      citations: [],
+      interactive: true,
+    }) as ReactElement;
+    const lists = blocks(el);
+    expect(lists).toHaveLength(1);
+    expect(lists[0].type).toBe("ol");
+    const items = (kids(lists[0]) as ReactElement[]).filter(isElement);
+    expect(items).toHaveLength(3);
+    expect(text(items[0])).toBe("First step.");
+    expect(text(items[2])).toBe("Third step.");
+  });
+
+  it("ends the list at the following paragraph, even across a blank line", () => {
+    const el = AnswerProse({
+      content: "1. a\n\n2. b\n\nClosing paragraph.",
+      citations: [],
+      interactive: true,
+    }) as ReactElement;
+    const [list, para] = blocks(el);
+    expect(list.type).toBe("ol");
+    expect((kids(list) as ReactElement[]).filter(isElement)).toHaveLength(2);
+    expect(para.type).toBe("p");
+    expect(text(para)).toBe("Closing paragraph.");
+  });
+
+  it("renders a bullet group as a `<ul>`, and never mistakes a `**bold**` opener for a bullet", () => {
+    const el = AnswerProse({
+      content: "- first\n- second\n\n**Bold** lead paragraph.",
+      citations: [],
+      interactive: true,
+    }) as ReactElement;
+    const [list, para] = blocks(el);
+    expect(list.type).toBe("ul");
+    expect((kids(list) as ReactElement[]).filter(isElement)).toHaveLength(2);
+    // The `**Bold**` line is a paragraph, not a third bullet.
+    expect(para.type).toBe("p");
+    expect(text(para)).toBe("Bold lead paragraph.");
   });
 
   it("invokes onCite on click and on Enter/Space keydown, ignoring other keys", () => {
@@ -1069,7 +1174,7 @@ describe("AnswerProse — answer prose + inline citations, render-after-resolve 
       interactive: true,
       onCite: (o) => seen.push(o),
     }) as ReactElement;
-    const props = (firstCite(el) as ReactElement).props as {
+    const props = onlyCite(el).props as {
       onClick: () => void;
       onKeyDown: (e: { key: string; preventDefault: () => void }) => void;
     };
@@ -1087,7 +1192,7 @@ describe("AnswerProse — answer prose + inline citations, render-after-resolve 
       citations: [{ ordinal: 1, variant: "knowledge" }],
       interactive: true,
     }) as ReactElement;
-    const props = (firstCite(el) as ReactElement).props as {
+    const props = onlyCite(el).props as {
       onClick: () => void;
       onKeyDown: (e: { key: string; preventDefault: () => void }) => void;
     };
@@ -1471,6 +1576,24 @@ describe("ChatAnswerActions — answer action bar (M12.4.4)", () => {
     expect((yes.props as { variant?: unknown }).variant).toBe("subtle");
     expect((yes.props as { disabled?: unknown }).disabled).toBe(true);
     expect((no.props as { disabled?: unknown }).disabled).toBe(true);
+  });
+
+  it("renders a trailing ghost Copy control that invokes onCopy and reads 'Copied' once copied", () => {
+    const onCopy = jest.fn();
+    const copy = barKids(ChatAnswerActions({ onCopy }) as ReactElement)[3] as ReactElement;
+    expect(copy.type).toBe(Button);
+    expect((copy.props as { variant?: unknown }).variant).toBe("ghost");
+    expect(kids(copy)).toBe("Copy");
+    (copy.props as { onClick: () => void }).onClick();
+    expect(onCopy).toHaveBeenCalledTimes(1);
+
+    const copied = barKids(ChatAnswerActions({ onCopy, copied: true }) as ReactElement)[3] as ReactElement;
+    expect(kids(copied)).toBe("Copied");
+    expect((copied.props as { "aria-label"?: unknown })["aria-label"]).toBe("Answer copied");
+  });
+
+  it("omits the Copy control without a handler", () => {
+    expect(barKids(ChatAnswerActions({}) as ReactElement)[3]).toBeFalsy();
   });
 });
 

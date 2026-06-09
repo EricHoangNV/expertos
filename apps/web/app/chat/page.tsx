@@ -337,11 +337,13 @@ function AssistantAnswer({
  */
 function AnswerActions({
   messageId,
+  content,
   sourceCount,
   sourcesOpen,
   onToggleSources,
 }: {
   messageId: string;
+  content: string;
   sourceCount: number;
   sourcesOpen: boolean;
   onToggleSources: () => void;
@@ -355,6 +357,25 @@ function AnswerActions({
   const [reason, setReason] = useState("");
   const [fbBusy, setFbBusy] = useState(false);
   const [fbError, setFbError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
+
+  // Copy the raw answer (markdown source, markers and all) to the clipboard, flashing "Copied"
+  // for a moment. A blocked clipboard (insecure context / denied permission) is a silent no-op —
+  // copy is a convenience, not a flow the user is blocked on.
+  const copy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard unavailable — leave the control as "Copy".
+    }
+  }, [content]);
 
   const save = useCallback(async () => {
     setSaveBusy(true);
@@ -407,6 +428,8 @@ function AnswerActions({
       verdict={verdict}
       feedbackBusy={fbBusy}
       onFeedback={(helpful) => void sendFeedback(helpful, false)}
+      onCopy={() => void copy()}
+      copied={copied}
     >
       {verdict !== null && (
         <div className="row gap2 wrap">
@@ -506,6 +529,7 @@ function AssistantTurn({
       {message.done && message.messageId && (
         <AnswerActions
           messageId={message.messageId}
+          content={message.content}
           sourceCount={message.citations.length}
           sourcesOpen={inlineOpen}
           onToggleSources={() =>
