@@ -12,6 +12,7 @@ import { HIGH_STAKES_DISCLAIMERS } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
 import { useLocale, useT } from "../../src/lib/i18n";
 import { AnswerView } from "../../src/components/answer-view";
+import { WebAppShell } from "../../src/components/app-shell";
 import {
   createSavedAnswer,
   getConversation,
@@ -381,27 +382,32 @@ export default function HistoryPage() {
 
   if (!user) {
     return (
-      <main className="umain">
-        <div className="pagehead">
-          <div>
-            <div className="eyebrow">{t("eyebrow")}</div>
-            <h1 className="h1">{t("heading")}</h1>
+      <WebAppShell title={t("heading")}>
+        <main className="umain">
+          <div className="pagehead">
+            <div>
+              <div className="eyebrow">{t("eyebrow")}</div>
+              <h1 className="h1">{t("heading")}</h1>
+            </div>
           </div>
-        </div>
-        <Badge tone="info">{t("signInPrompt")}</Badge>
-      </main>
+          <Badge tone="info">{t("signInPrompt")}</Badge>
+        </main>
+      </WebAppShell>
     );
   }
 
   if (detail) {
     return (
-      <main className="umain">
-        <ConversationDetail detail={detail} onBack={() => setDetail(null)} onRenamed={onRenamed} />
-      </main>
+      <WebAppShell title={t("heading")}>
+        <main className="umain">
+          <ConversationDetail detail={detail} onBack={() => setDetail(null)} onRenamed={onRenamed} />
+        </main>
+      </WebAppShell>
     );
   }
 
   return (
+    <WebAppShell title={t("heading")}>
     <main className="umain">
       <div className="pagehead">
         <div>
@@ -499,5 +505,6 @@ export default function HistoryPage() {
         </div>
       )}
     </main>
+    </WebAppShell>
   );
 }

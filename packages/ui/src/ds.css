@@ -944,6 +944,9 @@ button.source-card:focus-visible { outline: none; box-shadow: var(--sh-focus); }
 .chat-side .chat-side-new { width: 100%; }
 .chat-side .chat-side-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s2); }
 .chat-side .chat-side-foot { margin-top: auto; padding-top: var(--s4); }
+/* Cross-page nav inside the dark sidebar (web shell, M19.x) — stacks the My Knowledge / History
+   `.navitem` links the same way the chat workspace pins its footer nav. */
+.chat-side .chat-side-nav { display: flex; flex-direction: column; gap: 2px; }
 
 /* Conversation search (M12.2.2) — the `.input` restyled for the dark rail, with a
    leading magnifier icon and a results list below that appears once the user types. */

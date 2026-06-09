@@ -13,6 +13,7 @@ import type { UploadedFileDto } from "@expertos/shared";
 import { useAuth } from "../../src/lib/auth-context";
 import { useLocale, useT } from "../../src/lib/i18n";
 import { deleteUpload, listUploads } from "../../src/lib/upload-client";
+import { WebAppShell } from "../../src/components/app-shell";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -217,15 +218,17 @@ export default function KnowledgePage() {
 
   if (!user) {
     return (
-      <main className="umain">
-        <div className="pagehead">
-          <div>
-            <div className="eyebrow">{t("eyebrow")}</div>
-            <h1 className="h1">{t("heading")}</h1>
+      <WebAppShell title={t("heading")}>
+        <main className="umain">
+          <div className="pagehead">
+            <div>
+              <div className="eyebrow">{t("eyebrow")}</div>
+              <h1 className="h1">{t("heading")}</h1>
+            </div>
           </div>
-        </div>
-        <Badge tone="info">{t("signInPrompt")}</Badge>
-      </main>
+          <Badge tone="info">{t("signInPrompt")}</Badge>
+        </main>
+      </WebAppShell>
     );
   }
 
@@ -251,42 +254,44 @@ export default function KnowledgePage() {
   );
 
   return (
-    <main className="umain">
-      <div className="pagehead">
-        <div>
-          <div className="eyebrow">{t("eyebrow")}</div>
-          <h1 className="h1">{t("heading")}</h1>
-          <p className="lede">{t("lede")}</p>
+    <WebAppShell title={t("heading")}>
+      <main className="umain">
+        <div className="pagehead">
+          <div>
+            <div className="eyebrow">{t("eyebrow")}</div>
+            <h1 className="h1">{t("heading")}</h1>
+            <p className="lede">{t("lede")}</p>
+          </div>
         </div>
-      </div>
 
-      {loading && <Badge tone="info">{t("loading")}</Badge>}
-      {error && <Badge tone="red">{error}</Badge>}
-      {deleteError && <Badge tone="red">{deleteError}</Badge>}
+        {loading && <Badge tone="info">{t("loading")}</Badge>}
+        {error && <Badge tone="red">{error}</Badge>}
+        {deleteError && <Badge tone="red">{deleteError}</Badge>}
 
-      {!loading && !error && (
-        <>
-          <Card className="card-pad">
-            <span className="label">{t("savedHeading")}</span>
-            <p className="muted">{t("savedDescription")}</p>
-            {persistent.length > 0 ? (
-              persistent.map(renderRow)
-            ) : (
-              <p className="muted">{t("empty")}</p>
-            )}
-          </Card>
+        {!loading && !error && (
+          <>
+            <Card className="card-pad">
+              <span className="label">{t("savedHeading")}</span>
+              <p className="muted">{t("savedDescription")}</p>
+              {persistent.length > 0 ? (
+                persistent.map(renderRow)
+              ) : (
+                <p className="muted">{t("empty")}</p>
+              )}
+            </Card>
 
-          <Card className="card-pad">
-            <span className="label">{t("temporaryHeading")}</span>
-            <p className="muted">{t("temporaryDescription")}</p>
-            {temporary.length > 0 ? (
-              temporary.map(renderRow)
-            ) : (
-              <p className="muted">{t("emptyTemporary")}</p>
-            )}
-          </Card>
-        </>
-      )}
-    </main>
+            <Card className="card-pad">
+              <span className="label">{t("temporaryHeading")}</span>
+              <p className="muted">{t("temporaryDescription")}</p>
+              {temporary.length > 0 ? (
+                temporary.map(renderRow)
+              ) : (
+                <p className="muted">{t("emptyTemporary")}</p>
+              )}
+            </Card>
+          </>
+        )}
+      </main>
+    </WebAppShell>
   );
 }

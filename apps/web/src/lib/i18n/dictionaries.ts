@@ -264,6 +264,12 @@ const en = {
     deleting: "Deleting…",
     deleteError: "Couldn't delete that — please try again.",
   },
+  // Cross-page nav labels for the shared app-shell sidebar (the chat frame reused by /history &
+  // /knowledge). "New chat" + the user identity/account come from the chat & account namespaces.
+  nav: {
+    knowledge: "My Knowledge",
+    history: "History",
+  },
 } satisfies Messages;
 
 const vi = {
@@ -489,6 +495,10 @@ const vi = {
     confirmCancel: "Hủy",
     deleting: "Đang xóa…",
     deleteError: "Không xóa được — vui lòng thử lại.",
+  },
+  nav: {
+    knowledge: "Kho kiến thức của tôi",
+    history: "Lịch sử",
   },
 } satisfies Messages;
 
