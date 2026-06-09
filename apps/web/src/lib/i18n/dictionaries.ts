@@ -227,6 +227,7 @@ const en = {
     modalTitle: "Account",
     close: "Close",
     backToChat: "← Back to chat",
+    signOut: "Sign out",
   },
   // "My Knowledge" upload-management page + its chat-sidebar entry point (M18.3).
   knowledge: {
@@ -453,6 +454,7 @@ const vi = {
     modalTitle: "Tài khoản",
     close: "Đóng",
     backToChat: "← Quay lại trò chuyện",
+    signOut: "Đăng xuất",
   },
   knowledge: {
     sidebarLink: "Kho kiến thức của tôi",

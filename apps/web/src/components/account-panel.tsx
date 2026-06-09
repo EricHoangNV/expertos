@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   avatarInitials,
   avatarTone,
@@ -110,9 +111,10 @@ export function AccountIdentityHeader() {
  * modal head's left slot, the route's top). The signed-out state is a single sign-in prompt badge.
  */
 export function AccountPanel() {
-  const { user, getIdToken } = useAuth();
+  const { user, getIdToken, signOutUser } = useAuth();
   const t = useT("account");
   const { locale } = useLocale();
+  const router = useRouter();
   const [data, setData] = useState<EntitlementsDto | null>(null);
   const [plans, setPlans] = useState<AvailablePlansDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -161,6 +163,12 @@ export function AccountPanel() {
     },
     [getIdToken, t],
   );
+
+  /** Signs out, then routes to the login screen so the user never lands on the signed-out chat page. */
+  const handleSignOut = useCallback(async () => {
+    await signOutUser();
+    router.replace("/");
+  }, [signOutUser, router]);
 
   useEffect(() => {
     if (!user) {
@@ -213,7 +221,7 @@ export function AccountPanel() {
                   <div className="meter-head">
                     <span className="label">{plan.name}</span>
                   </div>
-                  <div className="row gap2">
+                  <div className="row gap2 wrap">
                     {plan.prices.map((price) => (
                       <Button
                         key={price.interval}
@@ -251,6 +259,10 @@ export function AccountPanel() {
           )}
         </>
       )}
+
+      <Button variant="ghost" disabled={busy} onClick={() => void handleSignOut()}>
+        {t("signOut")}
+      </Button>
     </>
   );
 }
