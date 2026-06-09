@@ -12,11 +12,114 @@
 ### Code Review: Cycle 0 — (no review yet)
 - (awaiting first code review)
 
-### Product Review: Cycle 2 — FAIL (2026-06-05)
-- requirements coverage: FAIL (bulk draft publishing can make unreviewed drafts look like published expert-reviewed knowledge)
-- core user flow: FAIL
-- data handling / privacy: PASS
-- Critical: draft-publish bypass can ground user answers in unreviewed knowledge; High: TidyCal decrypt fallback can misattribute bookings/revenue to the wrong expert
+### Product Review: Cycle 3 — FAIL (2026-06-09)
+- requirements coverage: FAIL (upload retention/deletion promise can be broken by private storage objects created without DB rows)
+- core user flow: PASS
+- data handling / privacy: FAIL
+- one-line summary of findings: Prior expert-review and booking-attribution failures are remediated, but failed upload persistence can leave private documents invisible to My Knowledge, retention, and account deletion.
+
+---
+
+## Daily Product Review - Product Cycle 3 (2026-06-09)
+
+### 1. Review Scope
+
+Reviewed ExpertOS as the Product & Business Review Lead from user trust, expert reputation, business-operator, and product-owner perspectives. I followed `project-mds/FEEDBACKS-INSTRUCTIONS.MD`, read only the Latest Review Verdicts block before editing, reviewed relevant PRD/progress sections, inspected new commits since the previous Product Review, and did not read or reference anything under `requirements/`.
+
+Inputs reviewed:
+
+- `project-mds/FEEDBACKS-INSTRUCTIONS.MD`
+- `project-mds/FEEDBACKS.MD` Latest Review Verdicts block only
+- relevant `project-mds/PRD.md` sections for grounded answers, citations, uploads, retention, paid value, consultation routing, concierge review, expert review, voice safety, and analytics
+- `project-mds/progress-state.md`
+- recent commits since Product Cycle 2, especially the expert-review/bulk-publish remediation, per-expert TidyCal attribution fix, answer runtime settings, retrieval score floor, OpenAI embedding/reembed work, My Knowledge upload management, account/upgrade shell updates, and admin analytics/revenue/quality design-parity changes
+
+Business-sensitive areas inspected:
+
+- answer grounding, retrieval floor, citation enforcement, and insufficient-knowledge terminal signals
+- expert-review publishing gates and bulk-publish behavior
+- per-expert booking provider resolution and revenue-attribution safety
+- uploaded document list/delete behavior, retention cleanup, and account deletion
+- premium/account surfaces and admin growth/quality/retention dashboards
+
+### 2. Findings Ordered By Severity
+
+#### High - Failed upload persistence can leave private documents outside My Knowledge, retention, and deletion controls
+
+File and line references:
+
+- `apps/api/src/uploads/upload.service.ts:181`
+- `apps/api/src/uploads/upload.service.ts:187`
+- `apps/api/src/uploads/upload.service.ts:206`
+- `apps/api/src/uploads/upload.service.ts:244`
+- `apps/api/src/uploads/upload.service.ts:270`
+- `apps/api/src/admin/retention.service.ts:168`
+- `apps/api/src/admin/retention.service.ts:172`
+- `apps/api/src/admin/admin-user.service.ts:337`
+- `apps/api/src/admin/admin-user.service.ts:340`
+
+What I found:
+
+The upload flow writes the raw private file to storage before the database transaction creates the `uploaded_files` row and persists searchable chunks. If `uploadedFile.create`, chunk persistence, vector writes, or the transaction itself fails after `storage.put`, there is no compensation path that deletes the just-written object.
+
+The new My Knowledge surface lists and deletes uploads through `uploaded_files` rows, and the retention/account-deletion paths also discover storage objects from persisted `uploaded_files.gcsUri` values. A storage object created before a failed DB transaction has no row. That means the user cannot see it in My Knowledge, cannot delete it through the product, and account deletion or temporary-upload retention sweeps cannot discover it.
+
+Product consequence:
+
+This weakens a core trust promise. ExpertOS now gives users a credible-looking upload management surface, but a partial failure can still retain private bytes outside that surface. From a user perspective, a failed upload could appear not to exist while the raw document remains in private storage. From an operator perspective, retention/deletion metrics would overstate compliance because the orphaned object is invisible to the DB-backed workflows.
+
+Why this matters:
+
+- Users rely on Temporary vs Persistent behavior and My Knowledge to understand what ExpertOS remembers.
+- Uploaded files often contain high-value, sensitive, or business-private context.
+- Premium trust depends on users believing deletion and retention controls actually cover the documents they provide.
+- This is not merely cleanup debt; it directly affects the product's privacy credibility.
+
+Recommended remediation:
+
+Wrap the DB persistence after `storage.put` in a compensation block. If row/chunk persistence fails, call `deleteStorageObjects(this.storage, [gcsUri], ...)` before rethrowing. Add regression coverage that forces a failure after `storage.put` and asserts the storage delete is attempted. A stronger follow-up would stage upload objects under a temporary prefix and mark/finalize them only after DB commit, plus a periodic orphan audit over the upload prefix.
+
+### 3. Positive Trust Signals Verified
+
+Prior Product Cycle 2 critical issue appears remediated:
+
+- `publishReviewedVersionTx` now refuses anything except `expert_review` before publication.
+- The bulk-publish CLI selects `status: "expert_review"`, requires `KNOWLEDGE_BULK_PUBLISH=1`, requires an admin/expert `--approver`, records audit rows, and calls the same publish primitive as the portal.
+- Product impact: batch publishing no longer appears to turn drafts directly into published, retrievable expert knowledge.
+
+Prior Product Cycle 2 booking-attribution issue appears remediated:
+
+- A per-expert TidyCal token decrypt failure now returns `null` and skips that expert instead of falling back to the global calendar.
+- Product impact: the product is less likely to attribute bookings or revenue to the wrong expert when an expert calendar token is misconfigured.
+
+Grounding and citation safeguards remain directionally aligned:
+
+- The chat flow treats the final resolved citation count as the trust signal.
+- If the model produces fluent text without a resolvable citation, the response is marked insufficient-knowledge, concierge/consultation logic can trigger, and the answer is not cached.
+- Upload citations and published-knowledge citations remain distinct in the persistence model.
+
+Runtime answer settings are a net product improvement when used carefully:
+
+- Lower default temperature, model allowlisting, and a retrieval score floor all support more conservative grounded answers.
+- The score-floor UI includes RRF-specific guidance, reducing the risk that operators mistake it for a 0-1 cosine confidence slider.
+
+My Knowledge is a meaningful user-trust improvement:
+
+- Users can now see saved and temporary uploads and delete their own rows without needing the upload entitlement.
+- The product correctly avoids trapping user data behind a paywall after downgrade.
+
+### 4. Residual Product Risks And Assumptions
+
+- I did not run live E2E. This was a daily product review of code/docs deltas and product consequences.
+- Production OpenAI embedding cutover is still externally gated. During cutover, keyword search is expected to preserve some grounding, but production retrieval quality should be monitored closely.
+- The current finding concerns failed upload persistence after storage success. It does not imply tenant-crossing retrieval or public exposure, but it does undermine retention/deletion credibility.
+- PM/legal sign-off for retention policy and high-stakes disclaimer copy remains outside the code reviewable surface.
+
+### 5. Final Verdict
+
+FAIL.
+
+The prior trust-critical expert-review and booking-attribution issues are substantially remediated, and the product has improved grounding controls and user-visible upload management. However, private uploaded documents can still be retained outside My Knowledge, retention sweeps, and account deletion if storage succeeds but DB persistence fails. ExpertOS cannot claim credible upload retention/deletion behavior until that partial-failure path is closed.
 
 ---
 
