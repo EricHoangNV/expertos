@@ -81,6 +81,27 @@ node scripts/benchmark/compare.cjs <baselineRunId> <candidateRunId>   # regressi
 stronger judge like `gpt-4o` for higher-fidelity scoring) · `--pass N` (pass threshold, default 70)
 · `--concurrency N`.
 
+## KB enrichment
+
+`kb-enrichment/` holds committed knowledge content that closes the coverage gap the benchmark
+exposed (the gold answers lean on frameworks the KB didn't contain):
+
+- `frameworks-en/` (12) and `frameworks-vi/` (12) — hand-authored reference docs for the standard
+  methods behind NCT's frameworks (OpEx pillars, Hoshin Kanri, PDCA/DMAIC, root-cause + SPC,
+  KPI/red-KPI recovery, RACI, Lean/TOC, batch economics, AI-OPEX, AI governance) plus his
+  documented operating principles. These are method references, **not** the benchmark answers.
+- `cards/` (108) — LLM-distilled knowledge cards from the KB docs that feed the benchmark, via
+  `distill-cards.cjs`.
+
+Seed them into a fresh KB (published `global_expert`, per-language):
+```bash
+node scripts/benchmark/seed-kb-enrichment.cjs --ingest
+```
+
+Measured impact (gpt-4o judge, 200 Qs): baseline **59.1** → +EN frameworks **63.1** → +VI
+frameworks **66.9**; pass rate **26.5% → 52%**. Framework docs must be ingested **per language** —
+cross-lingual retrieval is too weak to carry English docs into Vietnamese answers.
+
 ## Output
 
 Everything lands in `results/<runId>/` where `runId = <timestamp>-<gitSha>`:

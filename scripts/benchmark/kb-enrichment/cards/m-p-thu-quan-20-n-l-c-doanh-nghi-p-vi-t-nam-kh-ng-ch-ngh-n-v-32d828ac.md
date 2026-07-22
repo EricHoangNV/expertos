@@ -1,0 +1,21 @@
+# Mỹ áp thuế quan 20%: Xuất khẩu thông minh hơn
+
+- **Chính sách thuế quan Mỹ**: 20% thuế nhập khẩu cho hàng hóa Việt Nam, cao nhất từ sau Thế chiến II. Việt Nam từng bị đánh thuế 46%, giảm xuống 20% qua đàm phán.
+- **Operational Excellence (OPEX)**: Được xem là "vaccine" cho doanh nghiệp Việt Nam, giúp chuyển từ "xuất khẩu nhiều hơn" sang "xuất khẩu thông minh hơn, tối ưu hơn, bền vững hơn".
+  - **Lean & Six Sigma**: Giảm lãng phí, nâng cao chất lượng.
+  - **Tối ưu chuỗi cung ứng**: Minh bạch nguồn gốc, tăng tỷ lệ nội địa hóa.
+  - **Đa dạng hóa thị trường**: Giảm phụ thuộc vào một khách hàng hay thị trường.
+  - **Ứng dụng công nghệ**: AI, tự động hóa, dữ liệu lớn để dự báo rủi ro.
+  - **Quản trị chiến lược linh hoạt**: Xây dựng các "scenario planning" để ứng phó nhanh với thay đổi thuế quan.
+- **Cơ hội cho doanh nghiệp Việt**:
+  - Tối ưu quy trình, giảm chi phí, nâng cao chất lượng.
+  - Tận dụng chênh lệch thuế với Trung Quốc (~30%).
+  - Đàm phán thương mại song phương có thể giảm thuế sâu hơn.
+  - Mở rộng thị trường qua EVFTA, CPTPP, RCEP.
+- **Thách thức**:
+  - Mất lợi thế giá trong các ngành xuất khẩu dựa trên chi phí thấp.
+  - Kiểm soát chặt chẽ về xuất xứ, có thể bị phạt thêm 40%.
+  - Tăng chi phí vận hành do VND mất giá và nguyên liệu nhập khẩu đắt hơn.
+  - Rủi ro FDI chững lại nếu thuế quan kéo dài.
+- **Dự báo**: Mỹ có thể tiếp tục áp thuế cao và đàm phán giảm dần. Môi trường thuế quan cao có thể là trạng thái bình thường mới đến 2028.
+- **Kết luận**: Doanh nghiệp Việt Nam cần tái cấu trúc và đầu tư cho OPEX để vượt qua thách thức và phát triển trong kỷ nguyên thuế quan toàn cầu.

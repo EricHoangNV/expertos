@@ -1,0 +1,28 @@
+# 10X Excellence Hub Community Knowledge Card
+
+- **Community Name:** 10X Excellence Hub
+- **Founder:** DBA John Ngo (TS Ngô Công Trường)
+- **Platform:** Skool (skool.com/10xexcellence)
+- **Membership Cost:**
+  - **Foundation:** $59/month or $299/year
+  - **Insider:** $129/month or $999/year
+  - **Leadership Circle:** $299/month or $1,999/year
+  - **Note:** Annual commitment offers savings up to 60% compared to monthly pricing.
+- **Core Focus Areas:**
+  - **Operational Excellence (OPEX):** Lean, Six Sigma, process improvement
+  - **AI in Business:** AI tools, automation, AI strategy
+  - **Leadership Development:** Leadership frameworks, influence, decision-making
+  - **Business Growth:** Strategy, performance, scaling
+  - **Mindset:** Growth mindset, professional development
+- **Community Purpose:** Enhance capabilities through operational excellence, AI, and leadership development in a structured, gamified environment.
+- **Member Benefits:**
+  - Weekly coaching sessions
+  - Playbooks, templates, and actionable growth frameworks
+  - Monthly challenges with gamified leaderboard rewards
+  - Access to a global professional network
+  - Tools, recorded sessions, and systems for measurable outcomes
+  - Affiliate program with 30% commission opportunities
+- **Community Stats (as of 2026-05-30):**
+  - Total Members: 18
+  - Administrators: 3
+- **Distinctive Point of View:** The community emphasizes building foundational habits and mastering systems as essential for leadership and influence.

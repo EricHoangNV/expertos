@@ -1,0 +1,25 @@
+# Chủ tịch John&Partners: Từ bỏ vị trí quản lý để "dạy CEO" và lời khuyên "Đừng khởi nghiệp vì muốn làm giàu!"
+
+- **Mười động lực khởi nghiệp sai lầm**: 
+  - Khởi nghiệp vì không biết làm gì khác
+  - Không hài lòng với công việc hiện tại
+  - Muốn toàn quyền kiểm soát
+  - Tìm kiếm sự linh hoạt về thời gian
+  - Theo đuổi sự giàu có
+  - Muốn chứng minh bản thân
+  - Làm điều mình thích
+- **Lý do chính đáng để thành lập doanh nghiệp**: 
+  - Cung cấp giải pháp tốt hơn
+  - Cung cấp giá tốt hơn so với các lựa chọn hiện có
+- **Thất bại trong khởi nghiệp**: 
+  - Nguyên nhân chính: năng lực không đủ của người sáng lập và thiếu phát triển kiến thức xuyên suốt quá trình hoạt động.
+- **Khuyến nghị về khởi nghiệp**: 
+  - "Thúc đẩy nhiệt tình mà không chuẩn bị đầy đủ cho người sáng lập tạo ra rủi ro đáng kể."
+  - Coi khởi nghiệp không chỉ là xu hướng, mà cần có sự chuẩn bị kỹ lưỡng.
+- **Huy động vốn**: 
+  - Thời gian không nhất thiết cản trở việc gây quỹ; thành công phụ thuộc vào việc chọn nhà đầu tư phù hợp.
+- **Đánh giá nhân lực công nghệ**: 
+  - Chuyên gia IT Việt Nam có khả năng giải quyết vấn đề tốt nhưng thiếu khả năng thực thi và tính bền vững.
+- **Môi trường khởi nghiệp Việt Nam**: 
+  - Cải thiện so với 5-10 năm trước, nhưng năng lực của người sáng lập vẫn là yếu tố quyết định.
+  - Đề nghị học hỏi từ các quốc gia như Israel và Trung Quốc.

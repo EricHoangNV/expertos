@@ -1,2 +1,4 @@
 results/
 !.gitkeep
+manifest.generated.json
+kb-enrichment/manifest.generated.json
