@@ -52,6 +52,8 @@ function main() {
   const manifest = [
     ...entriesFrom("frameworks-en", { language: "en", uriPrefix: "enrichment" }),
     ...entriesFrom("frameworks-vi", { language: "vi", uriPrefix: "enrichment-vi" }),
+    ...entriesFrom("positions-en", { language: "en", uriPrefix: "position" }),
+    ...entriesFrom("positions-vi", { language: "vi", uriPrefix: "position-vi" }),
     ...entriesFrom("cards", { language: null, uriPrefix: "card", titlePrefix: "[Card] " }),
   ];
   const manifestPath = path.join(ENRICH_DIR, "manifest.generated.json");
@@ -59,6 +61,8 @@ function main() {
   console.log(`Built manifest: ${manifest.length} entries -> ${manifestPath}`);
   console.log(`  frameworks-en: ${manifest.filter((m) => m.sourceUri.startsWith("kbm://enrichment/")).length}`);
   console.log(`  frameworks-vi: ${manifest.filter((m) => m.sourceUri.startsWith("kbm://enrichment-vi/")).length}`);
+  console.log(`  positions-en:  ${manifest.filter((m) => m.sourceUri.startsWith("kbm://position/")).length}`);
+  console.log(`  positions-vi:  ${manifest.filter((m) => m.sourceUri.startsWith("kbm://position-vi/")).length}`);
   console.log(`  cards:         ${manifest.filter((m) => m.sourceUri.startsWith("kbm://card/")).length}`);
 
   const ingestCli = path.join(S.ROOT, "apps", "api", "dist", "ingestion", "ingest.cli.js");
