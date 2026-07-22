@@ -37,11 +37,14 @@ const MAX_SCORE_FLOOR = 1; // RRF fused scores are small (~0.016/rank); 1 is a g
  *    untouched by this setting).
  *  - `retrievalScoreFloor` — minimum fused RRF score a chunk must clear to reach the model. `0` = off.
  *    Note the unit: this is the RRF fused score (small magnitudes), NOT a 0–1 cosine similarity.
+ *  - `betaGateEnabled` — the private-beta kill switch. When on, consumer-app sign-in requires an
+ *    `allowed_emails` entry (any role); when off, any signed-in Google account gets in.
  */
 export const appSettingsUpdateSchema = z.object({
   llmTemperature: z.number().min(MIN_TEMPERATURE).max(MAX_TEMPERATURE),
   defaultChatModel: chatModelSchema,
   retrievalScoreFloor: z.number().min(MIN_SCORE_FLOOR).max(MAX_SCORE_FLOOR),
+  betaGateEnabled: z.boolean(),
 });
 
 export type AppSettingsUpdateInput = z.infer<typeof appSettingsUpdateSchema>;
@@ -55,6 +58,8 @@ export interface AppSettingsDto {
   llmTemperature: number;
   defaultChatModel: ChatModelValue;
   retrievalScoreFloor: number;
+  /** Private-beta gate: when true, consumer sign-in requires a whitelist entry. */
+  betaGateEnabled: boolean;
   /** Active embedding provider (env-driven, restart-required) — read-only context for the UI. */
   embeddingProvider: string;
   /** ISO-8601 last-updated timestamp, or null if the settings row has never been saved. */

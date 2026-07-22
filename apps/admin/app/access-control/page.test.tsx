@@ -66,11 +66,12 @@ describe("AccessControlPage — table", () => {
 
     await waitFor(() => {
       const row = rowFor("ada@example.com");
-      // Role renders as the localized label ("Admin"), not the raw enum token.
-      expect(within(row).getByText("Admin")).toBeInTheDocument();
+      // Role renders as the localized label ("Admin"), not the raw enum token. Scoped to the
+      // badge — the row's role select repeats the same label as an <option>.
+      expect(within(row).getByText("Admin", { selector: ".badge" })).toBeInTheDocument();
       expect(within(row).getByText("owner@example.com")).toBeInTheDocument();
-      // An admin row offers the demote action; an expert row offers promote.
-      expect(within(row).getByRole("button", { name: "Make expert" })).toBeInTheDocument();
+      // Each row carries a role select preset to the current role.
+      expect(within(row).getByRole("combobox", { name: "Role" })).toHaveValue("admin");
     });
   });
 
@@ -86,11 +87,11 @@ describe("AccessControlPage — table", () => {
     const { container } = renderWithProviders(<AccessControlPage />, { role: "admin" });
     await screen.findByText("No emails are whitelisted yet.");
 
-    // The intro emphasizes both grantable roles in <strong> (no separate copy key).
+    // The intro emphasizes all three grantable roles in <strong> (no separate copy key).
     const emphasized = Array.from(container.querySelectorAll("p.muted strong")).map(
       (n) => n.textContent,
     );
-    expect(emphasized).toEqual(expect.arrayContaining(["Admin", "Expert"]));
+    expect(emphasized).toEqual(expect.arrayContaining(["Admin", "Expert", "User"]));
 
     // The add-to-whitelist form sits inside a bordered `.card .card-pad` panel.
     expect(screen.getByRole("button", { name: "Add" }).closest(".card.card-pad")).not.toBeNull();
@@ -112,8 +113,9 @@ describe("AccessControlPage — add", () => {
     await waitFor(() => {
       const post = apiCalls().find((c) => c.method === "POST" && c.pathname === LIST);
       expect(post).toBeDefined();
-      // The default role in the form is expert; the page trims the email (lowercasing is server-side).
-      expect(post!.body).toEqual({ email: "New@Example.com", role: "expert" });
+      // The default role in the form is user (beta invite); the page trims the email
+      // (lowercasing is server-side).
+      expect(post!.body).toEqual({ email: "New@Example.com", role: "user" });
     });
     // Notice uses the lowercased email the page derives for display.
     await screen.findByText("Added new@example.com.");
@@ -132,7 +134,7 @@ describe("AccessControlPage — add", () => {
   });
 });
 
-describe("AccessControlPage — role toggle + remove", () => {
+describe("AccessControlPage — role change + remove", () => {
   it("promotes an expert to admin via PATCH", async () => {
     mockApi("GET", LIST, { body: [entry({ id: "ae_e", email: "ed@example.com", role: "expert" })] });
     mockApi("PATCH", "/admin/access-control/ae_e", {
@@ -141,7 +143,9 @@ describe("AccessControlPage — role toggle + remove", () => {
     renderWithProviders(<AccessControlPage />, { role: "admin" });
     await settle("ed@example.com");
 
-    fireEvent.click(within(rowFor("ed@example.com")).getByRole("button", { name: "Make admin" }));
+    fireEvent.change(within(rowFor("ed@example.com")).getByRole("combobox", { name: "Role" }), {
+      target: { value: "admin" },
+    });
 
     await waitFor(() => {
       const patch = apiCalls().find(
@@ -151,6 +155,28 @@ describe("AccessControlPage — role toggle + remove", () => {
       expect(patch!.body).toEqual({ role: "admin" });
     });
     await screen.findByText("ed@example.com is now Admin.");
+  });
+
+  it("demotes an expert to a beta-only user invite via PATCH", async () => {
+    mockApi("GET", LIST, { body: [entry({ id: "ae_e", email: "ed@example.com", role: "expert" })] });
+    mockApi("PATCH", "/admin/access-control/ae_e", {
+      body: entry({ id: "ae_e", email: "ed@example.com", role: "user" }),
+    });
+    renderWithProviders(<AccessControlPage />, { role: "admin" });
+    await settle("ed@example.com");
+
+    fireEvent.change(within(rowFor("ed@example.com")).getByRole("combobox", { name: "Role" }), {
+      target: { value: "user" },
+    });
+
+    await waitFor(() => {
+      const patch = apiCalls().find(
+        (c) => c.method === "PATCH" && c.pathname === "/admin/access-control/ae_e",
+      );
+      expect(patch).toBeDefined();
+      expect(patch!.body).toEqual({ role: "user" });
+    });
+    await screen.findByText("ed@example.com is now User.");
   });
 
   it("removes an entry via DELETE when the removal is confirmed", async () => {

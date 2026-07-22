@@ -1,18 +1,24 @@
 import { z } from "zod";
 
 /**
- * Access-control whitelist wire types (M14, PRD-access-control). The admin portal is invite-only:
- * only a pre-authorized email may sign in, and the whitelist entry's role is synced onto the user on
- * each admin-portal sign-in. The consumer app (`role=user`) is unaffected.
- *
- * The whitelist grants only the two portal roles — `expert` or `admin` — never the base `user` role
- * (a whitelisted email is, by definition, a portal operator). That bound is enforced here at the app
- * layer, not by the DB enum (the column is the full {@link Role} enum).
+ * Access-control whitelist wire types (M14 + private beta, PRD-access-control). Access is
+ * invite-only: the whitelist gates both surfaces. An `expert`/`admin` entry authorizes the admin
+ * portal (and implicitly the consumer app); its role is synced onto the user on each admin-portal
+ * sign-in. A `user` entry is a consumer-beta invite only — it passes the beta gate
+ * (`AuthService.resolveUser`) but never authorizes the portal.
  */
 
-/** Roles a whitelist entry may grant (the portal roles only — never `user`). */
-export const allowedEmailRoleSchema = z.enum(["expert", "admin"]);
+/** Roles a whitelist entry may grant: the portal roles, or `user` (consumer-beta invite only). */
+export const allowedEmailRoleSchema = z.enum(["user", "expert", "admin"]);
 export type AllowedEmailRole = z.infer<typeof allowedEmailRoleSchema>;
+
+/**
+ * The two roles that authorize the admin portal. `POST /me/admin-session` can only ever return one
+ * of these — a `user`-roled whitelist entry is denied there — so the portal contract stays tight
+ * even though {@link allowedEmailRoleSchema} accepts `user` for beta invites.
+ */
+export const portalRoleSchema = z.enum(["expert", "admin"]);
+export type PortalRole = z.infer<typeof portalRoleSchema>;
 
 /** Add an email to the whitelist: a normalized email + the role to grant. */
 export const allowedEmailCreateSchema = z.object({
@@ -39,12 +45,12 @@ export interface AllowedEmailDto {
 
 /**
  * The admin-portal sign-in result (`POST /me/admin-session`). Returned only when the signed-in
- * email is whitelisted; a non-whitelisted email gets a 403 instead. `role` is the synced role (the
- * whitelist is the source of truth for portal roles).
+ * email is whitelisted with a portal role; a non-whitelisted or `user`-roled email gets a 403
+ * instead. `role` is the synced role (the whitelist is the source of truth for portal roles).
  */
 export interface AdminSessionDto {
   ok: true;
-  role: AllowedEmailRole;
+  role: PortalRole;
   user: {
     id: string;
     email: string;

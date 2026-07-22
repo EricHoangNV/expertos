@@ -22,8 +22,9 @@ Auth emulator for you.
 | `concierge-review.spec.ts` | expert review queue: open a case, record a verdict + refined edit, triage filter (M9.2/M13.6/M15.3.3) |
 | `knowledge-approval.spec.ts` | knowledge kanban: filter by status, approve a seeded Expert-Review doc → Published (M8.1/M13.3/M15.3.4) |
 | `admin-i18n.spec.ts` | admin portal EN→VI locale toggle: nav, role badge, page headers switch + persist (M13.3, M15.3.1) |
-| `access-control.spec.ts` | admin whitelist add / re-role / remove (M14); Access Denied for a non-whitelisted email (M15.3.2) |
+| `access-control.spec.ts` | admin whitelist add / re-role / remove (M14); Access Denied for a `user`-roled (beta-only) email; demote-to-User revokes portal access (M15.3.2) |
 | `web-i18n.spec.ts` | consumer EN→VI language toggle: chat, account, history switch + persist (M13.1–.5, M15.3.6) |
+| `beta-gate.spec.ts` | consumer private-beta gate: non-whitelisted email → deny screen + sign-out; whitelisted member passes |
 
 `fixme` tests document a flow whose UI/seed prerequisite is not yet present — they keep the
 matrix honest without producing flaky runs. The last host-validated matrix was **20 passed /
@@ -33,9 +34,12 @@ count to **2** — the only remaining documented skips are the Stripe-hosted che
 (`account-billing`, external surface) and the publish→retrieval round-trip (`admin-portal`, needs
 the real parse→chunk→embed ingest pipeline, seeded out-of-band).
 
-> **Note on the stack env:** the admin portal is gated by the M14 access-control whitelist, so
-> `global-setup.ts` seeds `e2e-admin@`/`e2e-expert@` into `allowed_emails` (and resets every test
-> identity's profile locale to English, since the i18n specs persist a VI choice). The per-IP rate
+> **Note on the stack env:** the admin portal is gated by the M14 access-control whitelist, and the
+> consumer app by the private beta gate (same `allowed_emails` table, any role passes), so
+> `global-setup.ts` seeds **all four** identities into `allowed_emails` (`member`/`other` as `user`,
+> `expert`/`admin` with their portal roles) *before* the `GET /me` mirror — without it the beta gate
+> 403s setup itself. It also resets every test identity's profile locale to English, since the i18n
+> specs persist a VI choice. The per-IP rate
 > limiter (M11.2) is relaxed for the run via `RATE_LIMIT_MAX` (the managed `webServer` sets it) —
 > every request shares one loopback IP, so the default 300/60s trips under a full-suite burst.
 

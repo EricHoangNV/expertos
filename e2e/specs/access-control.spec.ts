@@ -19,8 +19,9 @@ test.describe("admin access control", () => {
     await expect(page.getByRole("heading", { name: "Access control" })).toBeVisible();
 
     // Add the email as an expert → it appears in the table with an "Added …" notice. The form
-    // fields are matched by placeholder / the lone <select> (the Field label isn't associated to
-    // its control via htmlFor, so getByLabel doesn't resolve them).
+    // fields are matched by placeholder / the first <select> — the add form renders above the
+    // table (the Field label isn't associated to its control via htmlFor, so getByLabel doesn't
+    // resolve it; the per-row selects DO carry an aria-label).
     await page.getByPlaceholder("person@example.com").fill(TEMP_EMAIL);
     await page.locator("select").first().selectOption("expert");
     await page.getByRole("button", { name: "Add", exact: true }).click();
@@ -28,9 +29,9 @@ test.describe("admin access control", () => {
     const row = page.getByRole("row").filter({ hasText: TEMP_EMAIL });
     await expect(row).toBeVisible();
 
-    // Re-role expert → admin via the row's role toggle.
-    await row.getByRole("button", { name: "Make admin" }).click();
-    await expect(page.getByText(`${TEMP_EMAIL} is now admin.`)).toBeVisible();
+    // Re-role expert → admin via the row's role select.
+    await row.getByRole("combobox", { name: "Role" }).selectOption("admin");
+    await expect(page.getByText(`${TEMP_EMAIL} is now Admin.`)).toBeVisible();
 
     // Remove the row (a window.confirm guards it — accept the dialog), then it is gone.
     page.on("dialog", (dialog) => void dialog.accept());
@@ -39,10 +40,11 @@ test.describe("admin access control", () => {
     await expect(page.getByRole("row").filter({ hasText: TEMP_EMAIL })).toHaveCount(0);
   });
 
-  test("a non-whitelisted user is shown the Access Denied screen", async ({ page }) => {
-    // users.other is never added to the whitelist, so `POST /me/admin-session` 403s and the portal
-    // renders Access Denied instead of the shell. Sign in directly (the shared signInAdmin fixture
-    // waits for the shell, which a denied user never reaches).
+  test("a non-portal user is shown the Access Denied screen", async ({ page }) => {
+    // users.other is whitelisted only as `user` (a consumer-beta invite, seeded by global-setup),
+    // which grants no portal access: `POST /me/admin-session` 403s and the portal renders Access
+    // Denied instead of the shell. Sign in directly (the shared signInAdmin fixture waits for the
+    // shell, which a denied user never reaches).
     await page.goto(env.adminBaseUrl);
     await page.waitForFunction(() => typeof window.__e2eSignIn === "function");
     const error = await page.evaluate(
@@ -62,14 +64,17 @@ test.describe("admin access control", () => {
     await expect(page.getByRole("button", { name: /sign out/i })).toBeVisible();
   });
 
-  test("removing a whitelist entry revokes that user's portal access", async ({ browser }) => {
+  test("demoting a whitelist entry to User revokes that user's portal access", async ({
+    browser,
+  }) => {
     // Guards the admin-whitelist-revocation fix: the whitelist is the source of truth for portal
-    // roles, so removing an entry must immediately deny that user (no stale elevated access). Uses
-    // the real `users.other` identity so the grant→revoke is observed through actual portal sign-in.
+    // roles, so dropping an entry to `user` must immediately deny that account (no stale elevated
+    // access). Uses the real `users.other` identity — already whitelisted as `user` by
+    // global-setup (the consumer beta gate needs every e2e identity on the list), so the flow
+    // re-roles that existing row up and back down rather than adding/removing it, and the beta
+    // gate invariant survives for the later web specs.
     const adminCtx = await browser.newContext();
     const adminPage = await adminCtx.newPage();
-    // Accept the window.confirm guarding "Remove" (registered once; reused by the cleanup below).
-    adminPage.on("dialog", (dialog) => void dialog.accept());
     const otherCtx = await browser.newContext();
     const otherPage = await otherCtx.newPage();
 
@@ -85,32 +90,34 @@ test.describe("admin access control", () => {
     };
 
     try {
-      // 1. Admin grants `other` expert access via the whitelist.
+      // 1. Admin grants `other` expert access by promoting its existing (user-roled) entry.
       await signInAdmin(adminPage, users.admin);
       await adminPage.goto(`${env.adminBaseUrl}/access-control`);
-      await adminPage.getByPlaceholder("person@example.com").fill(users.other.email);
-      await adminPage.locator("select").first().selectOption("expert");
-      await adminPage.getByRole("button", { name: "Add", exact: true }).click();
-      await expect(adminPage.getByText(`Added ${users.other.email}.`)).toBeVisible();
+      const row = adminPage.getByRole("row").filter({ hasText: users.other.email });
+      await expect(row).toBeVisible();
+      await row.getByRole("combobox", { name: "Role" }).selectOption("expert");
+      await expect(adminPage.getByText(`${users.other.email} is now Expert.`)).toBeVisible();
 
       // 2. `other` can now reach the portal shell (the "Expert portal" nav group renders).
       await signInOther();
       await expect(otherPage.getByText(/^expert portal$/i).first()).toBeVisible();
 
-      // 3. Admin removes the entry → access is revoked.
-      const row = adminPage.getByRole("row").filter({ hasText: users.other.email });
-      await row.getByRole("button", { name: "Remove" }).click();
-      await expect(adminPage.getByText(`Removed ${users.other.email}.`)).toBeVisible();
+      // 3. Admin demotes the entry back to User → portal access is revoked.
+      await row.getByRole("combobox", { name: "Role" }).selectOption("user");
+      await expect(adminPage.getByText(`${users.other.email} is now User.`)).toBeVisible();
 
       // 4. A fresh portal entry by `other` now hits Access Denied — the gate re-checks the
       //    whitelist on sign-in, so the revoked user no longer reaches the shell.
       await signInOther();
       await expect(otherPage.getByText(/access denied/i)).toBeVisible();
     } finally {
-      // Safety net: never leave `other` whitelisted — it would break the deny test above on reorder.
+      // Safety net: leave `other` at its seeded `user` role — an elevated leftover would let the
+      // deny test above pass vacuously on reorder, and a REMOVED row would trip the consumer beta
+      // gate for the later web specs.
       const leftover = adminPage.getByRole("row").filter({ hasText: users.other.email });
-      if ((await leftover.count().catch(() => 0)) > 0) {
-        await leftover.getByRole("button", { name: "Remove" }).click().catch(() => {});
+      const roleSelect = leftover.getByRole("combobox", { name: "Role" });
+      if (((await roleSelect.inputValue().catch(() => "user")) as string) !== "user") {
+        await roleSelect.selectOption("user").catch(() => {});
       }
       await adminCtx.close();
       await otherCtx.close();

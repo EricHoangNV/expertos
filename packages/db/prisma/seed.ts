@@ -225,9 +225,11 @@ async function main() {
     await prisma.reviewConfig.create({ data: {} });
   }
 
-  // Bootstrap the admin-portal whitelist (M14). Seed the first admin email so the access gate
-  // doesn't lock everyone out on first deploy (PRD-access-control §9). Idempotent: upsert by the
-  // natural key keeps the role at `admin` even if the row already exists.
+  // Bootstrap the access whitelist (M14 + private beta). Seed the first admin email so the access
+  // gate doesn't lock everyone out on first deploy (PRD-access-control §9) — an admin entry also
+  // passes the consumer beta gate. Beta testers are managed at runtime via Admin → Access Control
+  // (role "User"); to pre-seed one here, add another upsert with `role: "user"`. Idempotent: upsert
+  // by the natural key keeps the role at `admin` even if the row already exists.
   //
   // `allowed_emails` is FORCE ROW LEVEL SECURITY, and the seed connects as `app_user` (not the
   // schema owner), so the upsert must run inside an interactive transaction under the admin RLS

@@ -34,9 +34,11 @@ interface AllowedEmailRow {
 }
 
 /**
- * Admin-portal whitelist management (M14, PRD-access-control §6.2–6.5). The invite list of who may
- * sign into the admin portal and with what role; {@link AdminSessionService} is what reads it at
- * sign-in. Built on the {@link AdminExpertService} template: every read/write runs inside
+ * Whitelist management (M14 + private beta, PRD-access-control §6.2–6.5). The invite list of who
+ * may access the product: `expert`/`admin` entries authorize the admin portal
+ * ({@link AdminSessionService} reads them at sign-in), and any entry — including the `user` role —
+ * passes the consumer beta gate (`AuthService.resolveUser`). Built on the
+ * {@link AdminExpertService} template: every read/write runs inside
  * {@link RlsService.run} under the admin principal (the `is_admin` GUC → platform-wide visibility),
  * the `@Roles("admin")` route guard gates the caller, and every **mutation** appends an immutable
  * {@link AdminAuditService} entry **in the same transaction**.
@@ -188,8 +190,7 @@ function toDto(row: AllowedEmailRow): AllowedEmailDto {
   return {
     id: row.id,
     email: row.email,
-    // The whitelist only ever stores the two portal roles (enforced at the app layer on write).
-    role: row.role === "admin" ? "admin" : "expert",
+    role: row.role,
     createdAt: row.createdAt.toISOString(),
     createdByEmail: row.creator?.email ?? null,
   };

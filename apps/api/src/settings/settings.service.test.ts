@@ -1,6 +1,7 @@
 import type { AppSettingsUpdateInput } from "@expertos/shared";
 import type { PrismaClient } from "@expertos/db";
 import { SettingsService } from "./settings.service";
+import type { BetaGateService } from "../auth/beta-gate.service";
 import type { RlsService } from "../auth/rls.service";
 import type { AdminAuditService } from "../admin/admin-audit.service";
 import type { AuthUser } from "../auth/auth.types";
@@ -33,8 +34,16 @@ function makeService(
   const audit = { record } as unknown as AdminAuditService;
   const prismaFindFirst = opts.prismaFindFirst ?? jest.fn();
   const prisma = { appSettings: { findFirst: prismaFindFirst } } as unknown as PrismaClient;
-  const service = new SettingsService(prisma, rls, audit, opts.embeddingProvider ?? "hashing");
-  return { service, run, record, prismaFindFirst };
+  const bust = jest.fn();
+  const betaGate = { bust } as unknown as BetaGateService;
+  const service = new SettingsService(
+    prisma,
+    rls,
+    audit,
+    betaGate,
+    opts.embeddingProvider ?? "hashing",
+  );
+  return { service, run, record, prismaFindFirst, bust };
 }
 
 /** A fully-specified update body (the schema validates ranges/allowlist before this point). */
@@ -43,6 +52,7 @@ function input(over: Partial<AppSettingsUpdateInput> = {}): AppSettingsUpdateInp
     llmTemperature: 0.2,
     defaultChatModel: "gpt-4o-mini",
     retrievalScoreFloor: 0,
+    betaGateEnabled: true,
     ...over,
   };
 }
@@ -55,6 +65,7 @@ function echoWrite(tx: ReturnType<typeof makeTx>, id: string) {
       llmTemperature: data.llmTemperature,
       defaultChatModel: data.defaultChatModel,
       retrievalScoreFloor: data.retrievalScoreFloor,
+      betaGateEnabled: data.betaGateEnabled,
       updatedAt: UPDATED_AT,
     });
   tx.appSettings.update.mockImplementation(impl);
@@ -69,6 +80,7 @@ describe("SettingsService.getSettings", () => {
       llmTemperature: 0.4,
       defaultChatModel: "gpt-4o",
       retrievalScoreFloor: 0.02,
+      betaGateEnabled: false,
       updatedAt: UPDATED_AT,
     });
     const { service, run } = makeService(tx, { embeddingProvider: "openai" });
@@ -80,6 +92,7 @@ describe("SettingsService.getSettings", () => {
       llmTemperature: 0.4,
       defaultChatModel: "gpt-4o",
       retrievalScoreFloor: 0.02,
+      betaGateEnabled: false,
       embeddingProvider: "openai",
       updatedAt: UPDATED_AT.toISOString(),
     });
@@ -96,6 +109,7 @@ describe("SettingsService.getSettings", () => {
       llmTemperature: 0.2,
       defaultChatModel: "gpt-4o-mini",
       retrievalScoreFloor: 0,
+      betaGateEnabled: true,
       embeddingProvider: "hashing",
       updatedAt: null,
     });
@@ -108,6 +122,7 @@ describe("SettingsService.getSettings", () => {
       llmTemperature: 0.3,
       defaultChatModel: "gpt-3.5-legacy",
       retrievalScoreFloor: 0,
+      betaGateEnabled: true,
       updatedAt: UPDATED_AT,
     });
     const { service } = makeService(tx);
@@ -196,6 +211,28 @@ describe("SettingsService.updateSettings", () => {
     const after = await service.getCached();
     expect(after).toEqual({ llmTemperature: 0.9, defaultChatModel: "gpt-4o", retrievalScoreFloor: 0.05 });
     expect(prismaFindFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it("persists + audits the beta gate flag and busts the BetaGateService cache", async () => {
+    const tx = makeTx();
+    tx.appSettings.findFirst.mockResolvedValue({ id: "set-1" });
+    echoWrite(tx, "set-1");
+    const { service, record, bust } = makeService(tx);
+
+    const result = await service.updateSettings(ADMIN, input({ betaGateEnabled: false }));
+
+    expect(tx.appSettings.update.mock.calls[0][0]).toMatchObject({
+      data: expect.objectContaining({ betaGateEnabled: false }),
+    });
+    expect(result.betaGateEnabled).toBe(false);
+    expect(record).toHaveBeenCalledWith(
+      tx,
+      ADMIN,
+      expect.objectContaining({
+        metadata: expect.objectContaining({ betaGateEnabled: false }),
+      }),
+    );
+    expect(bust).toHaveBeenCalledTimes(1);
   });
 });
 

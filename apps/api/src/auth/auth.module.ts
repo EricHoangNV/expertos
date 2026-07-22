@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { AdminSessionService } from "./admin-session.service";
 import { AuthService } from "./auth.service";
+import { BetaGateService } from "./beta-gate.service";
 import { firebaseAuthProvider } from "./firebase-admin.provider";
 import { FirebaseAuthGuard } from "./firebase-auth.guard";
 import { FirebaseTokenVerifier } from "./firebase-token-verifier";
@@ -22,12 +23,13 @@ import { TokenVerifier } from "./token-verifier";
     firebaseAuthProvider,
     { provide: TokenVerifier, useClass: FirebaseTokenVerifier },
     AuthService,
+    BetaGateService,
     AdminSessionService,
     ProfileService,
     RlsService,
     { provide: APP_GUARD, useClass: FirebaseAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
-  exports: [AuthService, RlsService],
+  exports: [AuthService, BetaGateService, RlsService],
 })
 export class AuthModule {}

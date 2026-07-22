@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
-import { Badge, Button, Field, Input, Select, Table } from "@expertos/ui";
+import { Badge, Button, Field, Input, Select, Table, type BadgeTone } from "@expertos/ui";
 import type { AllowedEmailDto, AllowedEmailRole } from "@expertos/shared";
 import { AdminFrame } from "../../src/components/AdminFrame";
 import { useAuth } from "../../src/lib/auth-context";
@@ -13,23 +13,31 @@ import {
   updateAllowedEmail,
 } from "../../src/lib/admin-client";
 
-/** Role → badge tone: admin reads as the elevated (red) role, expert as informational (info). */
-function roleTone(role: AllowedEmailRole): "red" | "info" {
-  return role === "admin" ? "red" : "info";
+/**
+ * Role → badge tone: admin reads as the elevated (red) role, expert as informational (info), and a
+ * beta-tester invite (`user`) as neutral (ink) — it grants consumer-app access only.
+ */
+function roleTone(role: AllowedEmailRole): BadgeTone {
+  if (role === "admin") return "red";
+  return role === "expert" ? "info" : "ink";
 }
 
 /**
- * Render the intro, emphasizing the two grantable roles (screenshot 22). The translated `intro`
- * carries `{admin}`/`{expert}` placeholders; we split on them and substitute the localized role
+ * Render the intro, emphasizing the grantable roles (screenshot 22). The translated `intro` carries
+ * `{admin}`/`{expert}`/`{user}` placeholders; we split on them and substitute the localized role
  * labels wrapped in `<strong>` — so the bolding survives translation without a separate copy key.
  */
-function renderIntro(template: string, admin: string, expert: string): ReactNode[] {
-  return template.split(/(\{admin\}|\{expert\})/).map((seg, i) => {
+function renderIntro(template: string, admin: string, expert: string, user: string): ReactNode[] {
+  return template.split(/(\{admin\}|\{expert\}|\{user\})/).map((seg, i) => {
     if (seg === "{admin}") return <strong key={i}>{admin}</strong>;
     if (seg === "{expert}") return <strong key={i}>{expert}</strong>;
+    if (seg === "{user}") return <strong key={i}>{user}</strong>;
     return <Fragment key={i}>{seg}</Fragment>;
   });
 }
+
+/** The three grantable roles, in escalation order — drives both role `Select`s. */
+const ROLE_OPTIONS: AllowedEmailRole[] = ["user", "expert", "admin"];
 
 /** The add-to-whitelist form: email + role, posting a new entry then refreshing the table. */
 function AddAllowedEmail({
@@ -43,7 +51,8 @@ function AddAllowedEmail({
 }) {
   const t = useT("accessControl");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<AllowedEmailRole>("expert");
+  // Beta-tester invites are the common case, so `user` is the default (M-beta-gate).
+  const [role, setRole] = useState<AllowedEmailRole>("user");
   const [busy, setBusy] = useState(false);
 
   const submit = useCallback(async () => {
@@ -62,7 +71,7 @@ function AddAllowedEmail({
       }
       await addAllowedEmail(token, { email: trimmed, role });
       setEmail("");
-      setRole("expert");
+      setRole("user");
       onAdded(trimmed.toLowerCase());
     } catch (err) {
       onError(err instanceof Error ? err.message : t("errorAdd"));
@@ -86,6 +95,7 @@ function AddAllowedEmail({
       </Field>
       <Field label={t("roleLabel")}>
         <Select value={role} onChange={(e) => setRole(e.target.value as AllowedEmailRole)}>
+          <option value="user">{t("roleUser")}</option>
           <option value="expert">{t("roleExpert")}</option>
           <option value="admin">{t("roleAdmin")}</option>
         </Select>
@@ -101,7 +111,10 @@ export default function AccessControlPage() {
   const { getIdToken } = useAuth();
   const t = useT("accessControl");
   const roleLabel = useCallback(
-    (role: AllowedEmailRole) => (role === "admin" ? t("roleAdmin") : t("roleExpert")),
+    (role: AllowedEmailRole) => {
+      if (role === "admin") return t("roleAdmin");
+      return role === "expert" ? t("roleExpert") : t("roleUser");
+    },
     [t],
   );
   const [rows, setRows] = useState<AllowedEmailDto[] | null>(null);
@@ -128,10 +141,12 @@ export default function AccessControlPage() {
     void load();
   }, [load]);
 
-  // Flip a row between expert ↔ admin (the API rejects demoting your own admin access).
-  const toggleRole = useCallback(
-    async (row: AllowedEmailDto) => {
-      const next: AllowedEmailRole = row.role === "admin" ? "expert" : "admin";
+  // Set a row to any of the three roles (the API rejects demoting your own admin access).
+  const changeRole = useCallback(
+    async (row: AllowedEmailDto, next: AllowedEmailRole) => {
+      if (next === row.role) {
+        return;
+      }
       setBusyId(row.id);
       setError(null);
       setNotice(null);
@@ -186,7 +201,9 @@ export default function AccessControlPage() {
         <div>
           <div className="eyebrow">{t("eyebrow")}</div>
           <h1 className="h1">{t("heading")}</h1>
-          <p className="muted">{renderIntro(t("intro"), t("roleAdmin"), t("roleExpert"))}</p>
+          <p className="muted">
+            {renderIntro(t("intro"), t("roleAdmin"), t("roleExpert"), t("roleUser"))}
+          </p>
         </div>
       </div>
 
@@ -228,14 +245,18 @@ export default function AccessControlPage() {
                 <td className="muted mono">{new Date(row.createdAt).toLocaleString()}</td>
                 <td>
                   <div className="row gap1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void toggleRole(row)}
+                    <Select
+                      aria-label={t("roleLabel")}
+                      value={row.role}
+                      onChange={(e) => void changeRole(row, e.target.value as AllowedEmailRole)}
                       disabled={busyId === row.id}
                     >
-                      {row.role === "admin" ? t("makeExpert") : t("makeAdmin")}
-                    </Button>
+                      {ROLE_OPTIONS.map((role) => (
+                        <option key={role} value={role}>
+                          {roleLabel(role)}
+                        </option>
+                      ))}
+                    </Select>
                     <Button
                       variant="ghost"
                       size="sm"

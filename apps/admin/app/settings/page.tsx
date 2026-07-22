@@ -101,6 +101,7 @@ function SettingsEditor({ settings, getToken, onSaved }: SettingsEditorProps) {
   const [scoreFloor, setScoreFloor] = useState(
     String(settings.retrievalScoreFloor),
   );
+  const [betaGate, setBetaGate] = useState(settings.betaGateEnabled);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +127,7 @@ function SettingsEditor({ settings, getToken, onSaved }: SettingsEditorProps) {
       llmTemperature: parsedTemp,
       defaultChatModel: model,
       retrievalScoreFloor: parsedFloor,
+      betaGateEnabled: betaGate,
     };
 
     setSaving(true);
@@ -142,7 +144,7 @@ function SettingsEditor({ settings, getToken, onSaved }: SettingsEditorProps) {
     } finally {
       setSaving(false);
     }
-  }, [temperature, scoreFloor, model, getToken, onSaved, t]);
+  }, [temperature, scoreFloor, model, betaGate, getToken, onSaved, t]);
 
   return (
     <>
@@ -260,6 +262,22 @@ function SettingsEditor({ settings, getToken, onSaved }: SettingsEditorProps) {
             }}
           />
           <span className="muted">{t("scoreFloorHelp")}</span>
+        </Field>
+
+        <Field label={t("betaGate")} htmlFor="settings-beta-gate">
+          <Select
+            id="settings-beta-gate"
+            value={betaGate ? "on" : "off"}
+            disabled={saving}
+            onChange={(e) => {
+              setBetaGate(e.target.value === "on");
+              touched();
+            }}
+          >
+            <option value="on">{t("betaGateOn")}</option>
+            <option value="off">{t("betaGateOff")}</option>
+          </Select>
+          <span className="muted">{t("betaGateHelp")}</span>
         </Field>
 
         <Field

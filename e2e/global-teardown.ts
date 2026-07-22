@@ -87,7 +87,9 @@ async function globalTeardown(): Promise<void> {
       if (userIds.length > 0) {
         await tx.user.deleteMany({ where: { id: { in: userIds } } });
       }
-    });
+    // Generous limits: the cleanup spans many tables and the shared dev DB sits behind the Cloud
+    // SQL proxy, where round-trips can stretch to seconds — Prisma's 5s default is too tight.
+    }, { maxWait: 30_000, timeout: 120_000 });
   } finally {
     await prisma.$disconnect();
   }

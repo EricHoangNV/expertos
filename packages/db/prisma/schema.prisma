@@ -310,10 +310,11 @@ model User {
   @@map("users")
 }
 
-/// Invite-only admin-portal whitelist (M14). A pre-authorized email + the role it is granted on
-/// admin-portal sign-in. Tenant-scoped (GLOBAL today); the role is the full Role enum on the column
-/// but the app layer accepts only `expert` / `admin`. `createdBy` is SetNull so the audit of who
-/// added an entry survives that admin's account deletion.
+/// Invite-only access whitelist (M14 + private beta). A pre-authorized email + the role it is
+/// granted. `expert` / `admin` entries authorize the admin portal (role synced on portal sign-in);
+/// a `user` entry is a consumer-beta invite only — it passes the beta gate
+/// (`AuthService.resolveUser`) but never the portal. Tenant-scoped (GLOBAL today). `createdBy` is
+/// SetNull so the audit of who added an entry survives that admin's account deletion.
 model AllowedEmail {
   id        String   @id @default(uuid()) @db.Uuid
   tenantId  String   @default(dbgenerated("'00000000-0000-0000-0000-000000000000'::uuid")) @map("tenant_id") @db.Uuid
@@ -871,18 +872,21 @@ model ReviewConfig {
   @@map("review_configs")
 }
 
-/// Runtime answer-tuning settings (M17, PRD §"M17"). A global singleton — exactly one row — that
-/// tunes the grounded-QA answer path in real time: LLM temperature, the default chat model, and the
-/// retrieval relevance floor. Like `review_configs`/`recommendation_rules`: NO row-level security
-/// (global config, admin-only writes via the M17 Settings page; `SettingsService` reads it through a
-/// 30s TTL cache). The embedding provider is intentionally NOT stored here — switching embedders
-/// invalidates existing vectors, so it is env + restart only (`EMBEDDING_PROVIDER`). `defaultChatModel`
-/// is constrained to the `{gpt-4o-mini, gpt-4o}` allowlist in the service layer (zod), not the schema.
+/// Runtime app settings (M17, PRD §"M17"). A global singleton — exactly one row — that tunes the
+/// grounded-QA answer path in real time (LLM temperature, default chat model, retrieval relevance
+/// floor) and carries the private-beta gate flag. Like `review_configs`/`recommendation_rules`: NO
+/// row-level security (global config, admin-only writes via the M17 Settings page; `SettingsService`
+/// reads it through a 30s TTL cache). The embedding provider is intentionally NOT stored here —
+/// switching embedders invalidates existing vectors, so it is env + restart only
+/// (`EMBEDDING_PROVIDER`). `defaultChatModel` is constrained to the `{gpt-4o-mini, gpt-4o}` allowlist
+/// in the service layer (zod), not the schema. `betaGateEnabled` gates consumer-app sign-in on the
+/// `allowed_emails` whitelist (`AuthService.resolveUser`, read via `BetaGateService`'s 30s cache).
 model AppSettings {
   id                  String   @id @default(uuid()) @db.Uuid
   llmTemperature      Float    @default(0.2) @map("llm_temperature")
   defaultChatModel    String   @default("gpt-4o-mini") @map("default_chat_model")
   retrievalScoreFloor Float    @default(0) @map("retrieval_score_floor")
+  betaGateEnabled     Boolean  @default(true) @map("beta_gate_enabled")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 

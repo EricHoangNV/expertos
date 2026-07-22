@@ -36,16 +36,45 @@ function decodeEmulatorUid(idToken: string): string {
   return uid;
 }
 
+/**
+ * Options for every setup transaction. Prisma's default interactive-transaction timeout is 5s;
+ * the shared dev DB sits behind the Cloud SQL proxy, where round-trips can stretch to seconds
+ * under load, so the multi-statement seeding transactions need generous headroom.
+ */
+const TX_OPTS = { maxWait: 30_000, timeout: 120_000 } as const;
+
+/**
+ * The whitelist role each test identity is seeded with. The private beta gate
+ * (`AuthService.resolveUser`) 403s any `user`-roled account whose email has no `allowed_emails`
+ * entry, so **every** identity — including the consumer member/other — must be whitelisted before
+ * the step-1 `GET /me` mirror, or setup itself is denied. The portal identities carry their portal
+ * roles (the M14 admin-session gate additionally requires expert/admin).
+ */
+function whitelistRoleFor(user: TestUser): Role {
+  if (user.email === users.admin.email) return "admin";
+  if (user.email === users.expert.email) return "expert";
+  return "user";
+}
+
 async function globalSetup(): Promise<void> {
   // The Auth emulator is in-memory, so a restart reassigns every identity a new uid while the DB still
   // holds the prior session's uid for that email. `AuthService.resolveUser` keys on uid → it can't find
   // the row, tries to create a new one, and hits the email unique constraint (GET /me → 500). Repoint
   // the existing row to the current uid (by email, admin RLS context) before mirroring, so /me resolves
-  // it. A short-lived client just for this reconcile — step 2 opens its own for the role promotions.
+  // it. The same transaction whitelists the identity (see `whitelistRoleFor`) so the beta gate lets the
+  // mirror through. A short-lived client just for this reconcile — step 2 opens its own for the role
+  // promotions.
   const reconcileUrl = process.env.DATABASE_URL;
   const reconcilePrisma = reconcileUrl
     ? new PrismaClient({ datasources: { db: { url: reconcileUrl } } })
     : null;
+  if (!reconcilePrisma) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "global-setup: DATABASE_URL unset — skipping whitelist seeding. With the private beta gate " +
+        "on (the default), GET /me will 403 for the consumer identities and the suite cannot start.",
+    );
+  }
   const ctx = await playwrightRequest.newContext();
   try {
     // 1. Mirror every identity's user row by exercising an authenticated endpoint.
@@ -59,14 +88,23 @@ async function globalSetup(): Promise<void> {
             where: { email: user.email, firebaseUid: { not: uid } },
             data: { firebaseUid: uid },
           });
-        });
+          const role = whitelistRoleFor(user);
+          await tx.allowedEmail.upsert({
+            where: { tenantId_email: { tenantId: GLOBAL_TENANT_ID, email: user.email } },
+            update: { role },
+            create: { tenantId: GLOBAL_TENANT_ID, email: user.email, role },
+          });
+        }, TX_OPTS);
       }
       const res = await ctx.get(`${env.apiBaseUrl}/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok()) {
         throw new Error(
-          `global-setup: GET /me failed for ${user.email} (${res.status()}). Is the API up at ${env.apiBaseUrl}?`,
+          `global-setup: GET /me failed for ${user.email} (${res.status()}). Is the API up at ${env.apiBaseUrl}?` +
+            (res.status() === 403
+              ? " A 403 usually means the private beta gate denied a non-whitelisted identity — check the allowed_emails seeding above."
+              : ""),
         );
       }
     }
@@ -448,7 +486,7 @@ async function globalSetup(): Promise<void> {
           },
         });
       }
-    });
+    }, TX_OPTS);
   } finally {
     await prisma.$disconnect();
   }

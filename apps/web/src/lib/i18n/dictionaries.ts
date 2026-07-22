@@ -270,6 +270,13 @@ const en = {
     knowledge: "My Knowledge",
     history: "History",
   },
+  // Private-beta deny screen (BetaGateBoundary) — shown when the signed-in email is not invited.
+  betaGate: {
+    eyebrow: "Private beta",
+    title: "ExpertOS is invite-only right now",
+    body: "Your email isn't on the invite list yet. If you think it should be, contact the team — or sign out and try a different account.",
+    signOut: "Sign out",
+  },
 } satisfies Messages;
 
 const vi = {
@@ -499,6 +506,12 @@ const vi = {
   nav: {
     knowledge: "Kho kiến thức của tôi",
     history: "Lịch sử",
+  },
+  betaGate: {
+    eyebrow: "Beta riêng tư",
+    title: "ExpertOS hiện chỉ dành cho người được mời",
+    body: "Email của bạn chưa có trong danh sách mời. Nếu bạn nghĩ mình nên có quyền truy cập, hãy liên hệ với đội ngũ — hoặc đăng xuất và thử một tài khoản khác.",
+    signOut: "Đăng xuất",
   },
 } satisfies Messages;
 

@@ -21,6 +21,7 @@ describe("appSettingsUpdateSchema", () => {
     llmTemperature: 0.2,
     defaultChatModel: "gpt-4o-mini" as const,
     retrievalScoreFloor: 0,
+    betaGateEnabled: true,
   };
 
   it("accepts in-range settings", () => {
@@ -55,5 +56,17 @@ describe("appSettingsUpdateSchema", () => {
     expect(
       appSettingsUpdateSchema.safeParse({ ...valid, defaultChatModel: "gpt-4o-pro" }).success,
     ).toBe(false);
+  });
+
+  it("requires the beta gate flag to be a boolean", () => {
+    expect(appSettingsUpdateSchema.safeParse({ ...valid, betaGateEnabled: false }).success).toBe(
+      true,
+    );
+    expect(appSettingsUpdateSchema.safeParse({ ...valid, betaGateEnabled: "on" }).success).toBe(
+      false,
+    );
+    const withoutFlag: Partial<typeof valid> = { ...valid };
+    delete withoutFlag.betaGateEnabled;
+    expect(appSettingsUpdateSchema.safeParse(withoutFlag).success).toBe(false);
   });
 });

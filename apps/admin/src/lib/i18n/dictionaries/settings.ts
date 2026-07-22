@@ -36,6 +36,12 @@ export const en = {
   scoreFloorTipFoot: "Start at 0; raise to ~0.015 only when weak chunks degrade answers.",
   // Retrieval score floor — the GUIDE chip beside the label (M19.5.5).
   scoreFloorGuide: "Guide",
+  // Private beta gate.
+  betaGate: "Private beta gate",
+  betaGateOn: "On — invite-only (whitelist required)",
+  betaGateOff: "Off — any Google account can use the app",
+  betaGateHelp:
+    "When on, only emails on the Access control whitelist can use the consumer app. Applies within ~30 seconds of saving. Admin-portal access is always whitelist-only, regardless of this setting.",
   // Embedding provider (read-only).
   embeddingProvider: "Embedding provider",
   embeddingProviderNote:
@@ -80,6 +86,11 @@ export const vi = {
   scoreFloorTipKill: "Lọc bỏ tất cả — đừng dùng.",
   scoreFloorTipFoot: "Bắt đầu từ 0; chỉ nâng lên ~0.015 khi các đoạn yếu làm giảm chất lượng câu trả lời.",
   scoreFloorGuide: "Hướng dẫn",
+  betaGate: "Cổng beta riêng tư",
+  betaGateOn: "Bật — chỉ dành cho người được mời (cần danh sách cho phép)",
+  betaGateOff: "Tắt — mọi tài khoản Google đều dùng được ứng dụng",
+  betaGateHelp:
+    "Khi bật, chỉ các email trong danh sách Kiểm soát truy cập mới dùng được ứng dụng người dùng. Có hiệu lực trong khoảng ~30 giây sau khi lưu. Cổng quản trị luôn yêu cầu danh sách cho phép, bất kể cài đặt này.",
   embeddingProvider: "Nhà cung cấp nhúng",
   embeddingProviderNote:
     "Cần khởi động lại — đặt qua biến môi trường EMBEDDING_PROVIDER. Đổi bộ nhúng làm vô hiệu các vector hiện có, nên không thể thay đổi khi đang chạy.",

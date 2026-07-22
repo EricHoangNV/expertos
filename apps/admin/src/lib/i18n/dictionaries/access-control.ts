@@ -1,15 +1,16 @@
 import type { Messages } from "@expertos/ui";
 
-/** EN/VI strings for the `access-control` admin page (M13.3). Keep `en`/`vi` in lockstep. */
+/** EN/VI strings for the `access-control` admin page (M13.3 + private beta). Keep `en`/`vi` in lockstep. */
 export const en = {
   eyebrow: "System",
   heading: "Access control",
   intro:
-    "The admin portal is invite-only — only the emails below can sign in, and each one's role syncs from this list on every sign-in. Granting {admin} or {expert} here decides what they see after Google sign-in. Removing an entry blocks access on the next sign-in; the consumer app is unaffected.",
+    "Access is invite-only — this list gates both apps. {user} grants the consumer app only (beta testers, while the beta gate is on). {admin} or {expert} also unlocks the admin portal, and each entry's role syncs from this list on every sign-in. Removing an entry blocks access on the next request.",
   // Add-to-whitelist form.
   emailLabel: "Email",
   emailPlaceholder: "person@example.com",
   roleLabel: "Role",
+  roleUser: "User",
   roleExpert: "Expert",
   roleAdmin: "Admin",
   add: "Add",
@@ -19,13 +20,11 @@ export const en = {
   thRole: "Role",
   thAddedBy: "Added by",
   thAddedAt: "Added at",
-  makeExpert: "Make expert",
-  makeAdmin: "Make admin",
   remove: "Remove",
   // Empty state.
   empty: "No emails are whitelisted yet.",
   // Confirmation + notices.
-  confirmRemove: "Remove {email} from the admin portal whitelist?",
+  confirmRemove: "Remove {email} from the whitelist?",
   noticeRoleChanged: "{email} is now {role}.",
   noticeRemoved: "Removed {email}.",
   noticeAdded: "Added {email}.",
@@ -42,11 +41,12 @@ export const vi = {
   eyebrow: "Hệ thống",
   heading: "Kiểm soát truy cập",
   intro:
-    "Cổng quản trị chỉ dành cho người được mời — chỉ những email dưới đây mới có thể đăng nhập, và vai trò của mỗi email được đồng bộ từ danh sách này mỗi lần đăng nhập. Cấp quyền {admin} hoặc {expert} ở đây quyết định những gì họ thấy sau khi đăng nhập bằng Google. Xóa một mục sẽ chặn truy cập ở lần đăng nhập kế tiếp; ứng dụng người dùng không bị ảnh hưởng.",
+    "Quyền truy cập chỉ dành cho người được mời — danh sách này kiểm soát cả hai ứng dụng. {user} chỉ cấp quyền dùng ứng dụng người dùng (người dùng thử beta, khi cổng beta đang bật). {admin} hoặc {expert} còn mở khóa cổng quản trị, và vai trò của mỗi mục được đồng bộ từ danh sách này mỗi lần đăng nhập. Xóa một mục sẽ chặn truy cập ngay ở yêu cầu kế tiếp.",
   // Add-to-whitelist form.
   emailLabel: "Email",
   emailPlaceholder: "person@example.com",
   roleLabel: "Vai trò",
+  roleUser: "Người dùng",
   roleExpert: "Chuyên gia",
   roleAdmin: "Quản trị viên",
   add: "Thêm",
@@ -56,13 +56,11 @@ export const vi = {
   thRole: "Vai trò",
   thAddedBy: "Người thêm",
   thAddedAt: "Thời điểm thêm",
-  makeExpert: "Đổi thành chuyên gia",
-  makeAdmin: "Đổi thành quản trị viên",
   remove: "Xóa",
   // Empty state.
   empty: "Chưa có email nào trong danh sách cho phép.",
   // Confirmation + notices.
-  confirmRemove: "Xóa {email} khỏi danh sách cho phép của cổng quản trị?",
+  confirmRemove: "Xóa {email} khỏi danh sách cho phép?",
   noticeRoleChanged: "{email} hiện là {role}.",
   noticeRemoved: "Đã xóa {email}.",
   noticeAdded: "Đã thêm {email}.",

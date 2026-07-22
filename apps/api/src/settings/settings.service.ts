@@ -7,6 +7,7 @@ import {
 } from "@expertos/shared";
 import type { Prisma, PrismaClient } from "@expertos/db";
 import { PRISMA } from "../database/database.module";
+import { BetaGateService } from "../auth/beta-gate.service";
 import { RlsService } from "../auth/rls.service";
 import type { AuthUser } from "../auth/auth.types";
 import { AdminAuditService } from "../admin/admin-audit.service";
@@ -18,6 +19,7 @@ const SETTINGS_SELECT = {
   llmTemperature: true,
   defaultChatModel: true,
   retrievalScoreFloor: true,
+  betaGateEnabled: true,
   updatedAt: true,
 } satisfies Prisma.AppSettingsSelect;
 
@@ -27,6 +29,7 @@ interface SettingsRow {
   llmTemperature: number;
   defaultChatModel: string;
   retrievalScoreFloor: number;
+  betaGateEnabled: boolean;
   updatedAt: Date;
 }
 
@@ -36,6 +39,9 @@ const DEFAULT_SETTINGS = {
   defaultChatModel: "gpt-4o-mini",
   retrievalScoreFloor: 0,
 } as const satisfies AppSettingsRuntime;
+
+/** Unseeded default for the beta gate — ON (mirrors the DB default; closed private-beta posture). */
+const DEFAULT_BETA_GATE_ENABLED = true;
 
 /**
  * The subset of {@link AppSettingsDto} the answer path reads per request — the tunable triple, with
@@ -76,6 +82,7 @@ export class SettingsService {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly rls: RlsService,
     private readonly audit: AdminAuditService,
+    private readonly betaGate: BetaGateService,
     @Inject(SETTINGS_EMBEDDING_PROVIDER_NAME) private readonly embeddingProvider: string,
   ) {}
 
@@ -90,7 +97,8 @@ export class SettingsService {
   /**
    * Save the settings. Upserts the singleton (update the existing row, or create it if the DB was
    * never seeded), records an audit entry in the same transaction, then busts the runtime cache so the
-   * change is live on the next answer.
+   * change is live on the next answer — and the {@link BetaGateService} cache, so flipping the beta
+   * gate applies to the next request on this instance (others converge within its 30s TTL).
    */
   async updateSettings(actor: AuthUser, input: AppSettingsUpdateInput): Promise<AppSettingsDto> {
     const dto = await this.rls.run(actor, async (tx) => {
@@ -98,6 +106,7 @@ export class SettingsService {
         llmTemperature: input.llmTemperature,
         defaultChatModel: input.defaultChatModel,
         retrievalScoreFloor: input.retrievalScoreFloor,
+        betaGateEnabled: input.betaGateEnabled,
       };
 
       const existing = await tx.appSettings.findFirst({ select: { id: true } });
@@ -113,6 +122,7 @@ export class SettingsService {
           llmTemperature: row.llmTemperature,
           defaultChatModel: row.defaultChatModel,
           retrievalScoreFloor: row.retrievalScoreFloor,
+          betaGateEnabled: row.betaGateEnabled,
         },
       });
 
@@ -120,6 +130,7 @@ export class SettingsService {
     });
 
     this.cached = null;
+    this.betaGate.bust();
     return dto;
   }
 
@@ -157,6 +168,7 @@ export class SettingsService {
   private toDto(row: SettingsRow): AppSettingsDto {
     return {
       ...this.toRuntime(row),
+      betaGateEnabled: row.betaGateEnabled,
       embeddingProvider: this.embeddingProvider,
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -166,6 +178,7 @@ export class SettingsService {
   private defaultDto(): AppSettingsDto {
     return {
       ...DEFAULT_SETTINGS,
+      betaGateEnabled: DEFAULT_BETA_GATE_ENABLED,
       embeddingProvider: this.embeddingProvider,
       updatedAt: null,
     };

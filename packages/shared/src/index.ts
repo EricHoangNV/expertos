@@ -4,11 +4,13 @@ export { localeUpdateSchema } from "./profile";
 export type { LocaleUpdateInput, UserProfileDto } from "./profile";
 export {
   allowedEmailRoleSchema,
+  portalRoleSchema,
   allowedEmailCreateSchema,
   allowedEmailUpdateSchema,
 } from "./access-control";
 export type {
   AllowedEmailRole,
+  PortalRole,
   AllowedEmailCreateInput,
   AllowedEmailUpdateInput,
   AllowedEmailDto,

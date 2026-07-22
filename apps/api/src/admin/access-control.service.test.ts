@@ -78,6 +78,18 @@ describe("AccessControlService.list", () => {
   });
 });
 
+describe("AccessControlService.list", () => {
+  it("returns a user-roled beta invite as-is (no collapse to a portal role)", async () => {
+    const tx = makeTx();
+    tx.allowedEmail.findMany.mockResolvedValue([dtoRow({ role: "user", email: "beta@example.com" })]);
+    const { service } = makeService(tx);
+
+    const result = await service.list(ADMIN);
+
+    expect(result[0]).toMatchObject({ email: "beta@example.com", role: "user" });
+  });
+});
+
 describe("AccessControlService.add", () => {
   it("creates an entry in the actor's tenant stamped with createdBy and audits it", async () => {
     const tx = makeTx();
@@ -106,6 +118,19 @@ describe("AccessControlService.add", () => {
       }),
     );
     expect(result.role).toBe("admin");
+  });
+
+  it("adds a user-roled beta invite", async () => {
+    const tx = makeTx();
+    tx.allowedEmail.create.mockResolvedValue(dtoRow({ role: "user", email: "beta@example.com" }));
+    const { service } = makeService(tx);
+
+    const result = await service.add(ADMIN, { email: "beta@example.com", role: "user" });
+
+    expect(tx.allowedEmail.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: "user" }) }),
+    );
+    expect(result.role).toBe("user");
   });
 
   it("maps a unique-constraint (P2002) violation to a 409", async () => {
@@ -194,6 +219,17 @@ describe("AccessControlService.updateRole", () => {
       where: { email: { equals: "ex@example.com", mode: "insensitive" } },
       data: { role: "expert" },
     });
+  });
+
+  it("rejects demoting your own entry to a beta-only invite (self-lockout)", async () => {
+    const tx = makeTx();
+    tx.allowedEmail.findUnique.mockResolvedValue({ email: ADMIN.email, role: "admin" });
+    const { service } = makeService(tx);
+
+    await expect(service.updateRole(ADMIN, ENTRY_ID, { role: "user" })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(tx.allowedEmail.update).not.toHaveBeenCalled();
   });
 
   it("allows re-setting your own entry to admin (no demotion)", async () => {

@@ -98,12 +98,22 @@ describe("AdminSessionService.resolve", () => {
     expect(tx.user.update).toHaveBeenCalledWith({ where: { id: USER.id }, data: { role: "user" } });
   });
 
-  it("throws 403 for a non-portal role on the entry (defensive)", async () => {
+  it("throws 403 for a user-roled entry (a consumer-beta invite grants no portal access)", async () => {
     const { prisma, tx } = makeFakePrisma();
     tx.allowedEmail.findUnique.mockResolvedValue({ role: "user" });
 
     await expect(new AdminSessionService(prisma).resolve(USER)).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+  });
+
+  it("revokes a stale elevated role when the entry was demoted to a beta-only invite", async () => {
+    const { prisma, tx } = makeFakePrisma();
+    tx.allowedEmail.findUnique.mockResolvedValue({ role: "user" });
+
+    await expect(
+      new AdminSessionService(prisma).resolve({ ...USER, role: "expert" }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.user.update).toHaveBeenCalledWith({ where: { id: USER.id }, data: { role: "user" } });
   });
 });
