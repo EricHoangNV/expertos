@@ -119,8 +119,9 @@ function appendJsonl(file, record) {
   fs.appendFileSync(file, JSON.stringify(record) + "\n");
 }
 
-function loadDataset(lang) {
-  return readJson(path.join(DATA_DIR, `dataset.${lang}.json`));
+/** Load a question set: `set` is the file prefix under data/ (default "dataset"). */
+function loadDataset(lang, set = "dataset") {
+  return readJson(path.join(DATA_DIR, `${set}.${lang}.json`));
 }
 
 module.exports = {

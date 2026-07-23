@@ -10,7 +10,12 @@
  *
  * Usage:
  *   node scripts/benchmark/score.cjs --run-id <ID> [--judge-model gpt-4o] [--concurrency 4]
- *                                    [--pass 70]
+ *                                    [--pass 70] [--samples 3]
+ *
+ * Multi-sample judging: each answer is judged --samples times (default 3) and the MEDIAN
+ * score is used; per-question spread (max-min) is recorded so noise is visible. LLM judges
+ * swing +/-15-20 points between identical re-scores even at temperature 0 — the median of 3
+ * cuts that noise substantially for ~3x judge cost. Use --samples 1 for a cheap rough pass.
  *
  * Output (in the same results/<runId>/ dir):
  *   results.jsonl   per-question: both scores + judge rationale/missing/contradictions
@@ -60,6 +65,7 @@ async function main() {
   const concurrency = args.concurrency ? parseInt(args.concurrency, 10) : 4;
   const passThreshold = args.pass ? parseInt(args.pass, 10) : 70;
   const judgeModel = args["judge-model"] || process.env.BENCH_JUDGE_MODEL || undefined;
+  const samples = Math.max(1, args.samples ? parseInt(args.samples, 10) : 3);
 
   const outDir = path.join(S.RESULTS_DIR, runId);
   const answersPath = path.join(outDir, "answers.jsonl");
@@ -85,7 +91,7 @@ async function main() {
   const embedder = defaults.createDefaultEmbeddingProvider(process.env);
 
   console.log(`Scoring run ${runId}: ${answers.length} answer(s)`);
-  console.log(`  judge: ${judgeLlm.name}  embedder: ${embedder.name}  pass>=${passThreshold}\n`);
+  console.log(`  judge: ${judgeLlm.name} x${samples} (median)  embedder: ${embedder.name}  pass>=${passThreshold}\n`);
 
   const resultsPath = path.join(outDir, "results.jsonl");
   fs.writeFileSync(resultsPath, ""); // fresh
@@ -105,17 +111,34 @@ async function main() {
       similarity = -1; // signal an embedding failure without aborting the run
     }
 
-    let judge;
-    try {
-      judge = await judgeAnswer(
-        judgeLlm,
-        { question: a.question, gold: a.gold_answer, candidate: a.answer },
-        { model: judgeModel },
-      );
-    } catch (e) {
-      judge = { score: -1, verdict: "error", missing: [], contradictions: [], rationale: String(e.message || e), judgeModel: judgeLlm.name, judgeTokens: 0 };
+    // Multi-sample judging: N independent judge calls, keep the median sample.
+    const judgeRuns = [];
+    for (let i = 0; i < samples; i++) {
+      try {
+        judgeRuns.push(
+          await judgeAnswer(
+            judgeLlm,
+            { question: a.question, gold: a.gold_answer, candidate: a.answer },
+            { model: judgeModel },
+          ),
+        );
+      } catch (e) {
+        judgeRuns.push({ score: -1, verdict: "error", missing: [], contradictions: [], rationale: String(e.message || e), judgeModel: judgeLlm.name, judgeTokens: 0 });
+      }
     }
-    judgeTokens += judge.judgeTokens || 0;
+    for (const j of judgeRuns) judgeTokens += j.judgeTokens || 0;
+    const okRuns = judgeRuns.filter((j) => j.score >= 0);
+    let judge;
+    let judgeSamples = [];
+    let judgeSpread = 0;
+    if (okRuns.length === 0) {
+      judge = judgeRuns[0]; // all errored — carry the error record
+    } else {
+      const sorted = [...okRuns].sort((x, y) => x.score - y.score);
+      judge = sorted[Math.floor((sorted.length - 1) / 2)]; // median sample (lower on even counts)
+      judgeSamples = okRuns.map((j) => j.score);
+      judgeSpread = sorted[sorted.length - 1].score - sorted[0].score;
+    }
 
     const rec = {
       runId,
@@ -125,6 +148,8 @@ async function main() {
       level: a.level,
       difficulty: a.difficulty,
       judge_score: judge.score,
+      judge_samples: judgeSamples,
+      judge_spread: judgeSpread,
       similarity,
       verdict: judge.verdict,
       passed: judge.score >= passThreshold,
@@ -155,6 +180,7 @@ async function main() {
     gen_errors: results.filter((r) => r.gen_error).length,
   };
 
+  const spreads = results.filter((r) => (r.judge_samples || []).length > 1).map((r) => r.judge_spread);
   const summary = {
     runId,
     scoredAt: new Date().toISOString(),
@@ -162,6 +188,8 @@ async function main() {
     judgeModel: judgeLlm.name,
     embedder: embedder.name,
     passThreshold,
+    judgeSamples: samples,
+    meanJudgeSpread: round(mean(spreads)),
     overall,
     byLanguage: groupStats(valid, (r) => r.lang, passThreshold),
     byDifficulty: groupStats(valid, (r) => r.difficulty, passThreshold),
@@ -187,6 +215,7 @@ function printSummary(s) {
   const o = s.overall;
   console.log(`\n\n=== ${s.runId} ===`);
   console.log(`Overall: judge ${o.mean_judge}/100  ·  similarity ${o.mean_similarity}/100  ·  pass ${o.pass_rate}% (${o.passed}/${o.count})`);
+  if (s.judgeSamples > 1) console.log(`  judge: median of ${s.judgeSamples} samples · mean per-question spread ${s.meanJudgeSpread}`);
   if (o.insufficient_knowledge) console.log(`  insufficient-knowledge: ${o.insufficient_knowledge}   gen-errors: ${o.gen_errors}   judge-errors: ${o.judge_errors}`);
   console.log(`\nBy language:`);
   for (const [k, v] of Object.entries(s.byLanguage)) console.log(`  ${k.padEnd(6)} judge ${String(v.mean_judge).padStart(5)}  sim ${String(v.mean_similarity).padStart(5)}  pass ${v.pass_rate}%  (n=${v.count})`);

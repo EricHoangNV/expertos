@@ -73,13 +73,18 @@ node scripts/benchmark/compare.cjs <baselineRunId> <candidateRunId>   # regressi
 
 ### Flags
 
-`run.cjs`: `--lang en|vi|both` · `--limit N` · `--only 1,2,3` · `--concurrency N` (default 4)
+`run.cjs`: `--lang en|vi|both` · `--limit N` · `--only 1,2,3` · `--concurrency N` (default 3)
 · `--topk 8` · `--run-id ID` · `--resume` (skip already-answered questions in the same run)
-· `--expert <slug>` (default `nct`) · `--expert none` / `--neutral` (neutral-voice baseline).
+· `--expert <slug>` (default `nct`) · `--expert none` / `--neutral` (neutral-voice baseline)
+· `--set NAME` (question set prefix under `data/`, default `dataset`; e.g. `heldout-paraphrase`
+— see `data/HELDOUT-README.md`) · `--retries N` (per-question retries, default 2).
 
 `score.cjs`: `--run-id ID` (required) · `--judge-model <model>` (default `gpt-4o-mini`; set a
 stronger judge like `gpt-4o` for higher-fidelity scoring) · `--pass N` (pass threshold, default 70)
-· `--concurrency N`.
+· `--concurrency N` · `--samples N` (default 3: judge each answer N times, use the median;
+per-question `judge_spread` is recorded. Measured: the gpt-4o judge is stable on identical
+answers — mean spread ~1 point — so cross-run score swings are dominated by **generation**
+variance, not judging. `--samples 1` is fine for quick passes).
 
 ## KB enrichment
 

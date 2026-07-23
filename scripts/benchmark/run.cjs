@@ -37,6 +37,9 @@ async function main() {
   const resume = Boolean(args.resume);
   // Voice: default to the NCT expert; --expert none (or --neutral) renders neutral voice.
   const expertSlug = args.neutral || args.expert === "none" ? null : args.expert || "nct";
+  // Question set: file prefix under data/ (default the frozen 100-Q UAT set).
+  // e.g. --set heldout-paraphrase loads data/heldout-paraphrase.{en,vi}.json.
+  const set = args.set || "dataset";
 
   const outDir = path.join(S.RESULTS_DIR, runId);
   fs.mkdirSync(outDir, { recursive: true });
@@ -46,7 +49,7 @@ async function main() {
   let work = [];
   const datasetHashes = {};
   for (const lang of langs) {
-    const rows = S.loadDataset(lang);
+    const rows = S.loadDataset(lang, set);
     datasetHashes[lang] = S.sha256(JSON.stringify(rows));
     let subset = rows;
     if (only) subset = subset.filter((r) => only.has(r.id));
@@ -64,6 +67,7 @@ async function main() {
   const meta = {
     runId,
     startedAt: new Date().toISOString(),
+    set,
     langs,
     counts: langs.reduce((acc, l) => ({ ...acc, [l]: work.filter((w) => w.lang === l).length }), {}),
     total: work.length,
